@@ -39,9 +39,9 @@ function calcHolidayNight(hours, hourlyWage) {
   return Math.round(hours * hourlyWage * 0.5)
 }
 
-function calcWeeklyHoliday(weeklyHours, hourlyWage, scheduledHours) {
-  // 주휴수당: 주 소정근로시간 >= 15시간이면 지급
-  // 주휴수당 = (주근무시간 / 소정근로시간) * 소정근로시간 * 시급
+function calcWeeklyHoliday(weeklyHours, hourlyWage) {
+  // 주휴수당: 주 15시간 이상 근무 시 지급
+  // 주휴수당 = (주근무시간 / 40) × 8 × 시급
   if (weeklyHours < 15) return 0
   return Math.round((weeklyHours / 40) * 8 * hourlyWage)
 }
@@ -136,7 +136,7 @@ export default function Home() {
       weekBasicH += d.basicH || 0
     })
 
-    weeklyHolidayPay = calcWeeklyHoliday(weekBasicH, hourlyWage, scheduledHours)
+    weeklyHolidayPay = calcWeeklyHoliday(weekBasicH, hourlyWage)
     return { weekBasicH, weeklyHolidayPay }
   }
 
@@ -212,7 +212,7 @@ export default function Home() {
 
   return (
     <>
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #f8f7f4; color: #1a1a1a; font-family: 'DM Sans', sans-serif; min-height: 100vh; }
@@ -426,7 +426,7 @@ export default function Home() {
         .bonus-field { flex: 1; }
 
         .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
-      `}</style>
+      `}} />
 
       <div className="wrap">
         {/* HEADER */}
