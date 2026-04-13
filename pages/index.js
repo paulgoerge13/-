@@ -43,7 +43,7 @@ function calcWeeklyHoliday(weeklyHours, hourlyWage, scheduledHours) {
   // 주휴수당: 주 소정근로시간 >= 15시간이면 지급
   // 주휴수당 = (주근무시간 / 소정근로시간) * 소정근로시간 * 시급
   if (weeklyHours < 15) return 0
-  return Math.round((weeklyHours / scheduledHours) * scheduledHours * hourlyWage)
+  return Math.round((weeklyHours / 40) * 8 * hourlyWage)
 }
 
 const DAYS_OF_WEEK = ['월', '화', '수', '목', '금', '토', '일']
