@@ -8,7 +8,7 @@ export default function PayrollManager() {
   const [auth, setAuth] = useState(false)
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState(false)
-  const [branch, setBranch] = useState('광명GIDC점') // 기본값을 첫 지점으로 설정
+  const [branch, setBranch] = useState('광명GIDC점') 
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
   const [year, setYear] = useState(new Date().getFullYear())
@@ -16,21 +16,18 @@ export default function PayrollManager() {
 
   async function load() {
     setLoading(true)
-    // 선택된 지점, 연도, 월에 딱 맞는 데이터만 가져옵니다.
-    let query = supabase
+    const { data, error } = await supabase
       .from('payroll')
       .select('*')
       .eq('branch', branch)
       .eq('year', year)
       .eq('month', month)
     
-    const { data, error } = await query
     if (error) console.error(error)
     setRecords(data || [])
     setLoading(false)
   }
 
-  // 데이터 삭제 함수
   async function deleteRecord(id, name) {
     if (confirm(`${name} 님의 해당 월 급여 기록을 삭제하시겠습니까?`)) {
       const { error } = await supabase
@@ -41,8 +38,8 @@ export default function PayrollManager() {
       if (error) {
         alert('삭제 실패: ' + error.message)
       } else {
-        alert('삭제되었습니다.')
-        load() // 목록 새로고침
+        alert('정상적으로 삭제되었습니다.')
+        load() 
       }
     }
   }
@@ -126,7 +123,6 @@ export default function PayrollManager() {
           </select>
         </div>
 
-        {/* 선택된 지점의 합계 카드 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
           {[[`${branch} 직원 수`, `${records.length}명`], [`${branch} 총 지급액`, `${fmt(totalGrand)}원`]].map(([l, v]) => (
             <div key={l} style={{ background: '#fff', border: '1px solid #ebe9e4', borderRadius: 10, padding: '16px 20px' }}>
@@ -160,13 +156,7 @@ export default function PayrollManager() {
                     <td>{fmt(r.holiday_pay)}</td>
                     <td style={{ fontWeight: 700, color: '#b8954a' }}>{fmt(r.grand_total)}원</td>
                     <td style={{ textAlign: 'center' }}>
-                      <button 
-                        className="delete-btn" 
-                        onClick={() => deleteRecord(r.id, r.emp_name)}
-                        title="데이터 삭제"
-                      >
-                        ✕
-                      </button>
+                      <button className="delete-btn" onClick={() => deleteRecord(r.id, r.emp_name)}>✕</button>
                     </td>
                   </tr>
                 ))}
