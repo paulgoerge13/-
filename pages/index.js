@@ -419,7 +419,33 @@ export default function Home() {
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
   `
+const css = `
+  /* (기존 CSS 유지하며 아래 내용 추가/수정) */
+  
+  .day-cell.is-holiday { 
+    background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); 
+  }
+  
+  /* 완전휴무(회색) 스타일 추가 */
+  .day-cell.is-off {
+    background: linear-gradient(160deg, #f0f0f0 0%, #e6e6e6 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .off-text {
+    font-size: 16px;
+    font-weight: 800;
+    color: #999;
+    letter-spacing: 0.1em;
+    margin-top: 10px;
+  }
 
+  .day-date.off-type { background: #dcdcdc; color: #777; }
+  /* (이하 생략) */
+`;
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
@@ -600,55 +626,66 @@ export default function Home() {
                       <div className="week-row">
                         <div className="week-label">{wi + 1}주</div>
                         {week.map((day, di) => {
-                          if (!day) return <div key={di} className="day-cell empty" />
-                          const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-                          const d = activeEmp.workData[ds] || {}
-                          const isHoliday = d.type === '휴'
-                          const tStart = d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart
-                          const tEnd = d.timeEnd !== undefined ? d.timeEnd : activeEmp.defaultTimeEnd
-                          return (
-                            <div key={di} className={`day-cell${isHoliday ? ' is-holiday' : ''}`}>
-                              {isHoliday && <span className="day-off-label">휴</span>}
-                              <div
-                                className={`day-date${isHoliday ? ' holiday-type' : ''}`}
-                                onClick={() => toggleDayType(ds)}
-                                title="클릭: 평일/휴일 전환"
-                              >{day}</div>
+  if (!day) return <div key={di} className="day-cell empty" />
+  const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+  const d = activeEmp.workData[ds] || {}
+  
+  const type = d.type || '평'
+  const isHolidayWork = type === '휴' // 휴일근로 (빨간색)
+  const isDayOff = type === '공'      // 완전휴무 (회색)
+  
+  const tStart = d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart
+  const tEnd = d.timeEnd !== undefined ? d.timeEnd : activeEmp.defaultTimeEnd
 
-                              {!isHoliday && (
-                                <div className="time-row">
-                                  <input className="time-input-small" value={tStart}
-                                    onChange={e => updateWorkDay(ds, 'timeStart', e.target.value)}
-                                    placeholder={activeEmp.defaultTimeStart || '시작'} />
-                                  <span className="time-tilde">~</span>
-                                  <input className="time-input-small" value={tEnd}
-                                    onChange={e => updateWorkDay(ds, 'timeEnd', e.target.value)}
-                                    placeholder={activeEmp.defaultTimeEnd || '종료'} />
-                                </div>
-                              )}
+  return (
+    <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${isDayOff ? 'is-off' : ''}`}>
+      <div
+        className={`day-date ${isHolidayWork ? 'holiday-type' : ''} ${isDayOff ? 'off-type' : ''}`}
+        onClick={() => toggleDayType(ds)}
+        title="클릭: 평일/휴일근로/휴무 전환"
+      >{day}</div>
 
-                              {!isHoliday ? (
-                                <>
-                                  <div className="hour-label">기본</div>
-                                  {numInput(d.basicH, v => updateWorkDay(ds, 'basicH', v))}
-                                  <div className="hour-label">연장</div>
-                                  {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
-                                  <div className="hour-label">야간</div>
-                                  {numInput(d.nightH, v => updateWorkDay(ds, 'nightH', v))}
-                                </>
-                              ) : (
-                                <>
-                                  <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
-                                  {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
-                                  <div className="hour-label" style={{color:'#e05555'}}>휴연장</div>
-                                  {numInput(d.holidayOtH, v => updateWorkDay(ds, 'holidayOtH', v))}
-                                  <div className="hour-label" style={{color:'#e05555'}}>휴야간</div>
-                                  {numInput(d.holidayNightH, v => updateWorkDay(ds, 'holidayNightH', v))}
-                                </>
-                              )}
-                            </div>
-                          )
-                        })}
+      {isDayOff ? (
+        // 완전휴무일 때 표시될 텍스트
+        <div className="off-text">휴무</div>
+      ) : (
+        <>
+          {!isHolidayWork && (
+            <div className="time-row">
+              <input className="time-input-small" value={tStart}
+                onChange={e => updateWorkDay(ds, 'timeStart', e.target.value)}
+                placeholder="00:00" />
+              <span className="time-tilde">~</span>
+              <input className="time-input-small" value={tEnd}
+                onChange={e => updateWorkDay(ds, 'timeEnd', e.target.value)}
+                placeholder="00:00" />
+            </div>
+          )}
+
+          {!isHolidayWork ? (
+            <>
+              <div className="hour-label">기본</div>
+              {numInput(d.basicH, v => updateWorkDay(ds, 'basicH', v))}
+              <div className="hour-label">연장</div>
+              {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
+              <div className="hour-label">야간</div>
+              {numInput(d.nightH, v => updateWorkDay(ds, 'nightH', v))}
+            </>
+          ) : (
+            <>
+              <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
+              {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
+              <div className="hour-label" style={{color:'#e05555'}}>휴연장</div>
+              {numInput(d.holidayOtH, v => updateWorkDay(ds, 'holidayOtH', v))}
+              <div className="hour-label" style={{color:'#e05555'}}>휴야간</div>
+              {numInput(d.holidayNightH, v => updateWorkDay(ds, 'holidayNightH', v))}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+})}
                       </div>
                       <div className="week-summary">
                         <span className="week-summary-label">주 근무 {weekBasicH}시간 · 주휴수당</span>
