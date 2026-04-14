@@ -280,9 +280,9 @@ async function handleManualSave(status) {
   await doSave(activeEmp, status);
   
   if (status === 'final') {
-    alert('✅ 마감 처리가 완료되었습니다! (매니저 창 초록불)');
+    alert('✅ 마감 처리가 완료되었습니다.');
   } else {
-    alert('💾 임시 저장되었습니다. (매니저 창 노란불)');
+    alert('💾 임시 저장되었습니다.');
   }
 }
 
@@ -820,7 +820,7 @@ async function handleManualSave(status) {
                   onClick={() => handleManualSave('saved')}
                   style={{ flex: 1, padding: '18px', fontSize: '14px' }}
                 >
-                  💾 저장하기 (노란불)
+                  💾 저장하기
                 </button>
 
                 <button
@@ -828,7 +828,7 @@ async function handleManualSave(status) {
                   onClick={() => handleManualSave('final')}
                   style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a' }}
                 >
-                  ✅ 마감하기 (초록불)
+                  ✅ 마감하기
                 </button>
               </div>
 
