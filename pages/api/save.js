@@ -7,6 +7,7 @@ export default async function handler(req, res) {
     branch, emp_name, resident_id, phone, email,
     hourly_wage, scheduled_hours, default_time,
     year, month, work_data, special_note,
+    status,
     totalBasic, totalWeeklyHoliday, totalOvertime, totalNight,
     totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal
   } = req.body
@@ -30,6 +31,7 @@ export default async function handler(req, res) {
       month,
       work_data,
       special_note,
+      status: status || 'saved',
       basic_pay: totalBasic,
       weekly_holiday_pay: totalWeeklyHoliday,
       overtime_pay: totalOvertime,
