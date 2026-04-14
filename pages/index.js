@@ -271,20 +271,19 @@ async function doSave(emp, status = 'saved') {
   }
 }
 
-async function handleManualSave(status) {
-  if (!activeEmp.name) { 
-    alert('직원 이름을 입력해주세요.'); 
-    return; 
-  }
+async function handleManualSave(status = 'saved') {
+  if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return }
   
-  await doSave(activeEmp, status);
+  // 여기서 'final'이 파라미터로 들어와야 초록불이 됩니다.
+  await doSave(activeEmp, status); 
   
-  if (status === 'final') {
-    alert('✅ 마감 처리가 완료되었습니다.');
-  } else {
-    alert('💾 임시 저장되었습니다.');
-  }
+  alert(status === 'final' ? '✅ 마감 처리가 완료되었습니다.' : '💾 저장되었습니다!');
 }
+
+// 버튼 부분 (JSX)
+<button className="btn accent" onClick={() => handleManualSave('final')}>
+  ✅ 마감하기 (초록불)
+</button>
 
   function handleTabSwitch(id) {
     if (activeEmp.name) doSave(activeEmp)
