@@ -92,8 +92,6 @@ export default function Home() {
     } catch (e) { console.error("데이터 로드 실패:", e); }
   }
 
-  const activeEmp = employees.find(e => e.id === activeEmpId) || employees[0]
-
   // [추가] 직원이나 날짜가 바뀔 때 서버 데이터 호출
   useEffect(() => {
     if (step === 'main' && selectedBranch && activeEmp?.name) {
