@@ -241,9 +241,14 @@ export default function Home() {
     await doSave(emp)
   }
 
-async function doSave(emp, status = 'saved') {
-  const totals = calcTotal(emp)
-  const payload = {
+async function doSave(emp, status = null) {
+  const totals = calcTotal(emp);
+  
+  // 핵심: status 인자가 전달되지 않았다면(자동저장 시), 
+  // 기존 직원이 가지고 있던 status(이미 final이라면 final)를 유지하거나 기본값 'saved'를 사용합니다.
+  const currentStatus = status || emp.status || 'saved';
+  
+ const payload = {
     branch: selectedBranch.name,
     emp_name: emp.name,
     resident_id: emp.residentId,
@@ -256,18 +261,22 @@ async function doSave(emp, status = 'saved') {
     month: emp.month,
     work_data: emp.workData,
     special_note: emp.specialNote,
-    status: status, // 이 부분이 추가되었습니다!
+    status: currentStatus, // 결정된 상태값 전송
     ...totals,
   }
-  try {
-    // API 주소는 사장님의 프로젝트 환경에 맞춰 /api/save로 유지합니다.
+ try {
     await fetch('/api/save', { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
       body: JSON.stringify(payload) 
-    })
+    });
+    
+    // 로컬 상태(React state)에도 반영하여 자동저장이 덮어쓰지 않게 합니다.
+    setEmployees(prev => prev.map(e => 
+      e.id === emp.id ? { ...e, status: currentStatus } : e
+    ));
   } catch (e) { 
-    console.error('저장 실패', e) 
+    console.error('저장 실패', e); 
   }
 }
 
@@ -281,7 +290,10 @@ async function handleManualSave(status = 'saved') {
 }
 
 // 버튼 부분 (JSX)
-<button className="btn accent" onClick={() => handleManualSave('final')}>
+<button 
+  className="btn accent" 
+  onClick={() => handleManualSave('final')} // 반드시 'final' 인자를 넣어야 함
+>
   ✅ 마감하기 (초록불)
 </button>
 
