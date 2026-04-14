@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점', '인천주안점', '서울마리나점']
+// ── 수정 #7: 서울마리나점 → 하남점 ──
+const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점', '인천주안점', '하남점']
 const MASTER_PASSWORD = process.env.NEXT_PUBLIC_MANAGER_PASSWORD || 'comma1234'
 
 export default function PayrollManager() {
@@ -28,7 +29,6 @@ export default function PayrollManager() {
         .order('emp_name', { ascending: true })
 
       if (error) throw error
-      console.log('불러온 데이터:', data)
       setRecords(data || [])
     } catch (error) {
       console.error('데이터 로드 오류:', error.message)
@@ -48,10 +48,10 @@ export default function PayrollManager() {
     }
   }
 
-  // ── 엑셀(CSV) 다운로드 ──────────────────────────────────
   function downloadExcel() {
-    const headers = ['지점', '이름', '시급', '기본수당', '주휴수당', '연장수당', '야간수당', '휴일수당', '교통/보너스', '세전합계']
+    const headers = ['구분', '지점', '이름', '시급', '기본수당', '주휴수당', '연장수당', '야간수당', '휴일수당', '교통/보너스', '세전합계']
     const rows = records.map(r => [
+      r.emp_type || '-',
       r.branch,
       r.emp_name,
       Math.round(r.hourly_wage || 0),
@@ -64,7 +64,7 @@ export default function PayrollManager() {
       Math.round(r.grand_total || 0),
     ])
     const totalRow = [
-      '합계', '', '', '', '', '', '', '', '',
+      '', '합계', '', '', '', '', '', '', '', '',
       records.reduce((s, r) => s + Math.round(r.grand_total || 0), 0),
     ]
 
@@ -123,7 +123,6 @@ export default function PayrollManager() {
             onClick={load}
             style={{ padding: '8px 15px', borderRadius: '4px', background: '#fff', border: '1px solid #ccc', cursor: 'pointer' }}
           >🔄 새로고침</button>
-          {/* ── 엑셀 다운로드 버튼 ── */}
           <button
             onClick={downloadExcel}
             disabled={records.length === 0}
@@ -161,7 +160,17 @@ export default function PayrollManager() {
               <tr><td colSpan="8" style={{ padding: '40px', textAlign: 'center' }}>해당 월의 데이터가 없습니다.</td></tr>
             ) : records.map(r => (
               <tr key={r.id} style={{ borderBottom: '1px solid #eee', textAlign: 'center' }}>
-                <td style={{ padding: '15px', fontWeight: 'bold' }}>{r.emp_name}</td>
+                <td style={{ padding: '15px' }}>
+                  {/* ── 수정 #6: 직원/알바 뱃지 ── */}
+                  {r.emp_type && (
+                    <div style={{
+                      fontSize: '10px', fontWeight: 700,
+                      color: r.emp_type === '직원' ? '#4a90d9' : '#b8954a',
+                      letterSpacing: '0.1em', marginBottom: 3,
+                    }}>{r.emp_type}</div>
+                  )}
+                  <div style={{ fontWeight: 'bold' }}>{r.emp_name}</div>
+                </td>
                 <td>{fmt(r.basic_pay || r.total_basic)}</td>
                 <td>{fmt(r.weekly_holiday_pay || r.total_weekly_holiday)}</td>
                 <td>{fmt((r.overtime_pay || r.total_overtime || 0) + (r.night_pay || r.total_night || 0))}</td>
