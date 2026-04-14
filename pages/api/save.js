@@ -4,8 +4,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
   const {
-    branch, emp_name, resident_id, phone, email,
-    hourly_wage, scheduled_hours, default_time,
+    branch, emp_name, emp_type,           // ── 수정 #6: emp_type 추가 ──
+    resident_id, phone, email,
+    account_number,                        // ── 수정 #1: 계좌번호 추가 ──
+    hourly_wage, default_time,
     year, month, work_data, special_note,
     status,
     totalBasic, totalWeeklyHoliday, totalOvertime, totalNight,
@@ -21,11 +23,12 @@ export default async function handler(req, res) {
     .upsert({
       branch,
       emp_name,
+      emp_type: emp_type || '알바',        // ── 수정 #6 ──
       resident_id,
       phone,
       email,
+      account_number,                      // ── 수정 #1 ──
       hourly_wage,
-      scheduled_hours,
       default_time,
       year,
       month,
