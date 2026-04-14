@@ -12,24 +12,27 @@ export default function PayrollManager() {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
   
-  // 날짜 설정 (현재 날짜 기준)
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
 
-  // 핵심: 데이터 로드 함수 (지점, 년, 월을 정확히 쿼리)
+  // 데이터 로드 함수
   async function load() {
     setLoading(true)
     try {
+      // 쿼리 시점에 캐시를 타지 않도록 날짜와 지점을 명확히 필터링
       const { data, error } = await supabase
         .from('payroll')
         .select('*')
-        .eq('branch', branch) // 현재 선택된 지점만!
-        .eq('year', year)     // 현재 선택된 년도만!
-        .eq('month', month)   // 현재 선택된 월만!
+        .eq('branch', branch)
+        .eq('year', year)
+        .eq('month', month)
         .order('emp_name', { ascending: true })
       
       if (error) throw error
+      
+      // 데이터가 오면 로그로 status 값을 확인해볼 수 있습니다 (개발자 도구용)
+      console.log('불러온 데이터:', data)
       setRecords(data || [])
     } catch (error) {
       console.error('데이터 로드 오류:', error.message)
@@ -38,7 +41,7 @@ export default function PayrollManager() {
     }
   }
 
-  // 지점, 년, 월이 바뀔 때마다 데이터를 새로 부름
+  // 지점, 년, 월이 바뀔 때마다 실행
   useEffect(() => { 
     if (auth) load() 
   }, [auth, branch, year, month])
@@ -66,12 +69,12 @@ export default function PayrollManager() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '22px' }}>{branch} <span style={{ color: '#b8954a' }}>급여 관리</span></h1>
+        <h1 style={{ fontSize: '22px' }}>{branch} <span style={{ color: '#b8954a' }}>급여 관리 현황</span></h1>
         <div style={{ display: 'flex', gap: 10 }}>
-          <select style={{ padding: '8px' }} value={branch} onChange={e => setBranch(e.target.value)}>{BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}</select>
-          <select style={{ padding: '8px' }} value={year} onChange={e => setYear(Number(e.target.value))}>{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}년</option>)}</select>
-          <select style={{ padding: '8px' }} value={month} onChange={e => setMonth(Number(e.target.value))}>{Array.from({length:12},(_,i)=>i+1).map(m => <option key={m} value={m}>{m}월</option>)}</select>
-          <button onClick={load} style={{ padding: '8px 15px', cursor: 'pointer' }}>🔄 새로고침</button>
+          <select style={{ padding: '8px', borderRadius: '4px' }} value={branch} onChange={e => setBranch(e.target.value)}>{BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}</select>
+          <select style={{ padding: '8px', borderRadius: '4px' }} value={year} onChange={e => setYear(Number(e.target.value))}>{[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}년</option>)}</select>
+          <select style={{ padding: '8px', borderRadius: '4px' }} value={month} onChange={e => setMonth(Number(e.target.value))}>{Array.from({length:12},(_,i)=>i+1).map(m => <option key={m} value={m}>{m}월</option>)}</select>
+          <button onClick={load} style={{ padding: '8px 15px', borderRadius: '4px', background: '#fff', border: '1px solid #ccc', cursor: 'pointer' }}>🔄 새로고침</button>
         </div>
       </div>
 
@@ -85,7 +88,7 @@ export default function PayrollManager() {
               <th>연장/야간</th>
               <th>휴일수당</th>
               <th>총지급액</th>
-              <th>상태</th>
+              <th>마감상태</th>
               <th>관리</th>
             </tr>
           </thead>
@@ -102,16 +105,20 @@ export default function PayrollManager() {
                 <td>{fmt((r.total_overtime || 0) + (r.total_night || 0))}</td>
                 <td>{fmt((r.total_holiday || 0) + (r.total_holiday_ot_pay || 0))}</td>
                 <td style={{ fontWeight: 'bold', color: '#b8954a' }}>{fmt(r.grand_total)}원</td>
-            <td>
-  {/* 불빛 로직: status가 정확히 'final' 문자열일 때만 초록색 */}
-  <div style={{ 
-    width: '14px', height: '14px', borderRadius: '50%', margin: '0 auto',
-    background: r.status === 'final' ? '#2ecc71' : '#f1c40f',
-    boxShadow: r.status === 'final' ? '0 0 10px #2ecc71' : '0 0 10px #f1c40f'
-  }} title={r.status === 'final' ? '최종마감' : '작성중'} />
-</td>
+                <td style={{ verticalAlign: 'middle' }}>
+                  {/* 불빛 로직: r.status 값이 'final'인지 확인 */}
+                  <div style={{ 
+                    width: '14px', height: '14px', borderRadius: '50%', margin: '0 auto',
+                    background: r.status === 'final' ? '#2ecc71' : '#f1c40f',
+                    boxShadow: r.status === 'final' ? '0 0 10px #2ecc71' : '0 0 10px #f1c40f',
+                    transition: 'all 0.3s'
+                  }} title={r.status === 'final' ? '최종마감 완료' : '임시저장/작성중'} />
+                  <div style={{ fontSize: '10px', marginTop: '4px', color: r.status === 'final' ? '#2ecc71' : '#f39c12' }}>
+                    {r.status === 'final' ? '마감' : '진행중'}
+                  </div>
+                </td>
                 <td>
-                  <button onClick={() => deleteRecord(r.id, r.emp_name)} style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer' }}>✕</button>
+                  <button onClick={() => deleteRecord(r.id, r.emp_name)} style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer', fontSize: '16px' }}>✕</button>
                 </td>
               </tr>
             ))}
