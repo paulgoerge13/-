@@ -52,17 +52,30 @@ export default function Home() {
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState(false)
   const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
-   // [추가] 브라우저 로컬 스토리지 실시간 백업
+  const [activeEmpId, setActiveEmpId] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // 삭제 확인 모달용 id
+  const saveTimer = useRef(null)
+  // [수정] 하이드레이션 에러 방지를 위한 로직
   useEffect(() => {
+    // 1. 브라우저 로컬 스토리지에서 백업본 불러오기
     const saved = localStorage.getItem('payroll_backup');
-    if (saved) setEmployees(JSON.parse(saved));
+    if (saved) {
+      try {
+        setEmployees(JSON.parse(saved));
+      } catch (e) {
+        console.error("백업 데이터 복구 실패", e);
+      }
+    }
   }, []);
 
+  // [추가] 데이터가 바뀔 때마다 로컬 스토리지에 자동 저장
   useEffect(() => {
     localStorage.setItem('payroll_backup', JSON.stringify(employees));
   }, [employees]);
-  // [추가] 서버에서 특정 지점/직원/날짜의 데이터 가져오기
+
+  // [추가] 서버에서 데이터 로드하는 함수
   async function loadData(branchName, empName, yr, mo) {
+    if (!branchName || !empName) return;
     try {
       const res = await fetch(`/api/load?branch=${branchName}&name=${empName}&year=${yr}&month=${mo}`);
       const result = await res.json();
@@ -70,25 +83,23 @@ export default function Home() {
         setEmployees(prev => prev.map(e => 
           e.id === activeEmpId ? { 
             ...e, 
-            workData: result.data.work_data, 
-            specialNote: result.data.special_note,
-            hourlyWage: result.data.hourly_wage 
+            workData: result.data.work_data || {}, 
+            specialNote: result.data.special_note || '',
+            hourlyWage: result.data.hourly_wage || 10030 
           } : e
         ));
       }
-    } catch (e) { console.error("로드 실패:", e); }
+    } catch (e) { console.error("데이터 로드 실패:", e); }
   }
 
-  // 지점, 직원, 또는 '월'이 바뀔 때마다 실행
+  const activeEmp = employees.find(e => e.id === activeEmpId) || employees[0]
+
+  // [추가] 직원이나 날짜가 바뀔 때 서버 데이터 호출
   useEffect(() => {
     if (step === 'main' && selectedBranch && activeEmp?.name) {
       loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month);
     }
   }, [activeEmpId, activeEmp?.month, activeEmp?.year]);
-  const [activeEmpId, setActiveEmpId] = useState(null)
-  const [deleteConfirm, setDeleteConfirm] = useState(null) // 삭제 확인 모달용 id
-  const saveTimer = useRef(null)
-
   const activeEmp = employees.find(e => e.id === activeEmpId) || employees[0]
 
   useEffect(() => {
