@@ -41,7 +41,7 @@ function getWeeksInMonth(year, month) {
 const EMPTY_EMP = {
   name: '', residentId: '', phone: '', email: '',
   hourlyWage: 10030, scheduledHours: 8,
-  defaultTimeStart: '', defaultTimeEnd: '',
+  defaultTimeStart: '00:00', defaultTimeEnd: '00:00', // 기본 예시값 수정
   workData: {}, specialNote: '',
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
 }
@@ -88,10 +88,15 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
-  function toggleDayType(dateStr) {
-    const current = activeEmp.workData[dateStr]?.type || '평'
-    updateWorkDay(dateStr, 'type', current === '평' ? '휴' : '평')
-  }
+ function toggleDayType(dateStr) {
+  const current = activeEmp.workData[dateStr]?.type || '평';
+  let nextType = '평';
+  if (current === '평') nextType = '휴';      // 휴일근로 (빨간색)
+  else if (current === '휴') nextType = '공'; // 완전휴무 (회색)
+  else nextType = '평';                      // 다시 평일
+  
+  updateWorkDay(dateStr, 'type', nextType);
+}
 
   // 요일 전체 휴일 토글 (해당 주의 특정 요일 인덱스)
   function toggleWeekDayOff(week, dayIndex) {
