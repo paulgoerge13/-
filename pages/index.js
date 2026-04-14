@@ -798,13 +798,16 @@ export default function Home() {
   </div>
   <div className="info-card">
     <div className="info-card-label">시급 (원)</div>
-    <input type="number" value={activeEmp.hourlyWage} onFocus={(e) => e.target.select()} onChange={e => updateEmp('hourlyWage', Number(e.target.value))} />
+    <input type="number" value={activeEmp.hourlyWage || 10320} // 기본값 10320 적용
+      onFocus={(e) => e.target.select()} 
+      onChange={e => updateEmp('hourlyWage', Number(e.target.value))} 
+    />
   </div>
   <div className="info-card">
     <div className="info-card-label">기본 근무 시간</div>
     <div className="time-range">
       <input
-        value={activeEmp.defaultTimeStart}
+        value={activeEmp.defaultTimeStart || '00:00'} // 기본값 00:00
         onFocus={(e) => e.target.select()}
         onChange={e => updateEmp('defaultTimeStart', e.target.value)}
         onBlur={e => handleDefaultTimeBlur('defaultTimeStart', e.target.value)}
@@ -812,7 +815,7 @@ export default function Home() {
       />
       <span className="time-sep">~</span>
       <input
-        value={activeEmp.defaultTimeEnd}
+        value={activeEmp.defaultTimeEnd || '00:00'} // 기본값 00:00
         onFocus={(e) => e.target.select()}
         onChange={e => updateEmp('defaultTimeEnd', e.target.value)}
         onBlur={e => handleDefaultTimeBlur('defaultTimeEnd', e.target.value)}
