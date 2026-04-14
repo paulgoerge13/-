@@ -245,48 +245,51 @@ export default function Home() {
 }
 
 async function doSave(emp, status = 'saved') {
-  const totals = calcTotal(emp);
-  const payload = {
-    branch: selectedBranch.name,
-    emp_name: emp.name,
-    resident_id: emp.residentId,
-    phone: emp.phone,
-    email: emp.email,
-    hourly_wage: emp.hourlyWage,
-    scheduled_hours: emp.scheduledHours,
-    default_time: `${emp.defaultTimeStart}~${emp.defaultTimeEnd}`,
-    year: emp.year,
-    month: emp.month,
-    work_data: emp.workData,
-    special_note: emp.specialNote,
-    status: status, // 여기서 받은 status('final' 또는 'saved')를 그대로 서버로 보냄
-    ...totals,
-  };
+    if (!emp || !emp.name) return;
+    
+    const totals = calcTotal(emp);
+    const payload = {
+      branch: selectedBranch.name,
+      emp_name: emp.name,
+      resident_id: emp.residentId,
+      phone: emp.phone,
+      email: emp.email,
+      hourly_wage: emp.hourlyWage,
+      scheduled_hours: emp.scheduledHours,
+      default_time: `${emp.defaultTimeStart}~${emp.defaultTimeEnd}`,
+      year: emp.year,
+      month: emp.month,
+      work_data: emp.workData,
+      special_note: emp.specialNote,
+      status: status, // 이 부분이 'final'로 가야 초록불이 됩니다
+      ...totals,
+    };
 
-  try {
-    await fetch('/api/save', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify(payload) 
-    });
-
-    // 핵심: 서버 저장에 성공하면, 현재 메모리(employees)에 있는 직원의 status도 바꿔줍니다.
-    // 그래야 1.5초 뒤 자동저장이 실행될 때 이 status를 보고 덮어쓰지 않게 됩니다.
-    setEmployees(prev => prev.map(e => 
-      e.id === emp.id ? { ...e, status: status, ...totals } : e
-    ));
-  } catch (e) { 
-    console.error('저장 실패', e); 
+    try {
+      const res = await fetch('/api/save', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+      });
+      
+      if (res.ok) {
+        // 서버 저장 성공 시 로컬 데이터의 status도 즉시 동기화 (자동저장 방어)
+        setEmployees(prev => prev.map(e => 
+          e.id === emp.id ? { ...e, status: status } : e
+        ));
+      }
+    } catch (e) { 
+      console.error('저장 실패', e); 
+    }
   }
-}
-async function handleManualSave(status = 'saved') {
-  if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return }
-  
-  // 여기서 'final'이 파라미터로 들어와야 초록불이 됩니다.
-  await doSave(activeEmp, status); 
-  
-  alert(status === 'final' ? '✅ 마감 처리가 완료되었습니다.' : '💾 저장되었습니다!');
-}
+async function handleManualSave(targetStatus) {
+    if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return; }
+    
+    // 버튼에서 넘겨준 'saved' 혹은 'final'을 doSave에 전달
+    await doSave(activeEmp, targetStatus);
+    
+    alert(targetStatus === 'final' ? '✅ 최종 마감이 완료되었습니다!' : '💾 임시 저장되었습니다!');
+  }
 
 // 버튼 부분 (JSX)
 <button 
@@ -824,26 +827,28 @@ async function handleManualSave(status = 'saved') {
               )}
 
              {/* 급여 합계 카드 아래에 버튼 배치 */}
-              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-                <button
-                  className="btn outline"
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                {/* 임시 저장 버튼 */}
+                <button 
+                  className="btn outline" 
                   onClick={() => handleManualSave('saved')}
-                  style={{ flex: 1, padding: '18px', fontSize: '14px' }}
+                  style={{ flex: 1, padding: '18px', fontSize: '14px', cursor: 'pointer' }}
                 >
-                  💾 저장하기
+                  💾 임시 저장하기
                 </button>
 
-                <button
-                  className="btn accent"
+                {/* 최종 마감 버튼 */}
+                <button 
+                  className="btn accent" 
                   onClick={() => handleManualSave('final')}
-                  style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a' }}
+                  style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a', color: '#fff', cursor: 'pointer' }}
                 >
-                  ✅ 마감하기
+                  ✅ 최종 마감하기
                 </button>
               </div>
 
               <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                <span className="autosave-hint">※ 입력 시 1.5초마다 자동으로 노란불 저장이 실행됩니다.</span>
+                <span className="autosave-hint">※ 입력 시 자동 저장은 '진행 중' 상태로 저장됩니다.</span>
               </div>
               
               {/* 초기화 버튼은 하단에 작게 배치 */}
