@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
- 
+
+// ── 수정 #7: 서울마리나점 → 하남점 ──
 const BRANCHES = [
   { id: 'gidc',   name: '광명GIDC점',  password: 'gidc1234' },
   { id: 'ingye',  name: '인계점',       password: 'ingye1234' },
   { id: 'anyang', name: '안양일번가점', password: 'anyang1234' },
   { id: 'iksan',  name: '익산점',       password: 'iksan1234' },
   { id: 'juan',   name: '인천주안점',   password: 'juan1234' },
-  { id: 'marina', name: '서울마리나점', password: 'marina1234' },
+  { id: 'hanam',  name: '하남점',       password: 'hanam1234' },
 ]
 
 function calcBasic(h, w)        { return Math.round(h * w) }
@@ -38,109 +39,164 @@ function getWeeksInMonth(year, month) {
   return weeks
 }
 
+// ── 수정 #2: 시간 문자열 자동 포맷 (9→09:00, 930→09:30, 18→18:00 등) ──
+function formatTimeInput(raw) {
+  const s = String(raw).replace(/[^0-9]/g, '')
+  if (!s) return '00:00'
+  if (s.length <= 2) {
+    const h = parseInt(s, 10)
+    return `${String(h).padStart(2, '0')}:00`
+  }
+  if (s.length === 3) {
+    const h = parseInt(s.slice(0, 1), 10)
+    const m = s.slice(1)
+    return `${String(h).padStart(2, '0')}:${m}`
+  }
+  const h = parseInt(s.slice(0, 2), 10)
+  const m = s.slice(2, 4)
+  return `${String(h).padStart(2, '0')}:${m}`
+}
+
+// ── 수정 #2: 시작~종료 시간으로 기본 근무시간 자동 계산 ──
+function calcAutoHours(startStr, endStr) {
+  if (!startStr || !endStr) return null
+  const parseTime = (t) => {
+    const [h, m] = t.split(':').map(Number)
+    return h + (m || 0) / 60
+  }
+  let start = parseTime(startStr)
+  let end = parseTime(endStr)
+  if (isNaN(start) || isNaN(end)) return null
+  if (end <= start) end += 24 // 자정 넘기는 케이스
+  const raw = end - start - 1 // 휴게 1시간 차감
+  return raw > 0 ? Math.round(raw * 2) / 2 : 0
+}
+
 const EMPTY_EMP = {
   name: '', residentId: '', phone: '', email: '',
-  hourlyWage: 10030, scheduledHours: 8,
-  defaultTimeStart: '00:00', defaultTimeEnd: '00:00', // 기본 예시값 수정
+  accountNumber: '',       // ── 수정 #1: 계좌번호 추가 ──
+  empType: '알바',         // ── 수정 #6: 직원/알바 탭 ──
+  hourlyWage: 10030,
+  defaultTimeStart: '09:00', defaultTimeEnd: '18:00',
   workData: {}, specialNote: '',
+  // ── 수정 #5: 수동 입력 고정 기본값 ──
+  manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
+  manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
 }
 
 export default function Home() {
-  const [step, setStep] = useState('branch') 
+  const [step, setStep] = useState('branch')
   const [selectedBranch, setSelectedBranch] = useState(null)
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState(false)
   const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
   const [activeEmpId, setActiveEmpId] = useState(null)
-  const [deleteConfirm, setDeleteConfirm] = useState(null) // 삭제 확인 모달용 id
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+  // ── 수정 #2: 시간 입력 임시 상태 (셀별) ──
+  const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
   const saveTimer = useRef(null)
-  // [수정] 하이드레이션 에러 방지를 위한 로직
+
   useEffect(() => {
-    // 1. 브라우저 로컬 스토리지에서 백업본 불러오기
-    const saved = localStorage.getItem('payroll_backup');
+    const saved = localStorage.getItem('payroll_backup')
     if (saved) {
-      try {
-        setEmployees(JSON.parse(saved));
-      } catch (e) {
-        console.error("백업 데이터 복구 실패", e);
-      }
+      try { setEmployees(JSON.parse(saved)) } catch (e) {}
     }
-  }, []);
+  }, [])
 
-  // [추가] 데이터가 바뀔 때마다 로컬 스토리지에 자동 저장
   useEffect(() => {
-    localStorage.setItem('payroll_backup', JSON.stringify(employees));
-  }, [employees]);
+    localStorage.setItem('payroll_backup', JSON.stringify(employees))
+  }, [employees])
 
-  // [추가] 서버에서 데이터 로드하는 함수
   async function loadData(branchName, empName, yr, mo) {
-    if (!branchName || !empName) return;
+    if (!branchName || !empName) return
     try {
-      const res = await fetch(`/api/load?branch=${branchName}&name=${empName}&year=${yr}&month=${mo}`);
-      const result = await res.json();
+      const res = await fetch(`/api/load?branch=${branchName}&name=${empName}&year=${yr}&month=${mo}`)
+      const result = await res.json()
       if (result.success && result.data) {
-        setEmployees(prev => prev.map(e => 
-          e.id === activeEmpId ? { 
-            ...e, 
-            workData: result.data.work_data || {}, 
+        setEmployees(prev => prev.map(e =>
+          e.id === activeEmpId ? {
+            ...e,
+            workData: result.data.work_data || {},
             specialNote: result.data.special_note || '',
-            hourlyWage: result.data.hourly_wage || 10030 
+            hourlyWage: result.data.hourly_wage || 10030,
           } : e
-        ));
+        ))
       }
-    } catch (e) { console.error("데이터 로드 실패:", e); }
+    } catch (e) { console.error('데이터 로드 실패:', e) }
   }
+
   const activeEmp = employees.find(e => e.id === activeEmpId) || employees[0]
-  // [추가] 직원이나 날짜가 바뀔 때 서버 데이터 호출
+
   useEffect(() => {
     if (step === 'main' && selectedBranch && activeEmp?.name) {
-      loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month);
+      loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month)
     }
-  }, [activeEmpId, activeEmp?.month, activeEmp?.year]);
+  }, [activeEmpId, activeEmp?.month, activeEmp?.year])
 
-  // 1. 지점이 선택되거나 변경될 때, 해당 지점 전용 백업 데이터를 로컬스토리지에서 가져옴
   useEffect(() => {
     if (selectedBranch) {
-      const storageKey = `payroll_backup_${selectedBranch.name}`;
-      const saved = localStorage.getItem(storageKey);
+      const storageKey = `payroll_backup_${selectedBranch.name}`
+      const saved = localStorage.getItem(storageKey)
       if (saved) {
         try {
-          const parsed = JSON.parse(saved);
-          setEmployees(parsed);
-          // 저장된 데이터가 있으면 첫 번째 직원을 활성화
-          if (parsed.length > 0) setActiveEmpId(parsed[0].id);
-        } catch (e) {
-          console.error("데이터 복구 실패", e);
-        }
+          const parsed = JSON.parse(saved)
+          setEmployees(parsed)
+          if (parsed.length > 0) setActiveEmpId(parsed[0].id)
+        } catch (e) {}
       } else {
-        // 해당 지점에 저장된 데이터가 아예 없으면 새 양식으로 시작
-        const initialEmp = [{ ...EMPTY_EMP, id: Date.now() }];
-        setEmployees(initialEmp);
-        setActiveEmpId(initialEmp[0].id);
+        const initialEmp = [{ ...EMPTY_EMP, id: Date.now() }]
+        setEmployees(initialEmp)
+        setActiveEmpId(initialEmp[0].id)
       }
     }
-  }, [selectedBranch]);
+  }, [selectedBranch])
 
-  // 2. 입력하는 동안 실시간으로 "현재 지점 이름"을 붙여서 로컬스토리지에 저장
   useEffect(() => {
     if (selectedBranch && employees.length > 0) {
-      const storageKey = `payroll_backup_${selectedBranch.name}`;
-      localStorage.setItem(storageKey, JSON.stringify(employees));
+      const storageKey = `payroll_backup_${selectedBranch.name}`
+      localStorage.setItem(storageKey, JSON.stringify(employees))
     }
-  }, [employees, selectedBranch]);
- const handleBranchChange = () => {
+  }, [employees, selectedBranch])
+
+  const handleBranchChange = () => {
     if (confirm('지점을 변경하시겠습니까? 현재 입력 중인 내용은 이 지점에 자동 저장됩니다.')) {
-      setStep('branch');
-      setSelectedBranch(null); // 선택된 지점을 비워서 다음 선택 시 데이터를 새로 불러오게 함
-      setPw('');
-      setPwError(false);
+      setStep('branch')
+      setSelectedBranch(null)
+      setPw('')
+      setPwError(false)
     }
-  };
+  }
+
   function updateEmp(field, value) {
     setEmployees(prev => prev.map(e => e.id === activeEmpId ? { ...e, [field]: value } : e))
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
+  // ── 수정 #4: 월 변경 시 현재 데이터 자동저장 후 새 월 로드 ──
+  async function handleMonthChange(newMonth) {
+    if (activeEmp && activeEmp.name) {
+      await doSave(activeEmp, activeEmp.status === 'final' ? 'final' : 'saved')
+    }
+    setEmployees(prev => prev.map(e =>
+      e.id === activeEmpId ? { ...e, month: newMonth, workData: {} } : e
+    ))
+    if (selectedBranch && activeEmp?.name) {
+      setTimeout(() => loadData(selectedBranch.name, activeEmp.name, activeEmp.year, newMonth), 100)
+    }
+  }
+
+  async function handleYearChange(newYear) {
+    if (activeEmp && activeEmp.name) {
+      await doSave(activeEmp, activeEmp.status === 'final' ? 'final' : 'saved')
+    }
+    setEmployees(prev => prev.map(e =>
+      e.id === activeEmpId ? { ...e, year: newYear, workData: {} } : e
+    ))
+    if (selectedBranch && activeEmp?.name) {
+      setTimeout(() => loadData(selectedBranch.name, activeEmp.name, newYear, activeEmp.month), 100)
+    }
   }
 
   function updateWorkDay(dateStr, field, value) {
@@ -151,8 +207,8 @@ export default function Home() {
         workData: {
           ...e.workData,
           [dateStr]: {
-            type: '평', basicH: 0, overtimeH: 0, nightH: 0,
-            holidayH: 0, holidayOtH: 0, holidayNightH: 0,
+            type: '평', basicH: 0, restH: 0, overtimeH: 0, nightH: 0,
+            holidayH: 0, holidayRestH: 0, holidayOtH: 0, holidayNightH: 0,
             timeStart: e.defaultTimeStart, timeEnd: e.defaultTimeEnd,
             ...e.workData[dateStr], [field]: value
           }
@@ -163,22 +219,49 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
- function toggleDayType(dateStr) {
-  const current = activeEmp.workData[dateStr]?.type || '평';
-  let nextType = '평';
-  if (current === '평') nextType = '휴';      // 휴일근로 (빨간색)
-  else if (current === '휴') nextType = '공'; // 완전휴무 (회색)
-  else nextType = '평';                      // 다시 평일
-  
-  updateWorkDay(dateStr, 'type', nextType);
-}
+  // ── 수정 #2: 시간 입력 포커스 아웃 시 자동 포맷 + 기본시간 자동계산 ──
+  function handleTimeBlur(dateStr, field, rawVal) {
+    const formatted = formatTimeInput(rawVal)
+    updateWorkDay(dateStr, field, formatted)
 
-  // 요일 전체 휴일 토글 (해당 주의 특정 요일 인덱스)
-  function toggleWeekDayOff(week, dayIndex) {
-    const day = week[dayIndex]
-    if (!day) return
-    const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-    toggleDayType(ds)
+    const currentData = activeEmp.workData[dateStr] || {}
+    const start = field === 'timeStart' ? formatted : (currentData.timeStart || activeEmp.defaultTimeStart)
+    const end   = field === 'timeEnd'   ? formatted : (currentData.timeEnd   || activeEmp.defaultTimeEnd)
+
+    const autoH = calcAutoHours(start, end)
+    if (autoH !== null) {
+      updateWorkDay(dateStr, 'basicH', autoH)
+    }
+    // 임시 입력 상태 초기화
+    setTimeInputs(prev => {
+      const next = { ...prev }
+      if (next[dateStr]) {
+        delete next[dateStr][field === 'timeStart' ? 'start' : 'end']
+      }
+      return next
+    })
+  }
+
+  function handleTimeChange(dateStr, field, val) {
+    setTimeInputs(prev => ({
+      ...prev,
+      [dateStr]: { ...prev[dateStr], [field === 'timeStart' ? 'start' : 'end']: val }
+    }))
+  }
+
+  // ── 기본 근무시간 입력 포커스 아웃 시 자동 포맷 ──
+  function handleDefaultTimeBlur(field, rawVal) {
+    const formatted = formatTimeInput(rawVal)
+    updateEmp(field, formatted)
+  }
+
+  function toggleDayType(dateStr) {
+    const current = activeEmp.workData[dateStr]?.type || '평'
+    let nextType = '평'
+    if (current === '평') nextType = '휴'
+    else if (current === '휴') nextType = '공'
+    else nextType = '평'
+    updateWorkDay(dateStr, 'type', nextType)
   }
 
   function addEmployee() {
@@ -213,91 +296,80 @@ export default function Home() {
     return { weekBasicH, weeklyHolidayPay: calcWeeklyHoliday(weekBasicH, emp.hourlyWage) }
   }
 
+  // ── 수정 #5: 수동 입력 고정값 + 캘린더 계산값 합산 ──
   function calcTotal(emp) {
     const weeks = getWeeksInMonth(emp.year, emp.month)
-    let totalBasic = 0, totalOvertime = 0, totalNight = 0
-    let totalHoliday = 0, totalHolidayOtPay = 0, totalHolidayNightPay = 0
+    let autoBasic = 0, autoOvertime = 0, autoNight = 0
+    let autoHoliday = 0, autoHolidayOtPay = 0, autoHolidayNightPay = 0
     let totalWeeklyHoliday = 0
     weeks.forEach(week => { totalWeeklyHoliday += calcWeekPay(week, emp).weeklyHolidayPay })
     Object.values(emp.workData).forEach(d => {
       if (d.type !== '휴') {
-        totalBasic += calcBasic(d.basicH || 0, emp.hourlyWage)
-        totalOvertime += calcOvertime(d.overtimeH || 0, emp.hourlyWage)
-        totalNight += calcNight(d.nightH || 0, emp.hourlyWage)
+        autoBasic    += calcBasic(d.basicH || 0, emp.hourlyWage)
+        autoOvertime += calcOvertime(d.overtimeH || 0, emp.hourlyWage)
+        autoNight    += calcNight(d.nightH || 0, emp.hourlyWage)
       } else {
-        totalHoliday += calcHoliday(d.holidayH || 0, emp.hourlyWage)
-        totalHolidayOtPay += calcHolidayOt(d.holidayOtH || 0, emp.hourlyWage)
-        totalHolidayNightPay += calcHolidayNight(d.holidayNightH || 0, emp.hourlyWage)
+        autoHoliday       += calcHoliday(d.holidayH || 0, emp.hourlyWage)
+        autoHolidayOtPay  += calcHolidayOt(d.holidayOtH || 0, emp.hourlyWage)
+        autoHolidayNightPay += calcHolidayNight(d.holidayNightH || 0, emp.hourlyWage)
       }
     })
-    const grandTotal = totalBasic + totalWeeklyHoliday + totalOvertime + totalNight + totalHoliday + totalHolidayOtPay + totalHolidayNightPay
-    return { totalBasic, totalWeeklyHoliday, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal }
+    const totalBasic         = (emp.manualBasic || 0) + autoBasic
+    const totalOvertime      = (emp.manualOvertime || 0) + autoOvertime
+    const totalNight         = (emp.manualNight || 0) + autoNight
+    const totalHoliday       = (emp.manualHoliday || 0) + autoHoliday
+    const totalHolidayOtPay  = (emp.manualHolidayOt || 0) + autoHolidayOtPay
+    const totalHolidayNightPay = (emp.manualHolidayNight || 0) + autoHolidayNightPay
+    const totalWeeklyFinal   = (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
+    const grandTotal = totalBasic + totalWeeklyFinal + totalOvertime + totalNight + totalHoliday + totalHolidayOtPay + totalHolidayNightPay
+    return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal }
   }
 
- async function autoSave() {
-  if (!selectedBranch) return;
-  const emp = employees.find(e => e.id === activeEmpId);
-  if (!emp || !emp.name) return;
+  async function autoSave() {
+    if (!selectedBranch) return
+    const emp = employees.find(e => e.id === activeEmpId)
+    if (!emp || !emp.name) return
+    const targetStatus = emp.status === 'final' ? 'final' : 'saved'
+    await doSave(emp, targetStatus)
+  }
 
-  // 이미 마감된 상태라면 자동으로 'saved'를 보내지 않고 현재 상태(final)를 유지합니다.
-  const targetStatus = emp.status === 'final' ? 'final' : 'saved';
-  await doSave(emp, targetStatus);
-}
-
-async function doSave(emp, status = 'saved') {
-    if (!emp || !emp.name) return;
-    
-    const totals = calcTotal(emp);
+  async function doSave(emp, status = 'saved') {
+    if (!emp || !emp.name) return
+    const totals = calcTotal(emp)
     const payload = {
       branch: selectedBranch.name,
       emp_name: emp.name,
+      emp_type: emp.empType || '알바',    // ── 수정 #6 ──
       resident_id: emp.residentId,
       phone: emp.phone,
       email: emp.email,
+      account_number: emp.accountNumber, // ── 수정 #1 ──
       hourly_wage: emp.hourlyWage,
-      scheduled_hours: emp.scheduledHours,
       default_time: `${emp.defaultTimeStart}~${emp.defaultTimeEnd}`,
       year: emp.year,
       month: emp.month,
       work_data: emp.workData,
       special_note: emp.specialNote,
-      status: status, // 이 부분이 'final'로 가야 초록불이 됩니다
+      status,
       ...totals,
-    };
-
-    try {
-      const res = await fetch('/api/save', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload) 
-      });
-      
-      if (res.ok) {
-        // 서버 저장 성공 시 로컬 데이터의 status도 즉시 동기화 (자동저장 방어)
-        setEmployees(prev => prev.map(e => 
-          e.id === emp.id ? { ...e, status: status } : e
-        ));
-      }
-    } catch (e) { 
-      console.error('저장 실패', e); 
     }
-  }
-async function handleManualSave(targetStatus) {
-    if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return; }
-    
-    // 버튼에서 넘겨준 'saved' 혹은 'final'을 doSave에 전달
-    await doSave(activeEmp, targetStatus);
-    
-    alert(targetStatus === 'final' ? '✅ 최종 마감이 완료되었습니다!' : '💾 임시 저장되었습니다!');
+    try {
+      const res = await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      if (res.ok) {
+        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status } : e))
+      }
+    } catch (e) { console.error('저장 실패', e) }
   }
 
-// 버튼 부분 (JSX)
-<button 
-  className="btn accent" 
-  onClick={() => handleManualSave('final')} // 반드시 'final' 인자를 넣어야 함
->
-  ✅ 마감하기 (초록불)
-</button>
+  async function handleManualSave(targetStatus) {
+    if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return }
+    await doSave(activeEmp, targetStatus)
+    alert(targetStatus === 'final' ? '✅ 최종 마감이 완료되었습니다!' : '💾 임시 저장되었습니다!')
+  }
 
   function handleTabSwitch(id) {
     if (activeEmp.name) doSave(activeEmp)
@@ -314,6 +386,55 @@ async function handleManualSave(targetStatus) {
         className="hour-input"
       />
     )
+  }
+
+  // ── 수정 #8: 급여계산 페이지 엑셀 다운로드 ──
+  function downloadExcelSingle() {
+    if (!activeEmp) return
+    const totals = calcTotal(activeEmp)
+    const headers = ['날짜', '유형', '시작', '종료', '기본', '휴게', '야간', '연장', '휴일근로', '휴일휴게', '휴일야간', '휴일연장']
+    const rows = []
+    const weeks = getWeeksInMonth(activeEmp.year, activeEmp.month)
+    weeks.forEach(week => {
+      week.forEach(day => {
+        if (!day) return
+        const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+        const d = activeEmp.workData[ds]
+        if (!d) return
+        rows.push([
+          ds, d.type || '평',
+          d.timeStart || '', d.timeEnd || '',
+          d.basicH || 0, d.restH || 0, d.nightH || 0, d.overtimeH || 0,
+          d.holidayH || 0, d.holidayRestH || 0, d.holidayNightH || 0, d.holidayOtH || 0,
+        ])
+      })
+    })
+    const summaryHeaders = ['', '기본수당', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '세전합계']
+    const summaryRow = [
+      '급여합계',
+      Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday),
+      Math.round(totals.totalOvertime), Math.round(totals.totalNight),
+      Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
+      Math.round(totals.totalHolidayNightPay), Math.round(totals.grandTotal),
+    ]
+    const infoRow = [`직원명: ${activeEmp.name}`, `지점: ${selectedBranch?.name}`, `${activeEmp.year}년 ${activeEmp.month}월`, `구분: ${activeEmp.empType || '알바'}`]
+    const BOM = '\uFEFF'
+    const csv = BOM + [
+      infoRow.map(v => `"${v}"`).join(','),
+      '',
+      headers.map(v => `"${v}"`).join(','),
+      ...rows.map(row => row.map(v => `"${String(v)}"`).join(',')),
+      '',
+      summaryHeaders.map(v => `"${v}"`).join(','),
+      summaryRow.map(v => `"${String(v)}"`).join(','),
+    ].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `급여명세_${activeEmp.year}년${activeEmp.month}월_${activeEmp.name}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const totals = activeEmp ? calcTotal(activeEmp) : null
@@ -339,7 +460,6 @@ async function handleManualSave(targetStatus) {
     .main { flex: 1; padding: 48px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
     @media (max-width: 640px) { .header { padding: 16px 20px; } .main { padding: 28px 16px; } }
 
-    /* 지점 선택 */
     .page-title { font-family: 'Playfair Display', serif; font-size: 30px; margin-bottom: 8px; }
     .page-sub { font-size: 13px; color: #999; letter-spacing: 0.05em; margin-bottom: 48px; }
     .branch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 900px; margin: 0 auto; }
@@ -357,7 +477,6 @@ async function handleManualSave(targetStatus) {
     .branch-num { font-size: 11px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 16px; font-weight: 500; }
     .branch-name { font-size: 18px; font-weight: 600; color: #1a1a1a; }
 
-    /* 로그인 */
     .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 60vh; }
     .login-box {
       background: #fff; border: 1px solid #ebe9e4; border-radius: 16px;
@@ -374,7 +493,6 @@ async function handleManualSave(targetStatus) {
     .text-input:focus { border-color: #b8954a; }
     .text-input::placeholder { color: #bbb; }
 
-    /* 버튼 */
     .btn {
       background: #1a1a1a; color: #fff; border: none; border-radius: 8px;
       padding: 11px 24px; font-size: 12px; font-weight: 600; cursor: pointer;
@@ -390,12 +508,20 @@ async function handleManualSave(targetStatus) {
     .btn.full { width: 100%; padding: 13px; }
     .error-msg { font-size: 12px; color: #e05555; margin-bottom: 12px; }
 
-    /* 섹션 헤더 */
     .section-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
     .section-title { font-family: 'Playfair Display', serif; font-size: 22px; }
     .section-sub { font-size: 12px; color: #999; margin-top: 4px; }
 
-    /* 직원 탭 */
+    /* ── 수정 #6: 직원/알바 탭 스타일 ── */
+    .emp-type-tabs { display: flex; gap: 0; margin-bottom: 10px; border-radius: 8px; overflow: hidden; border: 1.5px solid #d0ccc5; width: fit-content; }
+    .emp-type-tab {
+      padding: 6px 18px; font-size: 12px; font-weight: 600; cursor: pointer;
+      background: #fff; color: #999; transition: all 0.15s; letter-spacing: 0.08em;
+      border: none; font-family: 'DM Sans', sans-serif;
+    }
+    .emp-type-tab.active { background: #1a1a1a; color: #fff; }
+    .emp-type-tab:first-child { border-right: 1.5px solid #d0ccc5; }
+
     .emp-tabs { display: flex; align-items: center; border-bottom: 2px solid #ebe9e4; margin-bottom: 28px; overflow-x: auto; }
     .emp-tab {
       padding: 10px 20px; font-size: 13px; font-weight: 500; cursor: pointer;
@@ -413,7 +539,6 @@ async function handleManualSave(targetStatus) {
     .emp-tab-add { padding: 8px 16px; font-size: 20px; cursor: pointer; color: #b8954a; font-weight: 300; }
     .emp-tab-add:hover { color: #a07c38; }
 
-    /* 삭제 확인 모달 */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex;
       align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px);
@@ -429,7 +554,6 @@ async function handleManualSave(targetStatus) {
     .modal-btns { display: flex; gap: 10px; }
     .modal-btns .btn { flex: 1; }
 
-    /* 직원 정보 */
     .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
     .info-grid-2 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
     @media (max-width: 900px) { .info-grid, .info-grid-2 { grid-template-columns: repeat(2, 1fr); } }
@@ -445,7 +569,6 @@ async function handleManualSave(targetStatus) {
     .time-range { display: flex; align-items: center; gap: 6px; }
     .time-sep { font-size: 12px; color: #bbb; flex-shrink: 0; }
 
-    /* 특이사항 (직원 정보 아래로 이동) */
     .note-row { margin-bottom: 24px; }
     .note-input {
       width: 100%; background: #fff; border: 1.5px solid #d0ccc5;
@@ -455,7 +578,6 @@ async function handleManualSave(targetStatus) {
     .note-input:focus { border-color: #b8954a; }
     .note-input::placeholder { color: #bbb; }
 
-    /* 달력 */
     .cal-wrap { background: #fff; border: 1px solid #d0ccc5; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
     .cal-week-header { display: grid; grid-template-columns: 56px repeat(7, 1fr); background: #f8f7f4; border-bottom: 1px solid #ebe9e4; }
     .cal-week-th {
@@ -471,15 +593,15 @@ async function handleManualSave(targetStatus) {
     .week-row { display: grid; grid-template-columns: 56px repeat(7, 1fr); }
     .week-label { padding: 10px 0 10px 12px; font-size: 10px; color: #bbb; font-weight: 600; display: flex; align-items: flex-start; padding-top: 14px; }
 
-    .day-cell { padding: 6px 3px; border-left: 1px solid #f0ede8; min-height: 130px; position: relative; transition: background 0.2s; }
+    /* ── 수정 #3: 칸이 4개로 늘어 min-height 증가 ── */
+    .day-cell { padding: 6px 3px; border-left: 1px solid #f0ede8; min-height: 160px; position: relative; transition: background 0.2s; }
     .day-cell.empty { background: #fafaf9; }
-    .day-cell.is-holiday {
-      background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%);
+    .day-cell.is-holiday { background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); }
+    .day-cell.is-off {
+      background: linear-gradient(160deg, #f0f0f0 0%, #e6e6e6 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
-    .day-off-label {
-      position: absolute; top: 6px; right: 5px;
-      font-size: 11px; font-weight: 700; color: #e05555; letter-spacing: 0.05em;
-    }
+    .off-text { font-size: 16px; font-weight: 800; color: #999; letter-spacing: 0.1em; margin-top: 10px; }
 
     .day-date {
       font-size: 11px; font-weight: 600; color: #1a1a1a; cursor: pointer;
@@ -490,6 +612,7 @@ async function handleManualSave(targetStatus) {
     .day-date:hover { background: #f0ede8; }
     .day-date.holiday-type { background: #ffe0e0; color: #e05555; }
     .day-date.holiday-type:hover { background: #ffc0c0; }
+    .day-date.off-type { background: #dcdcdc; color: #777; }
 
     .hour-label { font-size: 9px; color: #bbb; text-align: center; margin-bottom: 1px; letter-spacing: 0.06em; }
     .hour-input {
@@ -511,48 +634,32 @@ async function handleManualSave(targetStatus) {
     .week-summary-label { font-size: 11px; color: #999; }
     .week-summary-val { font-size: 11px; font-weight: 600; color: #b8954a; }
 
-    /* 급여 합계 */
+    /* ── 수정 #5: 급여 내역 수동 입력 스타일 ── */
     .summary-card { background: #1a1a1a; border-radius: 12px; padding: 28px; color: #fff; margin-bottom: 20px; }
     .summary-title { font-size: 10px; letter-spacing: 0.2em; color: #888; margin-bottom: 20px; }
     .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; margin-bottom: 20px; }
     .summary-item-label { font-size: 10px; color: #666; letter-spacing: 0.1em; margin-bottom: 4px; }
     .summary-item-val { font-size: 14px; font-weight: 600; color: #e8e0d0; }
+    .summary-manual-input {
+      width: 100%; background: transparent; border: none; border-bottom: 1px solid #333;
+      color: #b8954a; font-size: 11px; font-family: 'DM Sans', sans-serif;
+      padding: 2px 0; outline: none; margin-top: 4px; text-align: right;
+    }
+    .summary-manual-input:focus { border-bottom-color: #b8954a; }
+    .summary-manual-input::placeholder { color: #444; }
+    .summary-manual-hint { font-size: 9px; color: #555; margin-top: 2px; letter-spacing: 0.05em; }
     .summary-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
     .summary-total-label { font-size: 11px; color: #888; letter-spacing: 0.15em; }
     .summary-total-val { font-family: 'Playfair Display', serif; font-size: 28px; color: #b8954a; font-weight: 600; }
 
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
-    
-  .day-cell.is-holiday { 
-    background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); 
-  }
-  
-  /* 완전휴무(회색) 스타일 추가 */
-  .day-cell.is-off {
-    background: linear-gradient(160deg, #f0f0f0 0%, #e6e6e6 100%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .off-text {
-    font-size: 16px;
-    font-weight: 800;
-    color: #999;
-    letter-spacing: 0.1em;
-    margin-top: 10px;
-  }
+  `
 
-  .day-date.off-type { background: #dcdcdc; color: #777; }
-  /* (이하 생략) */
-`;
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
 
-      {/* ── 삭제 확인 모달 ── */}
       {deleteConfirm && (
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -630,7 +737,24 @@ async function handleManualSave(targetStatus) {
                   <div className="section-title">{selectedBranch?.name} 급여 계산</div>
                   <div className="section-sub">근무시간을 입력하면 급여가 자동으로 계산됩니다</div>
                 </div>
-               <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
+                {/* ── 수정 #8: 지점변경 버튼 옆에 엑셀 다운로드 버튼 ── */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    onClick={downloadExcelSingle}
+                    disabled={!activeEmp?.name}
+                    style={{
+                      padding: '8px 16px',
+                      background: !activeEmp?.name ? '#f0ede8' : '#1a1a1a',
+                      color: !activeEmp?.name ? '#ccc' : '#fff',
+                      border: 'none', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600,
+                      cursor: !activeEmp?.name ? 'not-allowed' : 'pointer',
+                      letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >엑셀 다운로드 ↓</button>
+                  <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
+                </div>
               </div>
 
               {/* 직원 탭 */}
@@ -644,6 +768,21 @@ async function handleManualSave(targetStatus) {
                   </div>
                 ))}
                 <div className="emp-tab-add" onClick={addEmployee} title="직원 추가">＋</div>
+              </div>
+
+              {/* ── 수정 #6: 직원/알바 탭 (이름 입력 위) ── */}
+              <div style={{ marginBottom: 8 }}>
+                <div className="field-label" style={{ marginBottom: 6 }}>구분</div>
+                <div className="emp-type-tabs">
+                  <button
+                    className={`emp-type-tab${activeEmp.empType === '직원' ? ' active' : ''}`}
+                    onClick={() => updateEmp('empType', '직원')}
+                  >직원</button>
+                  <button
+                    className={`emp-type-tab${(activeEmp.empType === '알바' || !activeEmp.empType) ? ' active' : ''}`}
+                    onClick={() => updateEmp('empType', '알바')}
+                  >알바</button>
+                </div>
               </div>
 
               {/* 직원 정보 1행 */}
@@ -660,20 +799,36 @@ async function handleManualSave(targetStatus) {
                   <div className="info-card-label">시급 (원)</div>
                   <input type="number" value={activeEmp.hourlyWage} onChange={e => updateEmp('hourlyWage', Number(e.target.value))} />
                 </div>
+                {/* ── 수정 #1: 고정 근무시간 → 계좌번호 ── */}
                 <div className="info-card">
-                  <div className="info-card-label">소정근로시간 (일)</div>
-                  <input type="number" value={activeEmp.scheduledHours} onChange={e => updateEmp('scheduledHours', Number(e.target.value))} />
+                  <div className="info-card-label">계좌번호</div>
+                  <input
+                    value={activeEmp.accountNumber || ''}
+                    onChange={e => updateEmp('accountNumber', e.target.value)}
+                    placeholder="계좌번호 입력"
+                  />
                 </div>
               </div>
 
               {/* 직원 정보 2행 */}
               <div className="info-grid-2">
+                {/* ── 수정 #2: 기본 근무시간 자동 포맷 적용 ── */}
                 <div className="info-card">
-                  <div className="info-card-label">고정 근무 시간</div>
+                  <div className="info-card-label">기본 근무 시간</div>
                   <div className="time-range">
-                    <input value={activeEmp.defaultTimeStart} onChange={e => updateEmp('defaultTimeStart', e.target.value)} placeholder="00:00" />
+                    <input
+                      value={activeEmp.defaultTimeStart}
+                      onChange={e => updateEmp('defaultTimeStart', e.target.value)}
+                      onBlur={e => handleDefaultTimeBlur('defaultTimeStart', e.target.value)}
+                      placeholder="09:00"
+                    />
                     <span className="time-sep">~</span>
-                    <input value={activeEmp.defaultTimeEnd} onChange={e => updateEmp('defaultTimeEnd', e.target.value)} placeholder="00:00" />
+                    <input
+                      value={activeEmp.defaultTimeEnd}
+                      onChange={e => updateEmp('defaultTimeEnd', e.target.value)}
+                      onBlur={e => handleDefaultTimeBlur('defaultTimeEnd', e.target.value)}
+                      placeholder="18:00"
+                    />
                   </div>
                 </div>
                 <div className="info-card">
@@ -684,21 +839,29 @@ async function handleManualSave(targetStatus) {
                   <div className="info-card-label">이메일</div>
                   <input value={activeEmp.email} onChange={e => updateEmp('email', e.target.value)} placeholder="example@email.com" />
                 </div>
+                {/* ── 수정 #4: 월 변경 시 자동저장 + 초기화 ── */}
                 <div className="info-card" style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <div className="info-card-label">연도</div>
-                    <input type="number" value={activeEmp.year} onChange={e => updateEmp('year', Number(e.target.value))} />
+                    <input
+                      type="number"
+                      value={activeEmp.year}
+                      onChange={e => handleYearChange(Number(e.target.value))}
+                    />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div className="info-card-label">월</div>
-                    <select value={activeEmp.month} onChange={e => updateEmp('month', Number(e.target.value))}>
+                    <select
+                      value={activeEmp.month}
+                      onChange={e => handleMonthChange(Number(e.target.value))}
+                    >
                       {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* 특이사항 - 직원 정보 바로 아래 */}
+              {/* 특이사항 */}
               <div className="note-row">
                 <p className="field-label" style={{ marginBottom: 8 }}>이달의 특이사항</p>
                 <input
@@ -713,10 +876,9 @@ async function handleManualSave(targetStatus) {
               <div className="cal-wrap">
                 <div className="cal-week-header">
                   <div className="cal-week-th">주</div>
-                  {DAY_LABELS.map((d, di) => (
+                  {DAY_LABELS.map((d) => (
                     <div key={d} className="cal-week-th"
                       style={d==='일' ? { color:'#e05555' } : d==='토' ? { color:'#4a90d9' } : {}}
-                      title={`${d}요일 전체 휴일 토글`}
                     >{d}</div>
                   ))}
                 </div>
@@ -728,66 +890,77 @@ async function handleManualSave(targetStatus) {
                       <div className="week-row">
                         <div className="week-label">{wi + 1}주</div>
                         {week.map((day, di) => {
-  if (!day) return <div key={di} className="day-cell empty" />
-  const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-  const d = activeEmp.workData[ds] || {}
-  
-  const type = d.type || '평'
-  const isHolidayWork = type === '휴' // 휴일근로 (빨간색)
-  const isDayOff = type === '공'      // 완전휴무 (회색)
-  
-  const tStart = d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart
-  const tEnd = d.timeEnd !== undefined ? d.timeEnd : activeEmp.defaultTimeEnd
+                          if (!day) return <div key={di} className="day-cell empty" />
+                          const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+                          const d = activeEmp.workData[ds] || {}
+                          const type = d.type || '평'
+                          const isHolidayWork = type === '휴'
+                          const isDayOff = type === '공'
 
-  return (
-    <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${isDayOff ? 'is-off' : ''}`}>
-      <div
-        className={`day-date ${isHolidayWork ? 'holiday-type' : ''} ${isDayOff ? 'off-type' : ''}`}
-        onClick={() => toggleDayType(ds)}
-        title="클릭: 평일/휴일근로/휴무 전환"
-      >{day}</div>
+                          // ── 수정 #2: 임시 입력 상태 우선 표시 ──
+                          const tStart = timeInputs[ds]?.start !== undefined ? timeInputs[ds].start : (d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart)
+                          const tEnd   = timeInputs[ds]?.end   !== undefined ? timeInputs[ds].end   : (d.timeEnd   !== undefined ? d.timeEnd   : activeEmp.defaultTimeEnd)
 
-      {isDayOff ? (
-        // 완전휴무일 때 표시될 텍스트
-        <div className="off-text">휴무</div>
-      ) : (
-        <>
-          {!isHolidayWork && (
-            <div className="time-row">
-              <input className="time-input-small" value={tStart}
-                onChange={e => updateWorkDay(ds, 'timeStart', e.target.value)}
-                placeholder="00:00" />
-              <span className="time-tilde">~</span>
-              <input className="time-input-small" value={tEnd}
-                onChange={e => updateWorkDay(ds, 'timeEnd', e.target.value)}
-                placeholder="00:00" />
-            </div>
-          )}
+                          return (
+                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${isDayOff ? 'is-off' : ''}`}>
+                              <div
+                                className={`day-date ${isHolidayWork ? 'holiday-type' : ''} ${isDayOff ? 'off-type' : ''}`}
+                                onClick={() => toggleDayType(ds)}
+                                title="클릭: 평일/휴일근로/휴무 전환"
+                              >{day}</div>
 
-          {!isHolidayWork ? (
-            <>
-              <div className="hour-label">기본</div>
-              {numInput(d.basicH, v => updateWorkDay(ds, 'basicH', v))}
-              <div className="hour-label">연장</div>
-              {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
-              <div className="hour-label">야간</div>
-              {numInput(d.nightH, v => updateWorkDay(ds, 'nightH', v))}
-            </>
-          ) : (
-            <>
-              <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
-              {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
-              <div className="hour-label" style={{color:'#e05555'}}>휴연장</div>
-              {numInput(d.holidayOtH, v => updateWorkDay(ds, 'holidayOtH', v))}
-              <div className="hour-label" style={{color:'#e05555'}}>휴야간</div>
-              {numInput(d.holidayNightH, v => updateWorkDay(ds, 'holidayNightH', v))}
-            </>
-          )}
-        </>
-      )}
-    </div>
-  )
-})}
+                              {isDayOff ? (
+                                <div className="off-text">휴무</div>
+                              ) : (
+                                <>
+                                  {/* 시간 입력 행 */}
+                                  <div className="time-row">
+                                    <input
+                                      className="time-input-small"
+                                      value={tStart}
+                                      onChange={e => handleTimeChange(ds, 'timeStart', e.target.value)}
+                                      onBlur={e => handleTimeBlur(ds, 'timeStart', e.target.value)}
+                                      placeholder="00:00"
+                                    />
+                                    <span className="time-tilde">~</span>
+                                    <input
+                                      className="time-input-small"
+                                      value={tEnd}
+                                      onChange={e => handleTimeChange(ds, 'timeEnd', e.target.value)}
+                                      onBlur={e => handleTimeBlur(ds, 'timeEnd', e.target.value)}
+                                      placeholder="00:00"
+                                    />
+                                  </div>
+
+                                  {/* ── 수정 #3: 평일 4칸 (기본/휴게/야간/연장), 휴일 4칸 ── */}
+                                  {!isHolidayWork ? (
+                                    <>
+                                      <div className="hour-label">기본</div>
+                                      {numInput(d.basicH, v => updateWorkDay(ds, 'basicH', v))}
+                                      <div className="hour-label">휴게</div>
+                                      {numInput(d.restH, v => updateWorkDay(ds, 'restH', v))}
+                                      <div className="hour-label">야간</div>
+                                      {numInput(d.nightH, v => updateWorkDay(ds, 'nightH', v))}
+                                      <div className="hour-label">연장</div>
+                                      {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
+                                      {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
+                                      <div className="hour-label" style={{color:'#e05555'}}>휴일휴게</div>
+                                      {numInput(d.holidayRestH, v => updateWorkDay(ds, 'holidayRestH', v))}
+                                      <div className="hour-label" style={{color:'#e05555'}}>휴일야간</div>
+                                      {numInput(d.holidayNightH, v => updateWorkDay(ds, 'holidayNightH', v))}
+                                      <div className="hour-label" style={{color:'#e05555'}}>휴일연장</div>
+                                      {numInput(d.holidayOtH, v => updateWorkDay(ds, 'holidayOtH', v))}
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                       <div className="week-summary">
                         <span className="week-summary-label">주 근무 {weekBasicH}시간 · 주휴수당</span>
@@ -798,23 +971,31 @@ async function handleManualSave(targetStatus) {
                 })}
               </div>
 
-              {/* 급여 합계 */}
+              {/* ── 수정 #5: 급여 합계 (수동 입력 + 자동계산 합산) ── */}
               {totals && (
                 <div className="summary-card">
-                  <div className="summary-title">급여 내역</div>
+                  <div className="summary-title">급여 내역 — 고정값 직접 입력 가능 (캘린더 자동계산액이 더해집니다)</div>
                   <div className="summary-grid">
                     {[
-                      ['기본수당', totals.totalBasic],
-                      ['주휴수당', totals.totalWeeklyHoliday],
-                      ['연장수당', totals.totalOvertime],
-                      ['야간수당', totals.totalNight],
-                      ['휴일근로', totals.totalHoliday],
-                      ['휴일연장', totals.totalHolidayOtPay],
-                      ['휴일야간', totals.totalHolidayNightPay],
-                    ].map(([label, val]) => (
+                      { label: '기본수당',  total: totals.totalBasic,          manualKey: 'manualBasic' },
+                      { label: '주휴수당',  total: totals.totalWeeklyHoliday,  manualKey: 'manualWeeklyHoliday' },
+                      { label: '연장수당',  total: totals.totalOvertime,       manualKey: 'manualOvertime' },
+                      { label: '야간수당',  total: totals.totalNight,          manualKey: 'manualNight' },
+                      { label: '휴일근로',  total: totals.totalHoliday,        manualKey: 'manualHoliday' },
+                      { label: '휴일연장',  total: totals.totalHolidayOtPay,   manualKey: 'manualHolidayOt' },
+                      { label: '휴일야간',  total: totals.totalHolidayNightPay, manualKey: 'manualHolidayNight' },
+                    ].map(({ label, total, manualKey }) => (
                       <div key={label}>
                         <div className="summary-item-label">{label}</div>
-                        <div className="summary-item-val">{fmt(val)}</div>
+                        <div className="summary-item-val">{fmt(total)}</div>
+                        <input
+                          type="number"
+                          className="summary-manual-input"
+                          value={activeEmp[manualKey] || ''}
+                          placeholder="고정값 입력"
+                          onChange={e => updateEmp(manualKey, parseFloat(e.target.value) || 0)}
+                        />
+                        <div className="summary-manual-hint">고정 + 자동계산</div>
                       </div>
                     ))}
                   </div>
@@ -826,20 +1007,16 @@ async function handleManualSave(targetStatus) {
                 </div>
               )}
 
-             {/* 급여 합계 카드 아래에 버튼 배치 */}
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-                {/* 임시 저장 버튼 */}
-                <button 
-                  className="btn outline" 
+              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                <button
+                  className="btn outline"
                   onClick={() => handleManualSave('saved')}
                   style={{ flex: 1, padding: '18px', fontSize: '14px', cursor: 'pointer' }}
                 >
                   💾 임시 저장하기
                 </button>
-
-                {/* 최종 마감 버튼 */}
-                <button 
-                  className="btn accent" 
+                <button
+                  className="btn accent"
                   onClick={() => handleManualSave('final')}
                   style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a', color: '#fff', cursor: 'pointer' }}
                 >
@@ -850,8 +1027,7 @@ async function handleManualSave(targetStatus) {
               <div style={{ textAlign: 'center', marginTop: '15px' }}>
                 <span className="autosave-hint">※ 입력 시 자동 저장은 '진행 중' 상태로 저장됩니다.</span>
               </div>
-              
-              {/* 초기화 버튼은 하단에 작게 배치 */}
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
                 <button className="btn outline" style={{ padding: '6px 12px', fontSize: '11px', opacity: 0.5 }} onClick={() => {
                   if (confirm('이 직원의 근무 데이터를 초기화할까요?')) {
