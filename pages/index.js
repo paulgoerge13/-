@@ -538,9 +538,9 @@ export default function Home() {
                 <div className="info-card">
                   <div className="info-card-label">고정 근무 시간</div>
                   <div className="time-range">
-                    <input value={activeEmp.defaultTimeStart} onChange={e => updateEmp('defaultTimeStart', e.target.value)} placeholder="20:00" />
+                    <input value={activeEmp.defaultTimeStart} onChange={e => updateEmp('defaultTimeStart', e.target.value)} placeholder="00:00" />
                     <span className="time-sep">~</span>
-                    <input value={activeEmp.defaultTimeEnd} onChange={e => updateEmp('defaultTimeEnd', e.target.value)} placeholder="29:00" />
+                    <input value={activeEmp.defaultTimeEnd} onChange={e => updateEmp('defaultTimeEnd', e.target.value)} placeholder="00:00" />
                   </div>
                 </div>
                 <div className="info-card">
