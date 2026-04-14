@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const BRANCHES = [
   { id: 'gidc',   name: '광명GIDC점',  password: 'gidc1234' },
@@ -9,13 +9,12 @@ const BRANCHES = [
   { id: 'marina', name: '서울마리나점', password: 'marina1234' },
 ]
 
-// ── 급여 계산 함수 ──────────────────────────────────────
-function calcBasic(h, w)         { return Math.round(h * w) }
-function calcOvertime(h, w)      { return Math.round(h * w * 1.5) }
-function calcNight(h, w)         { return Math.round(h * w * 0.5) }
-function calcHoliday(h, w)       { return Math.round(h * w * 1.5) }
-function calcHolidayOt(h, w)     { return Math.round(h * w * 2.0) }
-function calcHolidayNight(h, w)  { return Math.round(h * w * 0.5) }
+function calcBasic(h, w)        { return Math.round(h * w) }
+function calcOvertime(h, w)     { return Math.round(h * w * 1.5) }
+function calcNight(h, w)        { return Math.round(h * w * 0.5) }
+function calcHoliday(h, w)      { return Math.round(h * w * 1.5) }
+function calcHolidayOt(h, w)    { return Math.round(h * w * 2.0) }
+function calcHolidayNight(h, w) { return Math.round(h * w * 0.5) }
 function calcWeeklyHoliday(weekH, w) {
   if (weekH < 15) return 0
   return Math.round((weekH / 40) * 8 * w)
@@ -52,26 +51,19 @@ export default function Home() {
   const [selectedBranch, setSelectedBranch] = useState(null)
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState(false)
-
-  // 직원 탭 관리
   const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
   const [activeEmpId, setActiveEmpId] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // 삭제 확인 모달용 id
   const saveTimer = useRef(null)
 
   const activeEmp = employees.find(e => e.id === activeEmpId) || employees[0]
 
   useEffect(() => {
-    if (employees.length > 0 && !activeEmpId) {
-      setActiveEmpId(employees[0].id)
-    }
+    if (employees.length > 0 && !activeEmpId) setActiveEmpId(employees[0].id)
   }, [employees, activeEmpId])
 
-  // ── 직원 데이터 업데이트 (자동저장 포함) ──
   function updateEmp(field, value) {
-    setEmployees(prev => prev.map(e =>
-      e.id === activeEmpId ? { ...e, [field]: value } : e
-    ))
-    // 자동저장 디바운스 (1.5초 후)
+    setEmployees(prev => prev.map(e => e.id === activeEmpId ? { ...e, [field]: value } : e))
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
@@ -101,8 +93,17 @@ export default function Home() {
     updateWorkDay(dateStr, 'type', current === '평' ? '휴' : '평')
   }
 
+  // 요일 전체 휴일 토글 (해당 주의 특정 요일 인덱스)
+  function toggleWeekDayOff(week, dayIndex) {
+    const day = week[dayIndex]
+    if (!day) return
+    const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    toggleDayType(ds)
+  }
+
   function addEmployee() {
-    const newEmp = { ...EMPTY_EMP, id: Date.now(),
+    const newEmp = {
+      ...EMPTY_EMP, id: Date.now(),
       year: activeEmp.year, month: activeEmp.month,
       hourlyWage: activeEmp.hourlyWage,
       defaultTimeStart: activeEmp.defaultTimeStart,
@@ -112,14 +113,16 @@ export default function Home() {
     setActiveEmpId(newEmp.id)
   }
 
-  function removeEmployee(id) {
-    if (employees.length === 1) return
-    const remaining = employees.filter(e => e.id !== id)
+  function confirmDelete(id) { setDeleteConfirm(id) }
+
+  function doDelete() {
+    if (!deleteConfirm || employees.length === 1) { setDeleteConfirm(null); return }
+    const remaining = employees.filter(e => e.id !== deleteConfirm)
     setEmployees(remaining)
-    if (activeEmpId === id) setActiveEmpId(remaining[0].id)
+    if (activeEmpId === deleteConfirm) setActiveEmpId(remaining[0].id)
+    setDeleteConfirm(null)
   }
 
-  // ── 주별/전체 합계 계산 ──
   function calcWeekPay(week, emp) {
     let weekBasicH = 0
     week.forEach(day => {
@@ -135,10 +138,7 @@ export default function Home() {
     let totalBasic = 0, totalOvertime = 0, totalNight = 0
     let totalHoliday = 0, totalHolidayOtPay = 0, totalHolidayNightPay = 0
     let totalWeeklyHoliday = 0
-
-    weeks.forEach(week => {
-      totalWeeklyHoliday += calcWeekPay(week, emp).weeklyHolidayPay
-    })
+    weeks.forEach(week => { totalWeeklyHoliday += calcWeekPay(week, emp).weeklyHolidayPay })
     Object.values(emp.workData).forEach(d => {
       if (d.type !== '휴') {
         totalBasic += calcBasic(d.basicH || 0, emp.hourlyWage)
@@ -154,7 +154,6 @@ export default function Home() {
     return { totalBasic, totalWeeklyHoliday, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal }
   }
 
-  // ── 저장 ──
   async function autoSave() {
     if (!selectedBranch) return
     const emp = employees.find(e => e.id === activeEmpId)
@@ -191,7 +190,6 @@ export default function Home() {
   }
 
   function handleTabSwitch(id) {
-    // 현재 탭 자동저장
     if (activeEmp.name) doSave(activeEmp)
     setActiveEmpId(id)
   }
@@ -201,8 +199,7 @@ export default function Home() {
   function numInput(val, onChange) {
     return (
       <input type="number" min="0" step="0.5"
-        value={val || ''}
-        placeholder="0"
+        value={val || ''} placeholder="0"
         onChange={e => onChange(parseFloat(e.target.value) || 0)}
         className="hour-input"
       />
@@ -211,12 +208,12 @@ export default function Home() {
 
   const totals = activeEmp ? calcTotal(activeEmp) : null
   const weeks = activeEmp ? getWeeksInMonth(activeEmp.year, activeEmp.month) : []
+  const DAY_LABELS = ['월','화','수','목','금','토','일']
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #f8f7f4; color: #1a1a1a; font-family: 'DM Sans', sans-serif; min-height: 100vh; }
-
     .wrap { min-height: 100vh; display: flex; flex-direction: column; }
 
     .header {
@@ -232,23 +229,14 @@ export default function Home() {
     .main { flex: 1; padding: 48px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
     @media (max-width: 640px) { .header { padding: 16px 20px; } .main { padding: 28px 16px; } }
 
-    /* ── 지점 선택 ── */
+    /* 지점 선택 */
     .page-title { font-family: 'Playfair Display', serif; font-size: 30px; margin-bottom: 8px; }
     .page-sub { font-size: 13px; color: #999; letter-spacing: 0.05em; margin-bottom: 48px; }
-
-    .branch-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
-      max-width: 900px;
-      margin: 0 auto;
-    }
+    .branch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 900px; margin: 0 auto; }
     @media (max-width: 640px) { .branch-grid { grid-template-columns: repeat(2, 1fr); } }
-
     .branch-card {
       background: #fff; border: 1px solid #ebe9e4; border-radius: 16px;
-      padding: 40px 32px; cursor: pointer; transition: all 0.2s;
-      position: relative; overflow: hidden;
+      padding: 40px 32px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
     }
     .branch-card::after {
       content: ''; position: absolute; bottom: 0; left: 0; right: 0;
@@ -259,111 +247,130 @@ export default function Home() {
     .branch-num { font-size: 11px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 16px; font-weight: 500; }
     .branch-name { font-size: 18px; font-weight: 600; color: #1a1a1a; }
 
-    /* ── 로그인 ── */
+    /* 로그인 */
     .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 60vh; }
     .login-box {
       background: #fff; border: 1px solid #ebe9e4; border-radius: 16px;
-      padding: 40px; width: 340px; text-align: center;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.06);
+      padding: 40px; width: 340px; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,0.06);
     }
     .login-branch { font-size: 11px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 6px; }
     .login-title { font-family: 'Playfair Display', serif; font-size: 22px; margin-bottom: 28px; }
-
-    /* ── 인풋 공통 ── */
     .field-label { font-size: 11px; letter-spacing: 0.12em; color: #999; margin-bottom: 6px; font-weight: 500; }
     .text-input {
-      width: 100%; background: #f8f7f4; border: 1px solid #ebe9e4;
+      width: 100%; background: #fff; border: 1.5px solid #d0ccc5;
       border-radius: 8px; padding: 11px 14px; font-size: 14px; color: #1a1a1a;
       font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s; margin-bottom: 12px;
     }
-    .text-input:focus { border-color: #b8954a; background: #fff; }
-    .text-input::placeholder { color: #ccc; }
+    .text-input:focus { border-color: #b8954a; }
+    .text-input::placeholder { color: #bbb; }
 
-    /* ── 버튼 ── */
+    /* 버튼 */
     .btn {
       background: #1a1a1a; color: #fff; border: none; border-radius: 8px;
       padding: 11px 24px; font-size: 12px; font-weight: 600; cursor: pointer;
       letter-spacing: 0.1em; font-family: 'DM Sans', sans-serif; transition: all 0.2s; white-space: nowrap;
     }
     .btn:hover { background: #333; }
-    .btn.outline { background: #fff; color: #1a1a1a; border: 1px solid #ebe9e4; }
+    .btn.outline { background: #fff; color: #1a1a1a; border: 1px solid #d0ccc5; }
     .btn.outline:hover { border-color: #1a1a1a; }
     .btn.accent { background: #b8954a; }
     .btn.accent:hover { background: #a07c38; }
+    .btn.danger { background: #e05555; }
+    .btn.danger:hover { background: #c03030; }
     .btn.full { width: 100%; padding: 13px; }
     .error-msg { font-size: 12px; color: #e05555; margin-bottom: 12px; }
 
-    /* ── 섹션 헤더 ── */
+    /* 섹션 헤더 */
     .section-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
     .section-title { font-family: 'Playfair Display', serif; font-size: 22px; }
     .section-sub { font-size: 12px; color: #999; margin-top: 4px; }
 
-    /* ── 직원 탭 ── */
-    .emp-tabs {
-      display: flex; align-items: center; gap: 0;
-      border-bottom: 2px solid #ebe9e4; margin-bottom: 28px; overflow-x: auto;
-    }
+    /* 직원 탭 */
+    .emp-tabs { display: flex; align-items: center; border-bottom: 2px solid #ebe9e4; margin-bottom: 28px; overflow-x: auto; }
     .emp-tab {
       padding: 10px 20px; font-size: 13px; font-weight: 500; cursor: pointer;
       border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap;
-      color: #999; transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+      color: #999; transition: all 0.15s; display: flex; align-items: center; gap: 8px;
     }
     .emp-tab:hover { color: #1a1a1a; }
     .emp-tab.active { color: #1a1a1a; border-bottom-color: #b8954a; font-weight: 600; }
     .emp-tab-del {
-      width: 16px; height: 16px; border-radius: 50%; background: #e5e5e5;
+      width: 18px; height: 18px; border-radius: 50%; background: #e8e5e0;
       display: flex; align-items: center; justify-content: center;
-      font-size: 10px; color: #999; cursor: pointer; line-height: 1;
+      font-size: 11px; color: #999; cursor: pointer; flex-shrink: 0; transition: all 0.15s;
     }
     .emp-tab-del:hover { background: #e05555; color: #fff; }
-    .emp-tab-add {
-      padding: 8px 14px; font-size: 18px; cursor: pointer; color: #b8954a;
-      font-weight: 300; margin-left: 4px;
-    }
+    .emp-tab-add { padding: 8px 16px; font-size: 20px; cursor: pointer; color: #b8954a; font-weight: 300; }
     .emp-tab-add:hover { color: #a07c38; }
 
-    /* ── 직원 정보 그리드 ── */
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 12px;
+    /* 삭제 확인 모달 */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex;
+      align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px);
     }
-    .info-grid-2 {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 28px;
+    .modal-box {
+      background: #fff; border-radius: 16px; padding: 36px 40px; width: 360px;
+      text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
     }
-    @media (max-width: 900px) {
-      .info-grid, .info-grid-2 { grid-template-columns: repeat(2, 1fr); }
-    }
-    .info-card {
-      background: #fff; border: 1px solid #ebe9e4; border-radius: 10px; padding: 14px 16px;
-    }
+    .modal-icon { font-size: 36px; margin-bottom: 16px; }
+    .modal-title { font-family: 'Playfair Display', serif; font-size: 20px; margin-bottom: 10px; color: #1a1a1a; }
+    .modal-desc { font-size: 13px; color: #888; line-height: 1.6; margin-bottom: 28px; }
+    .modal-emp-name { font-weight: 700; color: #e05555; }
+    .modal-btns { display: flex; gap: 10px; }
+    .modal-btns .btn { flex: 1; }
+
+    /* 직원 정보 */
+    .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+    .info-grid-2 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    @media (max-width: 900px) { .info-grid, .info-grid-2 { grid-template-columns: repeat(2, 1fr); } }
+    .info-card { background: #fff; border: 1px solid #d0ccc5; border-radius: 10px; padding: 14px 16px; }
     .info-card-label { font-size: 10px; letter-spacing: 0.15em; color: #999; margin-bottom: 8px; font-weight: 500; }
     .info-card input, .info-card select {
       width: 100%; background: transparent; border: none;
-      border-bottom: 1px solid #ebe9e4; padding: 4px 0;
+      border-bottom: 1.5px solid #d0ccc5; padding: 4px 0;
       font-size: 14px; font-weight: 600; color: #1a1a1a;
       font-family: 'DM Sans', sans-serif; outline: none;
     }
     .info-card input:focus, .info-card select:focus { border-bottom-color: #b8954a; }
     .time-range { display: flex; align-items: center; gap: 6px; }
-    .time-range input { font-size: 13px; text-align: center; }
-    .time-sep { font-size: 12px; color: #ccc; flex-shrink: 0; }
+    .time-sep { font-size: 12px; color: #bbb; flex-shrink: 0; }
 
-    /* ── 달력 ── */
-    .cal-wrap { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+    /* 특이사항 (직원 정보 아래로 이동) */
+    .note-row { margin-bottom: 24px; }
+    .note-input {
+      width: 100%; background: #fff; border: 1.5px solid #d0ccc5;
+      border-radius: 8px; padding: 12px 16px; font-size: 14px; color: #1a1a1a;
+      font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
+    }
+    .note-input:focus { border-color: #b8954a; }
+    .note-input::placeholder { color: #bbb; }
+
+    /* 달력 */
+    .cal-wrap { background: #fff; border: 1px solid #d0ccc5; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
     .cal-week-header { display: grid; grid-template-columns: 56px repeat(7, 1fr); background: #f8f7f4; border-bottom: 1px solid #ebe9e4; }
-    .cal-week-th { padding: 10px 4px; font-size: 10px; letter-spacing: 0.12em; color: #999; font-weight: 600; text-align: center; }
-    .cal-week-th:first-child { text-align: left; padding-left: 12px; }
+    .cal-week-th {
+      padding: 10px 4px; font-size: 10px; letter-spacing: 0.12em; color: #999;
+      font-weight: 600; text-align: center; cursor: pointer; transition: background 0.15s;
+      user-select: none;
+    }
+    .cal-week-th:first-child { text-align: left; padding-left: 12px; cursor: default; }
+    .cal-week-th:not(:first-child):hover { background: #f0ede8; }
+
     .week-block { border-bottom: 1px solid #f0ede8; }
     .week-block:last-child { border-bottom: none; }
     .week-row { display: grid; grid-template-columns: 56px repeat(7, 1fr); }
     .week-label { padding: 10px 0 10px 12px; font-size: 10px; color: #bbb; font-weight: 600; display: flex; align-items: flex-start; padding-top: 14px; }
-    .day-cell { padding: 6px 3px; border-left: 1px solid #f0ede8; min-height: 120px; }
+
+    .day-cell { padding: 6px 3px; border-left: 1px solid #f0ede8; min-height: 130px; position: relative; transition: background 0.2s; }
     .day-cell.empty { background: #fafaf9; }
+    .day-cell.is-holiday {
+      background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%);
+    }
+    .day-off-label {
+      position: absolute; top: 6px; right: 5px;
+      font-size: 11px; font-weight: 700; color: #e05555; letter-spacing: 0.05em;
+    }
+
     .day-date {
       font-size: 11px; font-weight: 600; color: #1a1a1a; cursor: pointer;
       width: 22px; height: 22px; border-radius: 50%;
@@ -371,21 +378,20 @@ export default function Home() {
       margin: 0 auto 4px; transition: all 0.15s;
     }
     .day-date:hover { background: #f0ede8; }
-    .day-date.holiday-type { background: #fff3e0; color: #b8954a; }
-    .day-date.holiday-type:hover { background: #ffe0a0; }
+    .day-date.holiday-type { background: #ffe0e0; color: #e05555; }
+    .day-date.holiday-type:hover { background: #ffc0c0; }
 
     .hour-label { font-size: 9px; color: #bbb; text-align: center; margin-bottom: 1px; letter-spacing: 0.06em; }
     .hour-input {
       width: 100%; border: none; border-bottom: 1px solid #ebe9e4;
       background: transparent; font-size: 11px; color: #1a1a1a;
-      font-family: 'DM Sans', sans-serif; padding: 2px 2px; outline: none; text-align: center; margin-bottom: 3px;
+      font-family: 'DM Sans', sans-serif; padding: 2px; outline: none; text-align: center; margin-bottom: 3px;
     }
     .hour-input:focus { border-bottom-color: #b8954a; }
     .time-input-small {
       width: 100%; border: none; border-bottom: 1px solid #ebe9e4;
       background: transparent; font-size: 10px; color: #888;
-      font-family: 'DM Sans', sans-serif; padding: 2px 2px; outline: none; text-align: center;
-      margin-bottom: 4px;
+      font-family: 'DM Sans', sans-serif; padding: 2px; outline: none; text-align: center;
     }
     .time-input-small:focus { border-bottom-color: #b8954a; }
     .time-row { display: flex; gap: 2px; align-items: center; margin-bottom: 4px; }
@@ -395,10 +401,7 @@ export default function Home() {
     .week-summary-label { font-size: 11px; color: #999; }
     .week-summary-val { font-size: 11px; font-weight: 600; color: #b8954a; }
 
-    /* ── 특이사항 ── */
-    .note-row { margin-bottom: 20px; }
-
-    /* ── 급여 합계 ── */
+    /* 급여 합계 */
     .summary-card { background: #1a1a1a; border-radius: 12px; padding: 28px; color: #fff; margin-bottom: 20px; }
     .summary-title { font-size: 10px; letter-spacing: 0.2em; color: #888; margin-bottom: 20px; }
     .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; margin-bottom: 20px; }
@@ -409,15 +412,35 @@ export default function Home() {
     .summary-total-val { font-family: 'Playfair Display', serif; font-size: 28px; color: #b8954a; font-weight: 600; }
 
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
-    .autosave-hint { font-size: 11px; color: #bbb; letter-spacing: 0.05em; align-self: center; }
+    .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
   `
 
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className="wrap">
 
-        {/* HEADER */}
+      {/* ── 삭제 확인 모달 ── */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-icon">⚠️</div>
+            <div className="modal-title">직원 삭제</div>
+            <div className="modal-desc">
+              <span className="modal-emp-name">
+                {employees.find(e => e.id === deleteConfirm)?.name || '이름 미입력'}
+              </span>
+              의 데이터를 삭제하시겠습니까?<br />
+              삭제된 데이터는 복구할 수 없습니다.
+            </div>
+            <div className="modal-btns">
+              <button className="btn outline" onClick={() => setDeleteConfirm(null)}>취소</button>
+              <button className="btn danger" onClick={doDelete}>삭제하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="wrap">
         <header className="header">
           <div>
             <div className="logo-the">THE</div>
@@ -429,7 +452,7 @@ export default function Home() {
 
         <main className="main">
 
-          {/* ── STEP 1: 지점 선택 ── */}
+          {/* STEP 1: 지점 선택 */}
           {step === 'branch' && (
             <div>
               <h2 className="page-title">지점 선택</h2>
@@ -445,7 +468,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* ── STEP 2: 로그인 ── */}
+          {/* STEP 2: 로그인 */}
           {step === 'login' && (
             <div className="login-wrap">
               <div className="login-box">
@@ -454,7 +477,9 @@ export default function Home() {
                 <p className="field-label">비밀번호</p>
                 <input type="password" className="text-input" placeholder="비밀번호 입력"
                   value={pw} onChange={e => setPw(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && (pw === selectedBranch.password ? (setStep('main'), setPwError(false)) : setPwError(true))}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') pw === selectedBranch.password ? (setStep('main'), setPwError(false)) : setPwError(true)
+                  }}
                 />
                 {pwError && <p className="error-msg">비밀번호가 틀렸습니다.</p>}
                 <button className="btn full" onClick={() => pw === selectedBranch.password ? (setStep('main'), setPwError(false)) : setPwError(true)}>입장</button>
@@ -464,10 +489,9 @@ export default function Home() {
             </div>
           )}
 
-          {/* ── STEP 3: 급여 계산 ── */}
+          {/* STEP 3: 급여 계산 */}
           {step === 'main' && activeEmp && (
             <div>
-              {/* 섹션 헤더 */}
               <div className="section-header">
                 <div>
                   <div className="section-title">{selectedBranch?.name} 급여 계산</div>
@@ -476,20 +500,20 @@ export default function Home() {
                 <button className="btn outline" onClick={() => { setStep('branch'); setEmployees([{ ...EMPTY_EMP, id: Date.now() }]); setActiveEmpId(null) }}>← 지점 변경</button>
               </div>
 
-              {/* ── 직원 탭 ── */}
+              {/* 직원 탭 */}
               <div className="emp-tabs">
                 {employees.map(emp => (
                   <div key={emp.id} className={`emp-tab${emp.id === activeEmpId ? ' active' : ''}`} onClick={() => handleTabSwitch(emp.id)}>
                     {emp.name || '이름 미입력'}
                     {employees.length > 1 && (
-                      <span className="emp-tab-del" onClick={e => { e.stopPropagation(); removeEmployee(emp.id) }}>×</span>
+                      <span className="emp-tab-del" onClick={e => { e.stopPropagation(); confirmDelete(emp.id) }}>×</span>
                     )}
                   </div>
                 ))}
                 <div className="emp-tab-add" onClick={addEmployee} title="직원 추가">＋</div>
               </div>
 
-              {/* ── 직원 정보 1행: 이름, 주민번호, 시급, 소정근로시간 ── */}
+              {/* 직원 정보 1행 */}
               <div className="info-grid">
                 <div className="info-card">
                   <div className="info-card-label">직원 이름</div>
@@ -509,7 +533,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ── 직원 정보 2행: 고정근무시간, 핸드폰, 이메일, 연도/월 ── */}
+              {/* 직원 정보 2행 */}
               <div className="info-grid-2">
                 <div className="info-card">
                   <div className="info-card-label">고정 근무 시간</div>
@@ -541,12 +565,26 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ── 달력 ── */}
+              {/* 특이사항 - 직원 정보 바로 아래 */}
+              <div className="note-row">
+                <p className="field-label" style={{ marginBottom: 8 }}>이달의 특이사항</p>
+                <input
+                  className="note-input"
+                  value={activeEmp.specialNote}
+                  onChange={e => updateEmp('specialNote', e.target.value)}
+                  placeholder="예) 11월 야간 추가 5시간"
+                />
+              </div>
+
+              {/* 달력 */}
               <div className="cal-wrap">
                 <div className="cal-week-header">
                   <div className="cal-week-th">주</div>
-                  {['월','화','수','목','금','토','일'].map(d => (
-                    <div key={d} className="cal-week-th" style={d==='일'?{color:'#e05555'}:d==='토'?{color:'#4a90d9'}:{}}>{d}</div>
+                  {DAY_LABELS.map((d, di) => (
+                    <div key={d} className="cal-week-th"
+                      style={d==='일' ? { color:'#e05555' } : d==='토' ? { color:'#4a90d9' } : {}}
+                      title={`${d}요일 전체 휴일 토글`}
+                    >{d}</div>
                   ))}
                 </div>
 
@@ -564,21 +602,25 @@ export default function Home() {
                           const tStart = d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart
                           const tEnd = d.timeEnd !== undefined ? d.timeEnd : activeEmp.defaultTimeEnd
                           return (
-                            <div key={di} className="day-cell">
-                              <div className={`day-date${isHoliday ? ' holiday-type' : ''}`}
-                                onClick={() => toggleDayType(ds)} title="클릭: 평일/휴일 전환"
+                            <div key={di} className={`day-cell${isHoliday ? ' is-holiday' : ''}`}>
+                              {isHoliday && <span className="day-off-label">휴</span>}
+                              <div
+                                className={`day-date${isHoliday ? ' holiday-type' : ''}`}
+                                onClick={() => toggleDayType(ds)}
+                                title="클릭: 평일/휴일 전환"
                               >{day}</div>
 
-                              {/* 근무 시간 (개별 수정 가능) */}
-                              <div className="time-row">
-                                <input className="time-input-small" value={tStart}
-                                  onChange={e => updateWorkDay(ds, 'timeStart', e.target.value)}
-                                  placeholder={activeEmp.defaultTimeStart || '시작'} />
-                                <span className="time-tilde">~</span>
-                                <input className="time-input-small" value={tEnd}
-                                  onChange={e => updateWorkDay(ds, 'timeEnd', e.target.value)}
-                                  placeholder={activeEmp.defaultTimeEnd || '종료'} />
-                              </div>
+                              {!isHoliday && (
+                                <div className="time-row">
+                                  <input className="time-input-small" value={tStart}
+                                    onChange={e => updateWorkDay(ds, 'timeStart', e.target.value)}
+                                    placeholder={activeEmp.defaultTimeStart || '시작'} />
+                                  <span className="time-tilde">~</span>
+                                  <input className="time-input-small" value={tEnd}
+                                    onChange={e => updateWorkDay(ds, 'timeEnd', e.target.value)}
+                                    placeholder={activeEmp.defaultTimeEnd || '종료'} />
+                                </div>
+                              )}
 
                               {!isHoliday ? (
                                 <>
@@ -591,11 +633,11 @@ export default function Home() {
                                 </>
                               ) : (
                                 <>
-                                  <div className="hour-label">휴일</div>
+                                  <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
                                   {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
-                                  <div className="hour-label">휴연장</div>
+                                  <div className="hour-label" style={{color:'#e05555'}}>휴연장</div>
                                   {numInput(d.holidayOtH, v => updateWorkDay(ds, 'holidayOtH', v))}
-                                  <div className="hour-label">휴야간</div>
+                                  <div className="hour-label" style={{color:'#e05555'}}>휴야간</div>
                                   {numInput(d.holidayNightH, v => updateWorkDay(ds, 'holidayNightH', v))}
                                 </>
                               )}
@@ -610,14 +652,6 @@ export default function Home() {
                     </div>
                   )
                 })}
-              </div>
-
-              {/* 특이사항 */}
-              <div className="note-row">
-                <p className="field-label">이달의 특이사항</p>
-                <input className="text-input" value={activeEmp.specialNote}
-                  onChange={e => updateEmp('specialNote', e.target.value)}
-                  placeholder="예) 11월 야간 추가 5시간" style={{ marginBottom: 0 }} />
               </div>
 
               {/* 급여 합계 */}
@@ -651,7 +685,7 @@ export default function Home() {
               <div className="action-row">
                 <span className="autosave-hint">입력 시 자동 저장됩니다</span>
                 <button className="btn outline" onClick={() => {
-                  if (confirm('이 직원의 데이터를 초기화할까요?')) {
+                  if (confirm('이 직원의 근무 데이터를 초기화할까요?')) {
                     setEmployees(prev => prev.map(e => e.id === activeEmpId ? { ...e, workData: {}, specialNote: '' } : e))
                   }
                 }}>초기화</button>
