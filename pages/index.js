@@ -418,10 +418,7 @@ export default function Home() {
 
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
-  `
-const css = `
-  /* (기존 CSS 유지하며 아래 내용 추가/수정) */
-  
+    
   .day-cell.is-holiday { 
     background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); 
   }
