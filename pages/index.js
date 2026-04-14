@@ -76,8 +76,8 @@ const EMPTY_EMP = {
   name: '', residentId: '', phone: '', email: '',
   accountNumber: '',       // ── 수정 #1: 계좌번호 추가 ──
   empType: '알바',         // ── 수정 #6: 직원/알바 탭 ──
-  hourlyWage: 10030,
-  defaultTimeStart: '09:00', defaultTimeEnd: '18:00',
+  hourlyWage: 10320,
+  defaultTimeStart: '00:00', defaultTimeEnd: '00:00',
   workData: {}, specialNote: '',
   // ── 수정 #5: 수동 입력 고정 기본값 ──
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
