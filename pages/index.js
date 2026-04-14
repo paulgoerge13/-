@@ -241,33 +241,50 @@ export default function Home() {
     await doSave(emp)
   }
 
-  async function doSave(emp) {
-    const totals = calcTotal(emp)
-    const payload = {
-      branch: selectedBranch.name,
-      emp_name: emp.name,
-      resident_id: emp.residentId,
-      phone: emp.phone,
-      email: emp.email,
-      hourly_wage: emp.hourlyWage,
-      scheduled_hours: emp.scheduledHours,
-      default_time: `${emp.defaultTimeStart}~${emp.defaultTimeEnd}`,
-      year: emp.year,
-      month: emp.month,
-      work_data: emp.workData,
-      special_note: emp.specialNote,
-      ...totals,
-    }
-    try {
-      await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    } catch (e) { console.error('자동저장 실패', e) }
+async function doSave(emp, status = 'saved') {
+  const totals = calcTotal(emp)
+  const payload = {
+    branch: selectedBranch.name,
+    emp_name: emp.name,
+    resident_id: emp.residentId,
+    phone: emp.phone,
+    email: emp.email,
+    hourly_wage: emp.hourlyWage,
+    scheduled_hours: emp.scheduledHours,
+    default_time: `${emp.defaultTimeStart}~${emp.defaultTimeEnd}`,
+    year: emp.year,
+    month: emp.month,
+    work_data: emp.workData,
+    special_note: emp.specialNote,
+    status: status, // 이 부분이 추가되었습니다!
+    ...totals,
   }
+  try {
+    // API 주소는 사장님의 프로젝트 환경에 맞춰 /api/save로 유지합니다.
+    await fetch('/api/save', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(payload) 
+    })
+  } catch (e) { 
+    console.error('저장 실패', e) 
+  }
+}
 
-  async function handleManualSave() {
-    if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return }
-    await doSave(activeEmp)
-    alert('✓ 저장되었습니다!')
+async function handleManualSave(status) {
+  if (!activeEmp.name) { 
+    alert('직원 이름을 입력해주세요.'); 
+    return; 
   }
+  
+  await doSave(activeEmp, status);
+  
+  if (status === 'final') {
+    alert('✅ 마감 처리가 완료되었습니다! (매니저 창 초록불)');
+  } else {
+    alert('💾 임시 저장되었습니다. (매니저 창 노란불)');
+  }
+}
 
   function handleTabSwitch(id) {
     if (activeEmp.name) doSave(activeEmp)
@@ -490,7 +507,28 @@ export default function Home() {
     .summary-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
     .summary-total-label { font-size: 11px; color: #888; letter-spacing: 0.15em; }
     .summary-total-val { font-family: 'Playfair Display', serif; font-size: 28px; color: #b8954a; font-weight: 600; }
+{/* 급여 합계 카드 아래에 배치 */}
+<div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+  <button 
+    className="btn outline" 
+    onClick={() => handleManualSave('saved')}
+    style={{ flex: 1, padding: '18px', fontSize: '14px' }}
+  >
+    💾 저장하기 (노란불)
+  </button>
+  
+  <button 
+    className="btn accent" 
+    onClick={() => handleManualSave('final')}
+    style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a' }}
+  >
+    ✅ 마감하기 (초록불)
+  </button>
+</div>
 
+<div style={{ textAlign: 'center', marginTop: '15px' }}>
+  <span className="autosave-hint">※ 입력 시 1.5초마다 자동으로 노란불 저장이 실행됩니다.</span>
+</div>
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
     
