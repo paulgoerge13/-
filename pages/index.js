@@ -507,28 +507,7 @@ async function handleManualSave(status) {
     .summary-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
     .summary-total-label { font-size: 11px; color: #888; letter-spacing: 0.15em; }
     .summary-total-val { font-family: 'Playfair Display', serif; font-size: 28px; color: #b8954a; font-weight: 600; }
-{/* 급여 합계 카드 아래에 배치 */}
-<div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-  <button 
-    className="btn outline" 
-    onClick={() => handleManualSave('saved')}
-    style={{ flex: 1, padding: '18px', fontSize: '14px' }}
-  >
-    💾 저장하기 (노란불)
-  </button>
-  
-  <button 
-    className="btn accent" 
-    onClick={() => handleManualSave('final')}
-    style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a' }}
-  >
-    ✅ 마감하기 (초록불)
-  </button>
-</div>
 
-<div style={{ textAlign: 'center', marginTop: '15px' }}>
-  <span className="autosave-hint">※ 입력 시 1.5초마다 자동으로 노란불 저장이 실행됩니다.</span>
-</div>
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
     
@@ -834,14 +813,36 @@ async function handleManualSave(status) {
                 </div>
               )}
 
-              <div className="action-row">
-                <span className="autosave-hint">입력 시 자동 저장됩니다</span>
-                <button className="btn outline" onClick={() => {
+             {/* 급여 합계 카드 아래에 버튼 배치 */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                <button
+                  className="btn outline"
+                  onClick={() => handleManualSave('saved')}
+                  style={{ flex: 1, padding: '18px', fontSize: '14px' }}
+                >
+                  💾 저장하기 (노란불)
+                </button>
+
+                <button
+                  className="btn accent"
+                  onClick={() => handleManualSave('final')}
+                  style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a' }}
+                >
+                  ✅ 마감하기 (초록불)
+                </button>
+              </div>
+
+              <div style={{ textAlign: 'center', marginTop: '15px' }}>
+                <span className="autosave-hint">※ 입력 시 1.5초마다 자동으로 노란불 저장이 실행됩니다.</span>
+              </div>
+              
+              {/* 초기화 버튼은 하단에 작게 배치 */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button className="btn outline" style={{ padding: '6px 12px', fontSize: '11px', opacity: 0.5 }} onClick={() => {
                   if (confirm('이 직원의 근무 데이터를 초기화할까요?')) {
                     setEmployees(prev => prev.map(e => e.id === activeEmpId ? { ...e, workData: {}, specialNote: '' } : e))
                   }
-                }}>초기화</button>
-                <button className="btn accent" onClick={handleManualSave}>저장하기 ✓</button>
+                }}>데이터 초기화</button>
               </div>
             </div>
           )}
