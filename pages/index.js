@@ -801,12 +801,21 @@ export default function Home() {
                 </div>
                 {/* ── 수정 #1: 고정 근무시간 → 계좌번호 ── */}
                 <div className="info-card">
-                  <div className="info-card-label">계좌번호</div>
-                  <input
-                    value={activeEmp.accountNumber || ''}
-                    onChange={e => updateEmp('accountNumber', e.target.value)}
-                    placeholder="계좌번호 입력"
-                  />
+                   <div className="info-card-label">기본 근무 시간</div>
+                  <div className="time-range">
+                    <input
+                      value={activeEmp.defaultTimeStart}
+                      onChange={e => updateEmp('defaultTimeStart', e.target.value)}
+                      onBlur={e => handleDefaultTimeBlur('defaultTimeStart', e.target.value)}
+                      placeholder="00:00"
+                    />
+                    <span className="time-sep">~</span>
+                    <input
+                      value={activeEmp.defaultTimeEnd}
+                      onChange={e => updateEmp('defaultTimeEnd', e.target.value)}
+                      onBlur={e => handleDefaultTimeBlur('defaultTimeEnd', e.target.value)}
+                      placeholder="00:00"
+                    />
                 </div>
               </div>
 
@@ -814,21 +823,12 @@ export default function Home() {
               <div className="info-grid-2">
                 {/* ── 수정 #2: 기본 근무시간 자동 포맷 적용 ── */}
                 <div className="info-card">
-                  <div className="info-card-label">기본 근무 시간</div>
-                  <div className="time-range">
-                    <input
-                      value={activeEmp.defaultTimeStart}
-                      onChange={e => updateEmp('defaultTimeStart', e.target.value)}
-                      onBlur={e => handleDefaultTimeBlur('defaultTimeStart', e.target.value)}
-                      placeholder="09:00"
-                    />
-                    <span className="time-sep">~</span>
-                    <input
-                      value={activeEmp.defaultTimeEnd}
-                      onChange={e => updateEmp('defaultTimeEnd', e.target.value)}
-                      onBlur={e => handleDefaultTimeBlur('defaultTimeEnd', e.target.value)}
-                      placeholder="18:00"
-                    />
+                   <div className="info-card-label">계좌번호</div>
+                  <input
+                    value={activeEmp.accountNumber || ''}
+                    onChange={e => updateEmp('accountNumber', e.target.value)}
+                    placeholder="은행 및 계좌번호 입력"
+                  />
                   </div>
                 </div>
                 <div className="info-card">
