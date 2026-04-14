@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-
+ 
 const BRANCHES = [
   { id: 'gidc',   name: '광명GIDC점',  password: 'gidc1234' },
   { id: 'ingye',  name: '인계점',       password: 'ingye1234' },
