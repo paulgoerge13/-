@@ -74,12 +74,11 @@ function calcAutoHours(startStr, endStr) {
 
 const EMPTY_EMP = {
   name: '', residentId: '', phone: '', email: '',
-  accountNumber: '',       // ── 수정 #1: 계좌번호 추가 ──
-  empType: '알바',         // ── 수정 #6: 직원/알바 탭 ──
-  hourlyWage: 10030,
-  defaultTimeStart: '09:00', defaultTimeEnd: '18:00',
+  accountNumber: '',
+  empType: '알바',
+  hourlyWage: 10320,                          // ── 수정 A: 기본 시급 변경 ──
+  defaultTimeStart: '00:00', defaultTimeEnd: '00:00', // ── 수정 A: 기본 시간 00:00 ──
   workData: {}, specialNote: '',
-  // ── 수정 #5: 수동 입력 고정 기본값 ──
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
@@ -108,21 +107,24 @@ export default function Home() {
     localStorage.setItem('payroll_backup', JSON.stringify(employees))
   }, [employees])
 
-  async function loadData(branchName, empName, yr, mo) {
+  // ── 버그픽스: empId를 인자로 받아 클로저 stale 문제 해결 ──
+  async function loadData(branchName, empName, yr, mo, empId) {
     if (!branchName || !empName) return
+    const targetId = empId || activeEmpId
     try {
-      const res = await fetch(`/api/load?branch=${branchName}&name=${empName}&year=${yr}&month=${mo}`)
+      const res = await fetch(`/api/load?branch=${encodeURIComponent(branchName)}&name=${encodeURIComponent(empName)}&year=${yr}&month=${mo}`)
       const result = await res.json()
       if (result.success && result.data) {
         setEmployees(prev => prev.map(e =>
-          e.id === activeEmpId ? {
+          e.id === targetId ? {
             ...e,
             workData: result.data.work_data || {},
             specialNote: result.data.special_note || '',
-            hourlyWage: result.data.hourly_wage || 10030,
+            hourlyWage: result.data.hourly_wage || 10320,
           } : e
         ))
       }
+      // 데이터 없으면 workData 빈 상태 유지 (이미 초기화됐으므로 OK)
     } catch (e) { console.error('데이터 로드 실패:', e) }
   }
 
@@ -130,7 +132,7 @@ export default function Home() {
 
   useEffect(() => {
     if (step === 'main' && selectedBranch && activeEmp?.name) {
-      loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month)
+      loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month, activeEmpId)
     }
   }, [activeEmpId, activeEmp?.month, activeEmp?.year])
 
@@ -174,28 +176,41 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
-  // ── 수정 #4: 월 변경 시 현재 데이터 자동저장 후 새 월 로드 ──
+  // ── 버그픽스: 월 변경 시 저장→초기화→로드 순서 보장 ──
   async function handleMonthChange(newMonth) {
-    if (activeEmp && activeEmp.name) {
-      await doSave(activeEmp, activeEmp.status === 'final' ? 'final' : 'saved')
+    const emp = employees.find(e => e.id === activeEmpId) || employees[0]
+    // 1. 현재 월 데이터 먼저 저장 (workData가 있을 때)
+    if (emp && emp.name && selectedBranch) {
+      await doSaveEmp(emp, emp.status === 'final' ? 'final' : 'saved')
     }
+    // 2. 로컬스토리지에도 즉시 반영
+    if (selectedBranch) {
+      const storageKey = `payroll_backup_${selectedBranch.name}`
+      const current = employees.map(e => e.id === (emp?.id) ? { ...e } : e)
+      localStorage.setItem(storageKey, JSON.stringify(current))
+    }
+    // 3. 월 변경 + workData 초기화
+    const newId = emp?.id
     setEmployees(prev => prev.map(e =>
-      e.id === activeEmpId ? { ...e, month: newMonth, workData: {} } : e
+      e.id === newId ? { ...e, month: newMonth, workData: {} } : e
     ))
-    if (selectedBranch && activeEmp?.name) {
-      setTimeout(() => loadData(selectedBranch.name, activeEmp.name, activeEmp.year, newMonth), 100)
+    // 4. 새 월 데이터 로드 (100ms 후 state 반영 기다림)
+    if (selectedBranch && emp?.name) {
+      setTimeout(() => loadData(selectedBranch.name, emp.name, emp.year, newMonth, newId), 150)
     }
   }
 
   async function handleYearChange(newYear) {
-    if (activeEmp && activeEmp.name) {
-      await doSave(activeEmp, activeEmp.status === 'final' ? 'final' : 'saved')
+    const emp = employees.find(e => e.id === activeEmpId) || employees[0]
+    if (emp && emp.name && selectedBranch) {
+      await doSaveEmp(emp, emp.status === 'final' ? 'final' : 'saved')
     }
+    const newId = emp?.id
     setEmployees(prev => prev.map(e =>
-      e.id === activeEmpId ? { ...e, year: newYear, workData: {} } : e
+      e.id === newId ? { ...e, year: newYear, workData: {} } : e
     ))
-    if (selectedBranch && activeEmp?.name) {
-      setTimeout(() => loadData(selectedBranch.name, activeEmp.name, newYear, activeEmp.month), 100)
+    if (selectedBranch && emp?.name) {
+      setTimeout(() => loadData(selectedBranch.name, emp.name, newYear, emp.month, newId), 150)
     }
   }
 
@@ -330,28 +345,37 @@ export default function Home() {
     const emp = employees.find(e => e.id === activeEmpId)
     if (!emp || !emp.name) return
     const targetStatus = emp.status === 'final' ? 'final' : 'saved'
-    await doSave(emp, targetStatus)
+    await doSaveEmp(emp, targetStatus)
   }
 
-  async function doSave(emp, status = 'saved') {
-    if (!emp || !emp.name) return
+  // ── 버그픽스: emp 객체를 직접 인자로 받아 stale closure 완전 방지 ──
+  async function doSaveEmp(emp, status = 'saved') {
+    if (!emp || !emp.name || !selectedBranch) return
     const totals = calcTotal(emp)
     const payload = {
       branch: selectedBranch.name,
       emp_name: emp.name,
-      emp_type: emp.empType || '알바',    // ── 수정 #6 ──
-      resident_id: emp.residentId,
-      phone: emp.phone,
-      email: emp.email,
-      account_number: emp.accountNumber, // ── 수정 #1 ──
+      emp_type: emp.empType || '알바',
+      resident_id: emp.residentId || '',
+      phone: emp.phone || '',
+      email: emp.email || '',
+      account_number: emp.accountNumber || '',
       hourly_wage: emp.hourlyWage,
+      scheduled_hours: emp.scheduledHours || 8,
       default_time: `${emp.defaultTimeStart}~${emp.defaultTimeEnd}`,
       year: emp.year,
       month: emp.month,
       work_data: emp.workData,
-      special_note: emp.specialNote,
+      special_note: emp.specialNote || '',
       status,
-      ...totals,
+      totalBasic: totals.totalBasic,
+      totalWeeklyHoliday: totals.totalWeeklyHoliday,
+      totalOvertime: totals.totalOvertime,
+      totalNight: totals.totalNight,
+      totalHoliday: totals.totalHoliday,
+      totalHolidayOtPay: totals.totalHolidayOtPay,
+      totalHolidayNightPay: totals.totalHolidayNightPay,
+      grandTotal: totals.grandTotal,
     }
     try {
       const res = await fetch('/api/save', {
@@ -361,8 +385,17 @@ export default function Home() {
       })
       if (res.ok) {
         setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status } : e))
+      } else {
+        const errData = await res.json()
+        console.error('저장 API 오류:', errData)
       }
-    } catch (e) { console.error('저장 실패', e) }
+    } catch (e) {
+      console.error('저장 실패:', e)
+    }
+  }
+
+  async function doSave(emp, status = 'saved') {
+    await doSaveEmp(emp, status)
   }
 
   async function handleManualSave(targetStatus) {
@@ -799,20 +832,7 @@ export default function Home() {
                   <div className="info-card-label">시급 (원)</div>
                   <input type="number" value={activeEmp.hourlyWage} onChange={e => updateEmp('hourlyWage', Number(e.target.value))} />
                 </div>
-                {/* ── 수정 #1: 고정 근무시간 → 계좌번호 ── */}
-                <div className="info-card">
-                  <div className="info-card-label">계좌번호</div>
-                  <input
-                    value={activeEmp.accountNumber || ''}
-                    onChange={e => updateEmp('accountNumber', e.target.value)}
-                    placeholder="계좌번호 입력"
-                  />
-                </div>
-              </div>
-
-              {/* 직원 정보 2행 */}
-              <div className="info-grid-2">
-                {/* ── 수정 #2: 기본 근무시간 자동 포맷 적용 ── */}
+                {/* ── 수정 A: 1행 4번째 → 기본 근무 시간 (계좌번호와 위치 교환) ── */}
                 <div className="info-card">
                   <div className="info-card-label">기본 근무 시간</div>
                   <div className="time-range">
@@ -820,16 +840,29 @@ export default function Home() {
                       value={activeEmp.defaultTimeStart}
                       onChange={e => updateEmp('defaultTimeStart', e.target.value)}
                       onBlur={e => handleDefaultTimeBlur('defaultTimeStart', e.target.value)}
-                      placeholder="09:00"
+                      placeholder="00:00"
                     />
                     <span className="time-sep">~</span>
                     <input
                       value={activeEmp.defaultTimeEnd}
                       onChange={e => updateEmp('defaultTimeEnd', e.target.value)}
                       onBlur={e => handleDefaultTimeBlur('defaultTimeEnd', e.target.value)}
-                      placeholder="18:00"
+                      placeholder="00:00"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* 직원 정보 2행 */}
+              <div className="info-grid-2">
+                {/* ── 수정 A: 2행 1번째 → 계좌번호 (기본 근무 시간과 위치 교환) ── */}
+                <div className="info-card">
+                  <div className="info-card-label">계좌번호</div>
+                  <input
+                    value={activeEmp.accountNumber || ''}
+                    onChange={e => updateEmp('accountNumber', e.target.value)}
+                    placeholder="은행 및 계좌번호 입력"
+                  />
                 </div>
                 <div className="info-card">
                   <div className="info-card-label">핸드폰 번호</div>
@@ -839,7 +872,7 @@ export default function Home() {
                   <div className="info-card-label">이메일</div>
                   <input value={activeEmp.email} onChange={e => updateEmp('email', e.target.value)} placeholder="example@email.com" />
                 </div>
-                {/* ── 수정 #4: 월 변경 시 자동저장 + 초기화 ── */}
+                {/* ── 월/연도 변경 ── */}
                 <div className="info-card" style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <div className="info-card-label">연도</div>
