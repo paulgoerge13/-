@@ -48,7 +48,11 @@ const EMPTY_EMP = {
 
 export default function Home() {
   const [step, setStep] = useState('branch') 
-  // [추가] 브라우저 로컬 스토리지 실시간 백업
+  const [selectedBranch, setSelectedBranch] = useState(null)
+  const [pw, setPw] = useState('')
+  const [pwError, setPwError] = useState(false)
+  const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
+   // [추가] 브라우저 로컬 스토리지 실시간 백업
   useEffect(() => {
     const saved = localStorage.getItem('payroll_backup');
     if (saved) setEmployees(JSON.parse(saved));
@@ -81,10 +85,6 @@ export default function Home() {
       loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month);
     }
   }, [activeEmpId, activeEmp?.month, activeEmp?.year]);
-  const [selectedBranch, setSelectedBranch] = useState(null)
-  const [pw, setPw] = useState('')
-  const [pwError, setPwError] = useState(false)
-  const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
   const [activeEmpId, setActiveEmpId] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null) // 삭제 확인 모달용 id
   const saveTimer = useRef(null)
