@@ -234,21 +234,19 @@ export default function Home() {
     return { totalBasic, totalWeeklyHoliday, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal }
   }
 
-  async function autoSave() {
-    if (!selectedBranch) return
-    const emp = employees.find(e => e.id === activeEmpId)
-    if (!emp || !emp.name) return
-    await doSave(emp)
-  }
+ async function autoSave() {
+  if (!selectedBranch) return;
+  const emp = employees.find(e => e.id === activeEmpId);
+  if (!emp || !emp.name) return;
 
-async function doSave(emp, status = null) {
+  // 이미 마감된 상태라면 자동으로 'saved'를 보내지 않고 현재 상태(final)를 유지합니다.
+  const targetStatus = emp.status === 'final' ? 'final' : 'saved';
+  await doSave(emp, targetStatus);
+}
+
+async function doSave(emp, status = 'saved') {
   const totals = calcTotal(emp);
-  
-  // 핵심: status 인자가 전달되지 않았다면(자동저장 시), 
-  // 기존 직원이 가지고 있던 status(이미 final이라면 final)를 유지하거나 기본값 'saved'를 사용합니다.
-  const currentStatus = status || emp.status || 'saved';
-  
- const payload = {
+  const payload = {
     branch: selectedBranch.name,
     emp_name: emp.name,
     resident_id: emp.residentId,
@@ -261,25 +259,26 @@ async function doSave(emp, status = null) {
     month: emp.month,
     work_data: emp.workData,
     special_note: emp.specialNote,
-    status: currentStatus, // 결정된 상태값 전송
+    status: status, // 여기서 받은 status('final' 또는 'saved')를 그대로 서버로 보냄
     ...totals,
-  }
- try {
+  };
+
+  try {
     await fetch('/api/save', { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
       body: JSON.stringify(payload) 
     });
-    
-    // 로컬 상태(React state)에도 반영하여 자동저장이 덮어쓰지 않게 합니다.
+
+    // 핵심: 서버 저장에 성공하면, 현재 메모리(employees)에 있는 직원의 status도 바꿔줍니다.
+    // 그래야 1.5초 뒤 자동저장이 실행될 때 이 status를 보고 덮어쓰지 않게 됩니다.
     setEmployees(prev => prev.map(e => 
-      e.id === emp.id ? { ...e, status: currentStatus } : e
+      e.id === emp.id ? { ...e, status: status, ...totals } : e
     ));
   } catch (e) { 
     console.error('저장 실패', e); 
   }
 }
-
 async function handleManualSave(status = 'saved') {
   if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return }
   
