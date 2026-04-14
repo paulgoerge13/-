@@ -47,7 +47,40 @@ const EMPTY_EMP = {
 }
 
 export default function Home() {
-  const [step, setStep] = useState('branch')
+  const [step, setStep] = useState('branch') 
+  // [추가] 브라우저 로컬 스토리지 실시간 백업
+  useEffect(() => {
+    const saved = localStorage.getItem('payroll_backup');
+    if (saved) setEmployees(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('payroll_backup', JSON.stringify(employees));
+  }, [employees]);
+  // [추가] 서버에서 특정 지점/직원/날짜의 데이터 가져오기
+  async function loadData(branchName, empName, yr, mo) {
+    try {
+      const res = await fetch(`/api/load?branch=${branchName}&name=${empName}&year=${yr}&month=${mo}`);
+      const result = await res.json();
+      if (result.success && result.data) {
+        setEmployees(prev => prev.map(e => 
+          e.id === activeEmpId ? { 
+            ...e, 
+            workData: result.data.work_data, 
+            specialNote: result.data.special_note,
+            hourlyWage: result.data.hourly_wage 
+          } : e
+        ));
+      }
+    } catch (e) { console.error("로드 실패:", e); }
+  }
+
+  // 지점, 직원, 또는 '월'이 바뀔 때마다 실행
+  useEffect(() => {
+    if (step === 'main' && selectedBranch && activeEmp?.name) {
+      loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month);
+    }
+  }, [activeEmpId, activeEmp?.month, activeEmp?.year]);
   const [selectedBranch, setSelectedBranch] = useState(null)
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState(false)
