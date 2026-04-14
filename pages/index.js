@@ -786,53 +786,53 @@ export default function Home() {
               </div>
 
               {/* 직원 정보 1행 */}
-              <div className="info-grid">
-                <div className="info-card">
-                  <div className="info-card-label">직원 이름</div>
-                  <input value={activeEmp.name} onChange={e => updateEmp('name', e.target.value)} placeholder="이름 입력" />
-                </div>
-                <div className="info-card">
-                  <div className="info-card-label">주민등록번호</div>
-                  <input value={activeEmp.residentId} onChange={e => updateEmp('residentId', e.target.value)} placeholder="000000-0000000" />
-                </div>
-                <div className="info-card">
-                  <div className="info-card-label">시급 (원)</div>
-                  <input type="number" value={activeEmp.hourlyWage} onChange={e => updateEmp('hourlyWage', Number(e.target.value))} />
-                </div>
-                {/* ── 수정 #1: 고정 근무시간 → 계좌번호 ── */}
-                <div className="info-grid-2">
+      {/* 직원 정보 1행 (4칸): 이름 | 주민번호 | 시급 | 기본 근무 시간 */}
+<div className="info-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
+  <div className="info-card">
+    <div className="info-card-label">직원 이름</div>
+    <input value={activeEmp.name} onFocus={(e) => e.target.select()} onChange={e => updateEmp('name', e.target.value)} placeholder="이름 입력" />
+  </div>
+  <div className="info-card">
+    <div className="info-card-label">주민등록번호</div>
+    <input value={activeEmp.residentId} onFocus={(e) => e.target.select()} onChange={e => updateEmp('residentId', e.target.value)} placeholder="000000-0000000" />
+  </div>
+  <div className="info-card">
+    <div className="info-card-label">시급 (원)</div>
+    <input type="number" value={activeEmp.hourlyWage} onFocus={(e) => e.target.select()} onChange={e => updateEmp('hourlyWage', Number(e.target.value))} />
+  </div>
+  <div className="info-card">
+    <div className="info-card-label">기본 근무 시간</div>
+    <div className="time-range">
+      <input
+        value={activeEmp.defaultTimeStart}
+        onFocus={(e) => e.target.select()}
+        onChange={e => updateEmp('defaultTimeStart', e.target.value)}
+        onBlur={e => handleDefaultTimeBlur('defaultTimeStart', e.target.value)}
+        placeholder="00:00"
+      />
+      <span className="time-sep">~</span>
+      <input
+        value={activeEmp.defaultTimeEnd}
+        onFocus={(e) => e.target.select()}
+        onChange={e => updateEmp('defaultTimeEnd', e.target.value)}
+        onBlur={e => handleDefaultTimeBlur('defaultTimeEnd', e.target.value)}
+        placeholder="00:00"
+      />
+    </div>
+  </div>
+</div>
+
+{/* 직원 정보 2행 (4칸): 계좌번호 | 핸드폰 | 이메일 | 연/월 선택 */}
+<div className="info-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
   <div className="info-card">
     <div className="info-card-label">계좌번호</div>
     <input
       value={activeEmp.accountNumber || ''}
-      onFocus={(e) => e.target.select()} // 클릭 시 전체 선택
+      onFocus={(e) => e.target.select()}
       onChange={e => updateEmp('accountNumber', e.target.value)}
       placeholder="은행 및 계좌번호 입력"
     />
   </div>
-</div>
-
-{/* 직원 정보 2행 - 기본 근무 시간을 아래로 내렸습니다 */}
-<div className="info-card">
-  <div className="info-card-label">기본 근무 시간</div>
-  <div className="time-range">
-    <input
-      value={activeEmp.defaultTimeStart}
-      onFocus={(e) => e.target.select()} // 클릭 시 전체 선택
-      onChange={e => updateEmp('defaultTimeStart', e.target.value)}
-      onBlur={e => handleDefaultTimeBlur('defaultTimeStart', e.target.value)}
-      placeholder="00:00"
-    />
-    <span className="time-sep">~</span>
-    <input
-      value={activeEmp.defaultTimeEnd}
-      onFocus={(e) => e.target.select()} // 클릭 시 전체 선택
-      onChange={e => updateEmp('defaultTimeEnd', e.target.value)}
-      onBlur={e => handleDefaultTimeBlur('defaultTimeEnd', e.target.value)}
-      placeholder="00:00"
-    />
-  </div>
-</div>
                 <div className="info-card">
                   <div className="info-card-label">핸드폰 번호</div>
                   <input value={activeEmp.phone} onChange={e => updateEmp('phone', e.target.value)} placeholder="010-0000-0000" />
