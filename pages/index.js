@@ -921,6 +921,7 @@ export default function Home() {
                                       onChange={e => handleTimeChange(ds, 'timeStart', e.target.value)}
                                       onBlur={e => handleTimeBlur(ds, 'timeStart', e.target.value)}
                                       placeholder="00:00"
+                                      onFocus={(e) => e.target.select()}
                                     />
                                     <span className="time-tilde">~</span>
                                     <input
@@ -929,6 +930,7 @@ export default function Home() {
                                       onChange={e => handleTimeChange(ds, 'timeEnd', e.target.value)}
                                       onBlur={e => handleTimeBlur(ds, 'timeEnd', e.target.value)}
                                       placeholder="00:00"
+                                      onFocus={(e) => e.target.select()}
                                     />
                                   </div>
 
