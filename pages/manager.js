@@ -102,14 +102,14 @@ export default function PayrollManager() {
                 <td>{fmt((r.total_overtime || 0) + (r.total_night || 0))}</td>
                 <td>{fmt((r.total_holiday || 0) + (r.total_holiday_ot_pay || 0))}</td>
                 <td style={{ fontWeight: 'bold', color: '#b8954a' }}>{fmt(r.grand_total)}원</td>
-                <td>
-                  {/* 불빛 로직: status가 'final'이면 초록, 그 외엔 노란색 */}
-                  <div style={{ 
-                    width: '14px', height: '14px', borderRadius: '50%', margin: '0 auto',
-                    background: r.status === 'final' ? '#2ecc71' : '#f1c40f',
-                    boxShadow: r.status === 'final' ? '0 0 10px #2ecc71' : '0 0 10px #f1c40f'
-                  }} title={r.status === 'final' ? '최종마감' : '작성중'} />
-                </td>
+            <td>
+  {/* 불빛 로직: status가 정확히 'final' 문자열일 때만 초록색 */}
+  <div style={{ 
+    width: '14px', height: '14px', borderRadius: '50%', margin: '0 auto',
+    background: r.status === 'final' ? '#2ecc71' : '#f1c40f',
+    boxShadow: r.status === 'final' ? '0 0 10px #2ecc71' : '0 0 10px #f1c40f'
+  }} title={r.status === 'final' ? '최종마감' : '작성중'} />
+</td>
                 <td>
                   <button onClick={() => deleteRecord(r.id, r.emp_name)} style={{ border: 'none', background: 'none', color: '#ccc', cursor: 'pointer' }}>✕</button>
                 </td>
