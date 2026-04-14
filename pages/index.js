@@ -99,10 +99,44 @@ export default function Home() {
     }
   }, [activeEmpId, activeEmp?.month, activeEmp?.year]);
 
+  // 1. 지점이 선택되거나 변경될 때, 해당 지점 전용 백업 데이터를 로컬스토리지에서 가져옴
   useEffect(() => {
-    if (employees.length > 0 && !activeEmpId) setActiveEmpId(employees[0].id)
-  }, [employees, activeEmpId])
+    if (selectedBranch) {
+      const storageKey = `payroll_backup_${selectedBranch.name}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setEmployees(parsed);
+          // 저장된 데이터가 있으면 첫 번째 직원을 활성화
+          if (parsed.length > 0) setActiveEmpId(parsed[0].id);
+        } catch (e) {
+          console.error("데이터 복구 실패", e);
+        }
+      } else {
+        // 해당 지점에 저장된 데이터가 아예 없으면 새 양식으로 시작
+        const initialEmp = [{ ...EMPTY_EMP, id: Date.now() }];
+        setEmployees(initialEmp);
+        setActiveEmpId(initialEmp[0].id);
+      }
+    }
+  }, [selectedBranch]);
 
+  // 2. 입력하는 동안 실시간으로 "현재 지점 이름"을 붙여서 로컬스토리지에 저장
+  useEffect(() => {
+    if (selectedBranch && employees.length > 0) {
+      const storageKey = `payroll_backup_${selectedBranch.name}`;
+      localStorage.setItem(storageKey, JSON.stringify(employees));
+    }
+  }, [employees, selectedBranch]);
+ const handleBranchChange = () => {
+    if (confirm('지점을 변경하시겠습니까? 현재 입력 중인 내용은 이 지점에 자동 저장됩니다.')) {
+      setStep('branch');
+      setSelectedBranch(null); // 선택된 지점을 비워서 다음 선택 시 데이터를 새로 불러오게 함
+      setPw('');
+      setPwError(false);
+    }
+  };
   function updateEmp(field, value) {
     setEmployees(prev => prev.map(e => e.id === activeEmpId ? { ...e, [field]: value } : e))
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -566,7 +600,7 @@ export default function Home() {
                   <div className="section-title">{selectedBranch?.name} 급여 계산</div>
                   <div className="section-sub">근무시간을 입력하면 급여가 자동으로 계산됩니다</div>
                 </div>
-                <button className="btn outline" onClick={() => { setStep('branch'); setEmployees([{ ...EMPTY_EMP, id: Date.now() }]); setActiveEmpId(null) }}>← 지점 변경</button>
+               <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
               </div>
 
               {/* 직원 탭 */}
