@@ -91,14 +91,13 @@ export default function Home() {
       }
     } catch (e) { console.error("데이터 로드 실패:", e); }
   }
-
+  const activeEmp = employees.find(e => e.id === activeEmpId) || employees[0]
   // [추가] 직원이나 날짜가 바뀔 때 서버 데이터 호출
   useEffect(() => {
     if (step === 'main' && selectedBranch && activeEmp?.name) {
       loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month);
     }
   }, [activeEmpId, activeEmp?.month, activeEmp?.year]);
-  const activeEmp = employees.find(e => e.id === activeEmpId) || employees[0]
 
   useEffect(() => {
     if (employees.length > 0 && !activeEmpId) setActiveEmpId(employees[0].id)
