@@ -276,7 +276,41 @@ export default function Home() {
     if (current === '평') nextType = '휴'
     else if (current === '휴') nextType = '공'
     else nextType = '평'
-    updateWorkDay(dateStr, 'type', nextType)
+
+    // ── B2: 타입 전환 시 이전 타입의 시간/급여 데이터 초기화 ──
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const existing = e.workData[dateStr] || {}
+      let resetFields = {}
+
+      if (nextType === '휴' || nextType === '공') {
+        // 평일→휴일근로 or 평일→휴무: 평일 데이터 초기화
+        resetFields = {
+          basicH: 0, restH: 0, nightH: 0, overtimeH: 0,
+          timeStart: '00:00', timeEnd: '00:00',
+        }
+      } else if (nextType === '평') {
+        // 휴일근로→평일 or 휴무→평일: 휴일 데이터 초기화
+        resetFields = {
+          holidayH: 0, holidayRestH: 0, holidayNightH: 0, holidayOtH: 0,
+          timeStart: '00:00', timeEnd: '00:00',
+        }
+      }
+
+      return {
+        ...e,
+        workData: {
+          ...e.workData,
+          [dateStr]: { ...existing, ...resetFields, type: nextType }
+        }
+      }
+    }))
+
+    // timeInputs 임시 상태도 초기화
+    setTimeInputs(prev => ({ ...prev, [dateStr]: {} }))
+
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
   function addEmployee() {
@@ -952,6 +986,7 @@ export default function Home() {
                                       className="time-input-small"
                                       value={tStart}
                                       onChange={e => handleTimeChange(ds, 'timeStart', e.target.value)}
+                                      onFocus={e => e.target.select()}
                                       onBlur={e => handleTimeBlur(ds, 'timeStart', e.target.value)}
                                       placeholder="00:00"
                                     />
@@ -960,6 +995,7 @@ export default function Home() {
                                       className="time-input-small"
                                       value={tEnd}
                                       onChange={e => handleTimeChange(ds, 'timeEnd', e.target.value)}
+                                      onFocus={e => e.target.select()}
                                       onBlur={e => handleTimeBlur(ds, 'timeEnd', e.target.value)}
                                       placeholder="00:00"
                                     />
