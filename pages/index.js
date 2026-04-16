@@ -176,25 +176,20 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
-  // ── 버그픽스: 월 변경 시 저장→초기화→로드 순서 보장 ──
+  // ── 월 변경 시 로컬스토리지 저장 후 새 월 로드 (Supabase 호출 없음) ──
   async function handleMonthChange(newMonth) {
     const emp = employees.find(e => e.id === activeEmpId) || employees[0]
-    // 1. 현재 월 데이터 먼저 저장 (workData가 있을 때)
-    if (emp && emp.name && selectedBranch) {
-      await doSaveEmp(emp, emp.status === 'final' ? 'final' : 'saved')
-    }
-    // 2. 로컬스토리지에도 즉시 반영
+    // 1. 현재 데이터 로컬스토리지에 저장
     if (selectedBranch) {
       const storageKey = `payroll_backup_${selectedBranch.name}`
-      const current = employees.map(e => e.id === (emp?.id) ? { ...e } : e)
-      localStorage.setItem(storageKey, JSON.stringify(current))
+      localStorage.setItem(storageKey, JSON.stringify(employees))
     }
-    // 3. 월 변경 + workData 초기화
+    // 2. 월 변경 + workData 초기화
     const newId = emp?.id
     setEmployees(prev => prev.map(e =>
       e.id === newId ? { ...e, month: newMonth, workData: {} } : e
     ))
-    // 4. 새 월 데이터 로드 (100ms 후 state 반영 기다림)
+    // 3. 새 월 데이터 Supabase에서 로드
     if (selectedBranch && emp?.name) {
       setTimeout(() => loadData(selectedBranch.name, emp.name, emp.year, newMonth, newId), 150)
     }
@@ -202,8 +197,9 @@ export default function Home() {
 
   async function handleYearChange(newYear) {
     const emp = employees.find(e => e.id === activeEmpId) || employees[0]
-    if (emp && emp.name && selectedBranch) {
-      await doSaveEmp(emp, emp.status === 'final' ? 'final' : 'saved')
+    if (selectedBranch) {
+      const storageKey = `payroll_backup_${selectedBranch.name}`
+      localStorage.setItem(storageKey, JSON.stringify(employees))
     }
     const newId = emp?.id
     setEmployees(prev => prev.map(e =>
@@ -374,15 +370,16 @@ export default function Home() {
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal }
   }
 
-  async function autoSave() {
+  // ── 자동저장: 로컬스토리지에만 저장 (Supabase 호출 없음) ──
+  function autoSave() {
     if (!selectedBranch) return
     const emp = employees.find(e => e.id === activeEmpId)
     if (!emp || !emp.name) return
-    const targetStatus = emp.status === 'final' ? 'final' : 'saved'
-    await doSaveEmp(emp, targetStatus)
+    const storageKey = `payroll_backup_${selectedBranch.name}`
+    localStorage.setItem(storageKey, JSON.stringify(employees))
   }
 
-  // ── 버그픽스: emp 객체를 직접 인자로 받아 stale closure 완전 방지 ──
+  // ── Supabase 저장: 임시저장/최종마감 버튼 클릭 시에만 호출 ──
   async function doSaveEmp(emp, status = 'saved') {
     if (!emp || !emp.name || !selectedBranch) return
     const totals = calcTotal(emp)
@@ -439,7 +436,11 @@ export default function Home() {
   }
 
   function handleTabSwitch(id) {
-    if (activeEmp.name) doSave(activeEmp)
+    // 탭 전환 시 로컬스토리지만 저장 (Supabase 호출 없음)
+    if (selectedBranch) {
+      const storageKey = `payroll_backup_${selectedBranch.name}`
+      localStorage.setItem(storageKey, JSON.stringify(employees))
+    }
     setActiveEmpId(id)
   }
 
