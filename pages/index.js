@@ -429,6 +429,45 @@ export default function Home() {
     await doSaveEmp(emp, status)
   }
 
+
+  // ── DB에서 해당 지점 이번달 전체 직원 데이터 불러오기 ──
+  async function loadAllEmployees(branchName) {
+    const now = new Date()
+    const yr = now.getFullYear()
+    const mo = now.getMonth() + 1
+    try {
+      const res = await fetch(`/api/load-all?branch=${encodeURIComponent(branchName)}&year=${yr}&month=${mo}`)
+      const result = await res.json()
+      if (result.success && result.data && result.data.length > 0) {
+        const loaded = result.data.map(r => ({
+          ...EMPTY_EMP,
+          id: Date.now() + Math.random(),
+          name: r.emp_name || '',
+          residentId: r.resident_id || '',
+          phone: r.phone || '',
+          email: r.email || '',
+          accountNumber: r.account_number || '',
+          empType: r.emp_type || '알바',
+          hourlyWage: r.hourly_wage || 10320,
+          scheduledHours: r.scheduled_hours || 8,
+          defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
+          defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
+          workData: r.work_data || {},
+          specialNote: r.special_note || '',
+          status: r.status || 'saved',
+          year: r.year || yr,
+          month: r.month || mo,
+        }))
+        setEmployees(loaded)
+        setActiveEmpId(loaded[0].id)
+        return true
+      }
+    } catch (e) {
+      console.error('직원 데이터 불러오기 실패:', e)
+    }
+    return false
+  }
+
   async function handleManualSave(targetStatus) {
     if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return }
     await doSave(activeEmp, targetStatus)
@@ -786,11 +825,11 @@ export default function Home() {
                 <input type="password" className="text-input" placeholder="비밀번호 입력"
                   value={pw} onChange={e => setPw(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') pw === selectedBranch.password ? (setStep('main'), setPwError(false)) : setPwError(true)
+                    if (e.key === 'Enter') { if (pw === selectedBranch.password) { setStep('main'); setPwError(false); loadAllEmployees(selectedBranch.name) } else setPwError(true) }
                   }}
                 />
                 {pwError && <p className="error-msg">비밀번호가 틀렸습니다.</p>}
-                <button className="btn full" onClick={() => pw === selectedBranch.password ? (setStep('main'), setPwError(false)) : setPwError(true)}>입장</button>
+                <button className="btn full" onClick={() => { if (pw === selectedBranch.password) { setStep('main'); setPwError(false); loadAllEmployees(selectedBranch.name) } else setPwError(true) }}>입장</button>
                 <br /><br />
                 <button className="btn outline full" onClick={() => setStep('branch')}>← 지점 재선택</button>
               </div>
