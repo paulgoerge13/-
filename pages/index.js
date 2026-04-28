@@ -3,11 +3,11 @@ import { useState, useEffect, useRef } from 'react'
 // ── 수정 #7: 서울마리나점 → 하남점 ──
 const BRANCHES = [
   { id: 'gidc',   name: '광명GIDC점',  password: 'gidc1234' },
-  { id: 'ingye',  name: '인계점',       password: 'ingye1234' },
-  { id: 'anyang', name: '안양일번가점', password: 'anyang1234' },
-  { id: 'iksan',  name: '익산점',       password: 'iksan1234' },
-  { id: 'juan',   name: '인천주안점',   password: 'juan1234' },
-  { id: 'hanam',  name: '하남점',       password: 'hanam1234' },
+  { id: 'ingye',  name: '인계점',       password: 'ingye13' },
+  { id: 'anyang', name: '안양일번가점', password: 'anyang30' },
+  { id: 'iksan',  name: '익산점',       password: 'iksan08' },
+  { id: 'juan',   name: '인천주안점',   password: 'juan00' },
+  { id: 'hanam',  name: '하남점',       password: 'hanam77' },
 ]
 
 function calcBasic(h, w)        { return Math.round(h * w) }
@@ -68,7 +68,7 @@ function calcAutoHours(startStr, endStr) {
   let end = parseTime(endStr)
   if (isNaN(start) || isNaN(end)) return null
   if (end <= start) end += 24 // 자정 넘기는 케이스
-  const raw = end - start - 1 // 휴게 1시간 차감
+  const raw = end - start // 휴게 차감 없음 (수동 입력)
   return raw > 0 ? Math.round(raw * 2) / 2 : 0
 }
 
