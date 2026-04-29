@@ -764,7 +764,7 @@ export default function Home() {
       padding: 2px 0; outline: none; margin-top: 4px; text-align: right;
     }
     .summary-manual-input:focus { border-bottom-color: #b8954a; }
-    .summary-manual-input::placeholder { color: #444; }
+    .summary-manual-input::placeholder { color: #888; }
     .summary-manual-hint { font-size: 9px; color: #555; margin-top: 2px; letter-spacing: 0.05em; }
     .summary-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
     .summary-total-label { font-size: 11px; color: #888; letter-spacing: 0.15em; }
