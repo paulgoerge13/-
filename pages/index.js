@@ -76,6 +76,7 @@ const EMPTY_EMP = {
   name: '', residentId: '', phone: '', email: '',
   accountNumber: '',
   empType: '알바',
+  useBasicCalc: false,  // 직원일 때 기본/주휴 계산기 켜기
   hourlyWage: 10320,                          // ── 수정 A: 기본 시급 변경 ──
   defaultTimeStart: '00:00', defaultTimeEnd: '00:00', // ── 수정 A: 기본 시간 00:00 ──
   workData: {}, specialNote: '',
@@ -338,7 +339,8 @@ export default function Home() {
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
       weekBasicH += emp.workData[ds]?.basicH || 0
     })
-    return { weekBasicH, weeklyHolidayPay: calcWeeklyHoliday(weekBasicH, emp.hourlyWage) }
+    const isStaffNoCalc = emp.empType === '직원' && !emp.useBasicCalc
+    return { weekBasicH, weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekBasicH, emp.hourlyWage) }
   }
 
   // ── 수정 #5: 수동 입력 고정값 + 캘린더 계산값 합산 ──
@@ -359,13 +361,14 @@ export default function Home() {
         autoHolidayNightPay += calcHolidayNight(d.holidayNightH || 0, emp.hourlyWage)
       }
     })
-    const totalBasic         = (emp.manualBasic || 0) + autoBasic
+    const isStaffNoCalc = emp.empType === '직원' && !emp.useBasicCalc
+    const totalBasic         = isStaffNoCalc ? (emp.manualBasic || 0) : (emp.manualBasic || 0) + autoBasic
     const totalOvertime      = (emp.manualOvertime || 0) + autoOvertime
     const totalNight         = (emp.manualNight || 0) + autoNight
     const totalHoliday       = (emp.manualHoliday || 0) + autoHoliday
     const totalHolidayOtPay  = (emp.manualHolidayOt || 0) + autoHolidayOtPay
     const totalHolidayNightPay = (emp.manualHolidayNight || 0) + autoHolidayNightPay
-    const totalWeeklyFinal   = (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
+    const totalWeeklyFinal   = isStaffNoCalc ? (emp.manualWeeklyHoliday || 0) : (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
     const grandTotal = totalBasic + totalWeeklyFinal + totalOvertime + totalNight + totalHoliday + totalHolidayOtPay + totalHolidayNightPay
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal }
   }
@@ -637,6 +640,14 @@ export default function Home() {
     }
     .emp-tab:hover { color: #1a1a1a; }
     .emp-tab.active { color: #1a1a1a; border-bottom-color: #b8954a; font-weight: 600; }
+    .emp-tab.staff-tab { background: #e8f5e9; border-radius: 8px 8px 0 0; }
+    .emp-tab.staff-tab.active { border-bottom-color: #4caf50; }
+    .emp-tab.alba-tab { background: #fff9e6; border-radius: 8px 8px 0 0; }
+    .emp-tab.alba-tab.active { border-bottom-color: #f6c90e; }
+    .emp-tab-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 2px; }
+    .emp-tab-badge.staff { background: #c8e6c9; color: #2e7d32; }
+    .emp-tab-badge.alba { background: #fff3cd; color: #856404; }
+    .hour-label.daytime { color: #4a90d9; }
     .emp-tab-del {
       width: 18px; height: 18px; border-radius: 50%; background: #e8e5e0;
       display: flex; align-items: center; justify-content: center;
@@ -864,20 +875,36 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 직원 탭 */}
-              <div className="emp-tabs">
-                {employees.map(emp => (
-                  <div key={emp.id} className={`emp-tab${emp.id === activeEmpId ? ' active' : ''}`} onClick={() => handleTabSwitch(emp.id)}>
-                    {emp.name || '이름 미입력'}
-                    {employees.length > 1 && (
-                      <span className="emp-tab-del" onClick={e => { e.stopPropagation(); confirmDelete(emp.id) }}>×</span>
-                    )}
-                  </div>
-                ))}
-                <div className="emp-tab-add" onClick={addEmployee} title="직원 추가">＋</div>
+              {/* 직원 탭 - 직원 왼쪽/알바 오른쪽 */}
+              <div className="emp-tabs" style={{ justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                  {/* 직원 탭 (왼쪽) */}
+                  {employees.filter(emp => emp.empType === '직원').map(emp => (
+                    <div key={emp.id} className={`emp-tab staff-tab${emp.id === activeEmpId ? ' active' : ''}`} onClick={() => handleTabSwitch(emp.id)}>
+                      <span className="emp-tab-badge staff">직</span>
+                      {emp.name || '이름 미입력'}
+                      {employees.length > 1 && (
+                        <span className="emp-tab-del" onClick={e => { e.stopPropagation(); confirmDelete(emp.id) }}>×</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                  {/* 알바 탭 (오른쪽) */}
+                  {employees.filter(emp => emp.empType !== '직원').map(emp => (
+                    <div key={emp.id} className={`emp-tab alba-tab${emp.id === activeEmpId ? ' active' : ''}`} onClick={() => handleTabSwitch(emp.id)}>
+                      <span className="emp-tab-badge alba">알</span>
+                      {emp.name || '이름 미입력'}
+                      {employees.length > 1 && (
+                        <span className="emp-tab-del" onClick={e => { e.stopPropagation(); confirmDelete(emp.id) }}>×</span>
+                      )}
+                    </div>
+                  ))}
+                  <div className="emp-tab-add" onClick={addEmployee} title="직원 추가">＋</div>
+                </div>
               </div>
 
-              {/* ── 수정 #6: 직원/알바 탭 (이름 입력 위) ── */}
+              {/* 구분 탭 */}
               <div style={{ marginBottom: 8 }}>
                 <div className="field-label" style={{ marginBottom: 6 }}>구분</div>
                 <div className="emp-type-tabs">
@@ -890,6 +917,17 @@ export default function Home() {
                     onClick={() => updateEmp('empType', '알바')}
                   >알바</button>
                 </div>
+                {activeEmp.empType === '직원' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 12, color: '#888' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!activeEmp.useBasicCalc}
+                      onChange={e => updateEmp('useBasicCalc', e.target.checked)}
+                      style={{ width: 14, height: 14, accentColor: '#b8954a' }}
+                    />
+                    기본수당 및 주휴수당 계산기 켜기
+                  </label>
+                )}
               </div>
 
               {/* 직원 정보 1행 */}
@@ -1041,11 +1079,12 @@ export default function Home() {
                                     />
                                   </div>
 
-                                  {/* ── 수정 #3: 평일 4칸 (기본/휴게/야간/연장), 휴일 4칸 ── */}
                                   {!isHolidayWork ? (
                                     <>
                                       <div className="hour-label">기본</div>
                                       {numInput(d.basicH, v => updateWorkDay(ds, 'basicH', v))}
+                                      <div className="hour-label daytime">주간 (표시만)</div>
+                                      {numInput(d.daytimeH, v => updateWorkDay(ds, 'daytimeH', v))}
                                       <div className="hour-label">휴게</div>
                                       {numInput(d.restH, v => updateWorkDay(ds, 'restH', v))}
                                       <div className="hour-label">야간</div>
@@ -1057,6 +1096,8 @@ export default function Home() {
                                     <>
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
                                       {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
+                                      <div className="hour-label" style={{color:'#e05555', opacity:0.7}}>휴일주간 (표시만)</div>
+                                      {numInput(d.holidayDaytimeH, v => updateWorkDay(ds, 'holidayDaytimeH', v))}
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일휴게</div>
                                       {numInput(d.holidayRestH, v => updateWorkDay(ds, 'holidayRestH', v))}
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일야간</div>
@@ -1073,7 +1114,11 @@ export default function Home() {
                       </div>
                       <div className="week-summary">
                         <span className="week-summary-label">주 근무 {weekBasicH}시간 · 주휴수당</span>
-                        <span className="week-summary-val">{weekBasicH >= 15 ? fmt(weeklyHolidayPay) : '미적용 (15시간 미만)'}</span>
+                        <span className="week-summary-val">
+                          {activeEmp.empType === '직원' && !activeEmp.useBasicCalc
+                            ? '직원 고정급 (계산 꺼짐)'
+                            : weekBasicH >= 15 ? fmt(weeklyHolidayPay) : '미적용 (15시간 미만)'}
+                        </span>
                       </div>
                     </div>
                   )
