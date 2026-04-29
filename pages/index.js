@@ -1083,7 +1083,7 @@ export default function Home() {
                                     <>
                                       <div className="hour-label">기본</div>
                                       {numInput(d.basicH, v => updateWorkDay(ds, 'basicH', v))}
-                                      <div className="hour-label daytime">주간 (표시만)</div>
+                                      <div className="hour-label">주간</div>
                                       {numInput(d.daytimeH, v => updateWorkDay(ds, 'daytimeH', v))}
                                       <div className="hour-label">휴게</div>
                                       {numInput(d.restH, v => updateWorkDay(ds, 'restH', v))}
@@ -1096,7 +1096,7 @@ export default function Home() {
                                     <>
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
                                       {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
-                                      <div className="hour-label" style={{color:'#e05555', opacity:0.7}}>휴일주간 (표시만)</div>
+                                      <div className="hour-label" style={{color:'#e05555'}}>휴일주간</div>
                                       {numInput(d.holidayDaytimeH, v => updateWorkDay(ds, 'holidayDaytimeH', v))}
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일휴게</div>
                                       {numInput(d.holidayRestH, v => updateWorkDay(ds, 'holidayRestH', v))}
