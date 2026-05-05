@@ -438,29 +438,47 @@ export default function Home() {
     const now = new Date()
     const yr = now.getFullYear()
     const mo = now.getMonth() + 1
+
+    function parseEmployees(data, fallbackYr, fallbackMo) {
+      return data.map(r => ({
+        ...EMPTY_EMP,
+        id: Date.now() + Math.random(),
+        name: r.emp_name || '',
+        residentId: r.resident_id || '',
+        phone: r.phone || '',
+        email: r.email || '',
+        accountNumber: r.account_number || '',
+        empType: r.emp_type || '알바',
+        hourlyWage: r.hourly_wage || 10320,
+        scheduledHours: r.scheduled_hours || 8,
+        defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
+        defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
+        workData: r.work_data || {},
+        specialNote: r.special_note || '',
+        status: r.status || 'saved',
+        year: r.year || fallbackYr,
+        month: r.month || fallbackMo,
+      }))
+    }
+
     try {
+      // 1) 현재 달 먼저 시도
       const res = await fetch(`/api/load-all?branch=${encodeURIComponent(branchName)}&year=${yr}&month=${mo}`)
       const result = await res.json()
       if (result.success && result.data && result.data.length > 0) {
-        const loaded = result.data.map(r => ({
-          ...EMPTY_EMP,
-          id: Date.now() + Math.random(),
-          name: r.emp_name || '',
-          residentId: r.resident_id || '',
-          phone: r.phone || '',
-          email: r.email || '',
-          accountNumber: r.account_number || '',
-          empType: r.emp_type || '알바',
-          hourlyWage: r.hourly_wage || 10320,
-          scheduledHours: r.scheduled_hours || 8,
-          defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
-          defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
-          workData: r.work_data || {},
-          specialNote: r.special_note || '',
-          status: r.status || 'saved',
-          year: r.year || yr,
-          month: r.month || mo,
-        }))
+        const loaded = parseEmployees(result.data, yr, mo)
+        setEmployees(loaded)
+        setActiveEmpId(loaded[0].id)
+        return true
+      }
+
+      // 2) 현재 달 데이터 없으면 이전 달 시도
+      const prevMo = mo === 1 ? 12 : mo - 1
+      const prevYr = mo === 1 ? yr - 1 : yr
+      const res2 = await fetch(`/api/load-all?branch=${encodeURIComponent(branchName)}&year=${prevYr}&month=${prevMo}`)
+      const result2 = await res2.json()
+      if (result2.success && result2.data && result2.data.length > 0) {
+        const loaded = parseEmployees(result2.data, prevYr, prevMo)
         setEmployees(loaded)
         setActiveEmpId(loaded[0].id)
         return true
