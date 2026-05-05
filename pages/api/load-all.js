@@ -19,5 +19,6 @@ export default async function handler(req, res) {
 
   if (error) return res.status(500).json({ error: error.message })
 
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
   return res.status(200).json({ success: true, data: data || [] })
 }
