@@ -370,7 +370,26 @@ export default function Home() {
     const totalHolidayNightPay = (emp.manualHolidayNight || 0) + autoHolidayNightPay
     const totalWeeklyFinal   = isStaffNoCalc ? (emp.manualWeeklyHoliday || 0) : (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
     const grandTotal = totalBasic + totalWeeklyFinal + totalOvertime + totalNight + totalHoliday + totalHolidayOtPay + totalHolidayNightPay
-    return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal }
+
+    // ── 총 시간 계산 ──
+    let hoursBasic = 0, hoursOvertime = 0, hoursNight = 0
+    let hoursHoliday = 0, hoursHolidayOt = 0, hoursHolidayNight = 0
+    Object.values(emp.workData).forEach(d => {
+      if (d.type !== '휴') {
+        hoursBasic    += d.basicH || 0
+        hoursOvertime += d.overtimeH || 0
+        hoursNight    += d.nightH || 0
+      } else {
+        hoursHoliday       += d.holidayH || 0
+        hoursHolidayOt     += d.holidayOtH || 0
+        hoursHolidayNight  += d.holidayNightH || 0
+      }
+    })
+    // 주휴시간 = 각 주 주휴수당 / 시급 * 40 / 8 역산 (또는 직접: 주휴수당합/시급)
+    const hoursWeekly = emp.hourlyWage > 0 ? Math.round((totalWeeklyFinal / emp.hourlyWage) * 10) / 10 : 0
+
+    return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
+      hoursBasic, hoursWeekly, hoursOvertime, hoursNight, hoursHoliday, hoursHolidayOt, hoursHolidayNight }
   }
 
   // ── 자동저장: 로컬스토리지에만 저장 (Supabase 호출 없음) ──
@@ -790,6 +809,17 @@ export default function Home() {
 
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
+    .summary-item-hours { font-size: 12px; color: #b8954a; font-weight: 600; margin-bottom: 4px; }
+    .summary-item-label { font-size: 10px; color: #666; letter-spacing: 0.1em; margin-bottom: 4px; cursor: pointer; text-decoration: underline dotted #555; position: relative; }
+    .summary-item-label:hover { color: #aaa; }
+    .formula-tooltip {
+      position: fixed; z-index: 9999;
+      background: #2a2a2a; border: 1px solid #3a3a3a;
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 12px; color: #e8e0d0; line-height: 1.6;
+      pointer-events: none; white-space: nowrap;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
   `
 
   return (
@@ -813,6 +843,16 @@ export default function Home() {
               <button className="btn danger" onClick={doDelete}>삭제하기</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 수식 툴팁 */}
+      {tooltip && (
+        <div
+          className="formula-tooltip"
+          style={{ top: Math.min(tooltip.y - 60, window.innerHeight - 80), left: Math.min(tooltip.x - 20, window.innerWidth - 400) }}
+        >
+          📐 {tooltip.text}
         </div>
       )}
 
@@ -1149,16 +1189,20 @@ export default function Home() {
                   <div className="summary-title">급여 내역 — 고정값 직접 입력 가능 (캘린더 자동계산액이 더해집니다)</div>
                   <div className="summary-grid">
                     {[
-                      { label: '기본수당',  total: totals.totalBasic,          manualKey: 'manualBasic' },
-                      { label: '주휴수당',  total: totals.totalWeeklyHoliday,  manualKey: 'manualWeeklyHoliday' },
-                      { label: '연장수당',  total: totals.totalOvertime,       manualKey: 'manualOvertime' },
-                      { label: '야간수당',  total: totals.totalNight,          manualKey: 'manualNight' },
-                      { label: '휴일근로',  total: totals.totalHoliday,        manualKey: 'manualHoliday' },
-                      { label: '휴일연장',  total: totals.totalHolidayOtPay,   manualKey: 'manualHolidayOt' },
-                      { label: '휴일야간',  total: totals.totalHolidayNightPay, manualKey: 'manualHolidayNight' },
-                    ].map(({ label, total, manualKey }) => (
+                      { label: '기본수당',  total: totals.totalBasic,           manualKey: 'manualBasic',         hours: totals.hoursBasic,       formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBasic}시간 = ${fmt(totals.totalBasic)}` },
+                      { label: '주휴수당',  total: totals.totalWeeklyHoliday,   manualKey: 'manualWeeklyHoliday', hours: totals.hoursWeekly,      formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × (주근무시간/40) × 8 = ${fmt(totals.totalWeeklyHoliday)}` },
+                      { label: '연장수당',  total: totals.totalOvertime,        manualKey: 'manualOvertime',      hours: totals.hoursOvertime,    formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 1.5 × ${totals.hoursOvertime}시간 = ${fmt(totals.totalOvertime)}` },
+                      { label: '야간수당',  total: totals.totalNight,           manualKey: 'manualNight',         hours: totals.hoursNight,       formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 0.5 × ${totals.hoursNight}시간 = ${fmt(totals.totalNight)}` },
+                      { label: '휴일근로',  total: totals.totalHoliday,         manualKey: 'manualHoliday',       hours: totals.hoursHoliday,     formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 1.5 × ${totals.hoursHoliday}시간 = ${fmt(totals.totalHoliday)}` },
+                      { label: '휴일연장',  total: totals.totalHolidayOtPay,    manualKey: 'manualHolidayOt',     hours: totals.hoursHolidayOt,   formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 2.0 × ${totals.hoursHolidayOt}시간 = ${fmt(totals.totalHolidayOtPay)}` },
+                      { label: '휴일야간',  total: totals.totalHolidayNightPay, manualKey: 'manualHolidayNight',  hours: totals.hoursHolidayNight, formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 0.5 × ${totals.hoursHolidayNight}시간 = ${fmt(totals.totalHolidayNightPay)}` },
+                    ].map(({ label, total, manualKey, hours, formula }) => (
                       <div key={label}>
-                        <div className="summary-item-label">{label}</div>
+                        {hours > 0 && <div className="summary-item-hours">{hours}시간</div>}
+                        <div
+                          className="summary-item-label"
+                          onClick={e => setTooltip(tooltip?.label === label ? null : { label, text: formula, x: e.clientX, y: e.clientY })}
+                        >{label} ⓘ</div>
                         <div className="summary-item-val">{fmt(total)}</div>
                         <input
                           type="number"
