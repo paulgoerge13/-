@@ -813,12 +813,14 @@ export default function Home() {
     .summary-item-label { font-size: 10px; color: #666; letter-spacing: 0.1em; margin-bottom: 4px; cursor: pointer; text-decoration: underline dotted #555; position: relative; }
     .summary-item-label:hover { color: #aaa; }
     .formula-tooltip {
-      position: fixed; z-index: 9999;
+      display: block;
       background: #2a2a2a; border: 1px solid #3a3a3a;
-      border-radius: 8px; padding: 10px 14px;
-      font-size: 12px; color: #e8e0d0; line-height: 1.6;
-      pointer-events: none; white-space: nowrap;
+      border-radius: 8px; padding: 8px 12px;
+      font-size: 11px; color: #e8e0d0; line-height: 1.6;
+      white-space: normal; word-break: keep-all;
       box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      margin-top: 6px; margin-bottom: 6px;
+      grid-column: 1 / -1;
     }
   `
 
@@ -847,14 +849,7 @@ export default function Home() {
       )}
 
       {/* 수식 툴팁 */}
-      {tooltip && (
-        <div
-          className="formula-tooltip"
-          style={{ top: Math.max(20, tooltip.y - 70), left: Math.max(10, tooltip.x - 20) }}
-        >
-          📐 {tooltip.text}
-        </div>
-      )}
+
 
       <div className="wrap">
         <header className="header">
@@ -1201,9 +1196,12 @@ export default function Home() {
                         {hours > 0 && <div className="summary-item-hours">{hours}시간</div>}
                         <div
                           className="summary-item-label"
-                          onClick={e => setTooltip(tooltip?.label === label ? null : { label, text: formula, x: e.clientX, y: e.clientY })}
+                          onClick={() => setTooltipInfo(tooltipInfo && tooltipInfo.label === label ? null : { label, text: formula })}
                         >{label} ⓘ</div>
                         <div className="summary-item-val">{fmt(total)}</div>
+                        {tooltipInfo && tooltipInfo.label === label && (
+                          <div className="formula-tooltip">📐 {tooltipInfo.text}</div>
+                        )}
                         <input
                           type="number"
                           className="summary-manual-input"
