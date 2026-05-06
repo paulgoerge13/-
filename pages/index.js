@@ -93,6 +93,7 @@ export default function Home() {
   const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
   const [activeEmpId, setActiveEmpId] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [tooltipInfo, setTooltipInfo] = useState(null)
   // ── 수정 #2: 시간 입력 임시 상태 (셀별) ──
   const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
   const saveTimer = useRef(null)
