@@ -850,7 +850,7 @@ export default function Home() {
       {tooltip && (
         <div
           className="formula-tooltip"
-          style={{ top: Math.min(tooltip.y - 60, window.innerHeight - 80), left: Math.min(tooltip.x - 20, window.innerWidth - 400) }}
+          style={{ top: Math.max(20, tooltip.y - 70), left: Math.max(10, tooltip.x - 20) }}
         >
           📐 {tooltip.text}
         </div>
