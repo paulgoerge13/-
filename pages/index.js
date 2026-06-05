@@ -686,7 +686,7 @@ export default function Home() {
         weekRegH   += (d.daytimeH || 0) + (d.nightH || 0) // 주휴 산정용 소정근로(주간+야간, 휴일 제외)
       }
     })
-    const weekWorkH = weekDayH + weekNightH + weekOtH + weekHolidayH // 휴게 제외 (휴일 포함)
+    const weekWorkH = weekDayH + weekNightH + weekHolidayH // 휴게·연장 제외(연장은 주간/야간 안에 포함됨), 휴일 포함
     const isStaffNoCalc = emp.empType === '직원' // 직원은 기본급(시급×209)에 주휴 포함 → 주휴 별도계산 안 함
     // 주휴수당: 소정근로(주간+야간) 시간 기준으로 계산
     return {
@@ -741,8 +741,9 @@ export default function Home() {
     })
     // 휴일근무 시간(주간+야간) — 휴일근로수당(×1.5) 산정 기준
     const hoursHolidayWork = mHolidayDayH + mHolidayNightH
-    // 총 근로시간: 일반(주간+야간+연장) + 휴일(주간+야간+연장), 휴게 제외
-    const hoursWork = hoursDay + hoursNight + hoursOvertime + hoursHolidayWork + mHolidayOtH
+    // 총 근로시간: 일반(주간+야간) + 휴일(주간+야간), 휴게 제외.
+    //   연장은 주간/야간 안에 포함된 시간이라 합계에 또 더하지 않는다.
+    const hoursWork = hoursDay + hoursNight + hoursHolidayWork
 
     const autoOvertime        = calcOvertime(mOtH, emp.hourlyWage)
     const autoNight           = calcNight(mNightH, emp.hourlyWage)
@@ -2003,10 +2004,11 @@ export default function Home() {
                           const afterResign = cellDate && resignD && cellDate > resignD
                           const outOfEmp = beforeHire || afterResign
                           const noInput = isDayOff || isAnnual || isAbsent || outOfEmp
-                          // ── 하루 총 근무시간 (휴게 제외): 주간+야간+연장 (휴일이면 휴일주간+휴일야간+휴일연장) ──
+                          // ── 하루 총 근무시간 (휴게 제외): 주간+야간 (휴일이면 휴일주간+휴일야간) ──
+                          //   연장은 주간/야간 안에 포함된 시간(초과분 표시)이라 합계에 또 더하지 않는다.
                           const dayTotal = isHolidayWork
-                            ? (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
-                            : (d.daytimeH || 0) + (d.nightH || 0) + (d.overtimeH || 0)
+                            ? (d.holidayDaytimeH || 0) + (d.holidayNightH || 0)
+                            : (d.daytimeH || 0) + (d.nightH || 0)
 
                           // ── 수정 #2: 임시 입력 상태 우선 표시 ──
                           const tStart = timeInputs[ds]?.start !== undefined ? timeInputs[ds].start : (d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart)
