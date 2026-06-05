@@ -876,8 +876,8 @@ export default function Home() {
     .main { flex: 1; padding: 48px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
     @media (max-width: 640px) { .header { padding: 16px 20px; } .main { padding: 28px 16px; } }
 
-    .page-title { font-family: 'Playfair Display', serif; font-size: 30px; margin-bottom: 8px; }
-    .page-sub { font-size: 13px; color: #999; letter-spacing: 0.05em; margin-bottom: 48px; }
+    .page-title { font-family: 'Playfair Display', serif; font-size: 34px; margin-bottom: 10px; }
+    .page-sub { font-size: 15px; color: #999; letter-spacing: 0.04em; margin-bottom: 48px; }
     .branch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 900px; margin: 0 auto; }
     @media (max-width: 640px) { .branch-grid { grid-template-columns: repeat(2, 1fr); } }
     .branch-card {
@@ -890,8 +890,8 @@ export default function Home() {
     }
     .branch-card:hover { border-color: #d4b87a; box-shadow: 0 8px 32px rgba(184,149,74,0.12); transform: translateY(-2px); }
     .branch-card:hover::after { transform: scaleX(1); }
-    .branch-num { font-size: 11px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 16px; font-weight: 500; }
-    .branch-name { font-size: 18px; font-weight: 600; color: #1a1a1a; }
+    .branch-num { font-size: 12px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 16px; font-weight: 500; }
+    .branch-name { font-size: 21px; font-weight: 600; color: #1a1a1a; }
 
     .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 60vh; }
     .login-box {
@@ -911,8 +911,8 @@ export default function Home() {
 
     .btn {
       background: #1a1a1a; color: #fff; border: none; border-radius: 8px;
-      padding: 11px 24px; font-size: 12px; font-weight: 600; cursor: pointer;
-      letter-spacing: 0.1em; font-family: 'DM Sans', sans-serif; transition: all 0.2s; white-space: nowrap;
+      padding: 12px 26px; font-size: 14px; font-weight: 600; cursor: pointer;
+      letter-spacing: 0.08em; font-family: 'DM Sans', sans-serif; transition: all 0.2s; white-space: nowrap;
     }
     .btn:hover { background: #333; }
     .btn.outline { background: #fff; color: #1a1a1a; border: 1px solid #d0ccc5; }
@@ -925,14 +925,14 @@ export default function Home() {
     .error-msg { font-size: 12px; color: #e05555; margin-bottom: 12px; }
 
     .section-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
-    .section-title { font-family: 'Playfair Display', serif; font-size: 22px; }
-    .section-sub { font-size: 12px; color: #999; margin-top: 4px; }
+    .section-title { font-family: 'Playfair Display', serif; font-size: 26px; }
+    .section-sub { font-size: 13px; color: #999; margin-top: 5px; }
 
     /* ── 수정 #6: 직원/알바 탭 스타일 ── */
     .emp-type-tabs { display: flex; gap: 0; margin-bottom: 10px; border-radius: 8px; overflow: hidden; border: 1.5px solid #d0ccc5; width: fit-content; }
     .emp-type-tab {
-      padding: 6px 18px; font-size: 12px; font-weight: 600; cursor: pointer;
-      background: #fff; color: #999; transition: all 0.15s; letter-spacing: 0.08em;
+      padding: 8px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
+      background: #fff; color: #999; transition: all 0.15s; letter-spacing: 0.06em;
       border: none; font-family: 'DM Sans', sans-serif;
     }
     .emp-type-tab.active { background: #1a1a1a; color: #fff; }
@@ -940,7 +940,7 @@ export default function Home() {
 
     .emp-tabs { display: flex; align-items: center; border-bottom: 2px solid #ebe9e4; margin-bottom: 28px; overflow-x: auto; }
     .emp-tab {
-      padding: 10px 20px; font-size: 13px; font-weight: 500; cursor: pointer;
+      padding: 12px 22px; font-size: 15px; font-weight: 500; cursor: pointer;
       border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap;
       color: #999; transition: all 0.15s; display: flex; align-items: center; gap: 8px;
     }
@@ -981,31 +981,31 @@ export default function Home() {
     .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
     .info-grid-2 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
     @media (max-width: 900px) { .info-grid, .info-grid-2 { grid-template-columns: repeat(2, 1fr); } }
-    .info-card { background: #fff; border: 1px solid #d0ccc5; border-radius: 10px; padding: 14px 16px; }
-    .info-card-label { font-size: 10px; letter-spacing: 0.15em; color: #999; margin-bottom: 8px; font-weight: 500; }
+    .info-card { background: #fff; border: 1px solid #d0ccc5; border-radius: 10px; padding: 16px 18px; }
+    .info-card-label { font-size: 12px; letter-spacing: 0.1em; color: #888; margin-bottom: 10px; font-weight: 500; }
     .info-card input, .info-card select {
       width: 100%; background: transparent; border: none;
-      border-bottom: 1.5px solid #d0ccc5; padding: 4px 0;
-      font-size: 14px; font-weight: 600; color: #1a1a1a;
+      border-bottom: 1.5px solid #d0ccc5; padding: 5px 0;
+      font-size: 16px; font-weight: 600; color: #1a1a1a;
       font-family: 'DM Sans', sans-serif; outline: none;
     }
     .info-card input:focus, .info-card select:focus { border-bottom-color: #b8954a; }
     .time-range { display: flex; align-items: center; gap: 6px; }
-    .time-sep { font-size: 12px; color: #bbb; flex-shrink: 0; }
+    .time-sep { font-size: 14px; color: #bbb; flex-shrink: 0; }
 
     .note-row { margin-bottom: 24px; }
     .note-input {
       width: 100%; background: #fff; border: 1.5px solid #d0ccc5;
-      border-radius: 8px; padding: 12px 16px; font-size: 14px; color: #1a1a1a;
+      border-radius: 8px; padding: 13px 16px; font-size: 15px; color: #1a1a1a;
       font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
     }
     .note-input:focus { border-color: #b8954a; }
     .note-input::placeholder { color: #bbb; }
 
     .cal-wrap { background: #fff; border: 1px solid #d0ccc5; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
-    .cal-week-header { display: grid; grid-template-columns: 56px repeat(7, 1fr); background: #f8f7f4; border-bottom: 1px solid #ebe9e4; }
+    .cal-week-header { display: grid; grid-template-columns: 60px repeat(7, 1fr); background: #f8f7f4; border-bottom: 1px solid #ebe9e4; }
     .cal-week-th {
-      padding: 10px 4px; font-size: 10px; letter-spacing: 0.12em; color: #999;
+      padding: 14px 4px; font-size: 13px; letter-spacing: 0.1em; color: #777;
       font-weight: 600; text-align: center; cursor: pointer; transition: background 0.15s;
       user-select: none;
     }
@@ -1014,24 +1014,24 @@ export default function Home() {
 
     .week-block { border-bottom: 1px solid #f0ede8; }
     .week-block:last-child { border-bottom: none; }
-    .week-row { display: grid; grid-template-columns: 56px repeat(7, 1fr); }
-    .week-label { padding: 10px 0 10px 12px; font-size: 10px; color: #bbb; font-weight: 600; display: flex; align-items: flex-start; padding-top: 14px; }
+    .week-row { display: grid; grid-template-columns: 60px repeat(7, 1fr); }
+    .week-label { padding: 10px 0 10px 12px; font-size: 12px; color: #aaa; font-weight: 600; display: flex; align-items: flex-start; padding-top: 16px; }
 
     /* ── 수정 #3: 칸이 4개로 늘어 min-height 증가 ── */
-    .day-cell { padding: 6px 3px; border-left: 1px solid #f0ede8; min-height: 160px; position: relative; transition: background 0.2s; }
+    .day-cell { padding: 10px 7px; border-left: 1px solid #f0ede8; min-height: 200px; position: relative; transition: background 0.2s; }
     .day-cell.empty { background: #fafaf9; }
     .day-cell.is-holiday { background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); }
     .day-cell.is-off {
       background: linear-gradient(160deg, #f0f0f0 0%, #e6e6e6 100%);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
-    .off-text { font-size: 16px; font-weight: 800; color: #999; letter-spacing: 0.1em; margin-top: 10px; }
+    .off-text { font-size: 18px; font-weight: 800; color: #999; letter-spacing: 0.1em; margin-top: 10px; }
 
     .day-date {
-      font-size: 11px; font-weight: 600; color: #1a1a1a; cursor: pointer;
-      width: 22px; height: 22px; border-radius: 50%;
+      font-size: 15px; font-weight: 600; color: #1a1a1a; cursor: pointer;
+      width: 28px; height: 28px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 4px; transition: all 0.15s;
+      margin: 0 auto 8px; transition: all 0.15s;
     }
     .day-date:hover { background: #f0ede8; }
     .day-date.holiday-type { background: #ffe0e0; color: #e05555; }
@@ -1041,53 +1041,53 @@ export default function Home() {
     .day-date.annual-type:hover { background: #c3ddfb; }
 
     .day-total {
-      margin-top: 6px; padding-top: 5px; border-top: 1px dashed #e6e3dd;
-      font-size: 10px; font-weight: 700; color: #b8954a; text-align: center; letter-spacing: 0.04em;
+      margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e6e3dd;
+      font-size: 14px; font-weight: 700; color: #b8954a; text-align: center; letter-spacing: 0.03em;
     }
 
-    .hour-label { font-size: 9px; color: #bbb; text-align: center; margin-bottom: 1px; letter-spacing: 0.06em; }
+    .hour-label { font-size: 11px; color: #aaa; text-align: center; margin-bottom: 2px; letter-spacing: 0.04em; }
     .hour-input {
       width: 100%; border: none; border-bottom: 1px solid #ebe9e4;
-      background: transparent; font-size: 11px; color: #1a1a1a;
-      font-family: 'DM Sans', sans-serif; padding: 2px; outline: none; text-align: center; margin-bottom: 3px;
+      background: transparent; font-size: 15px; font-weight: 500; color: #1a1a1a;
+      font-family: 'DM Sans', sans-serif; padding: 4px 2px; outline: none; text-align: center; margin-bottom: 6px;
     }
     .hour-input:focus { border-bottom-color: #b8954a; }
     .time-input-small {
       width: 100%; border: none; border-bottom: 1px solid #ebe9e4;
-      background: transparent; font-size: 10px; color: #888;
-      font-family: 'DM Sans', sans-serif; padding: 2px; outline: none; text-align: center;
+      background: transparent; font-size: 13px; color: #777;
+      font-family: 'DM Sans', sans-serif; padding: 4px 2px; outline: none; text-align: center;
     }
     .time-input-small:focus { border-bottom-color: #b8954a; }
-    .time-row { display: flex; gap: 2px; align-items: center; margin-bottom: 4px; }
-    .time-tilde { font-size: 9px; color: #ccc; }
+    .time-row { display: flex; gap: 3px; align-items: center; margin-bottom: 8px; }
+    .time-tilde { font-size: 11px; color: #ccc; }
 
-    .week-summary { background: #faf9f6; border-top: 1px solid #f0ede8; padding: 7px 12px; display: flex; justify-content: space-between; }
-    .week-summary-label { font-size: 11px; color: #999; }
-    .week-summary-val { font-size: 11px; font-weight: 600; color: #b8954a; }
+    .week-summary { background: #faf9f6; border-top: 1px solid #f0ede8; padding: 11px 14px; display: flex; justify-content: space-between; }
+    .week-summary-label { font-size: 13px; color: #888; }
+    .week-summary-val { font-size: 13px; font-weight: 600; color: #b8954a; }
 
     /* ── 급여 내역 (읽기 전용, 자동계산) ── */
-    .summary-card { background: #1a1a1a; border-radius: 16px; padding: 28px; color: #fff; margin-bottom: 20px; }
-    .summary-title { font-size: 11px; letter-spacing: 0.15em; color: #999; margin-bottom: 18px; }
+    .summary-card { background: #1a1a1a; border-radius: 16px; padding: 30px 32px; color: #fff; margin-bottom: 20px; }
+    .summary-title { font-size: 13px; letter-spacing: 0.12em; color: #aaa; margin-bottom: 20px; }
     .summary-list { display: flex; flex-direction: column; }
     .summary-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 14px 0; border-bottom: 1px solid #2a2a2a;
+      padding: 16px 0; border-bottom: 1px solid #2a2a2a;
     }
-    .summary-row-left { display: flex; flex-direction: column; gap: 3px; }
-    .summary-row-label { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
-    .summary-row-desc { font-size: 11px; color: #888; letter-spacing: 0.02em; }
-    .summary-row-val { font-size: 17px; font-weight: 600; color: #e8e0d0; white-space: nowrap; }
-    .summary-row-val .won { font-size: 12px; color: #999; margin-left: 2px; font-weight: 400; }
+    .summary-row-left { display: flex; flex-direction: column; gap: 4px; }
+    .summary-row-label { font-size: 17px; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
+    .summary-row-desc { font-size: 12px; color: #999; letter-spacing: 0.02em; }
+    .summary-row-val { font-size: 19px; font-weight: 600; color: #e8e0d0; white-space: nowrap; }
+    .summary-row-val .won { font-size: 13px; color: #999; margin-left: 2px; font-weight: 400; }
     .summary-total-row {
       display: flex; justify-content: space-between; align-items: center;
-      margin-top: 20px; padding-top: 18px; border-top: 2px solid #b8954a;
+      margin-top: 22px; padding-top: 20px; border-top: 2px solid #b8954a;
     }
-    .summary-total-label { font-size: 13px; color: #ccc; letter-spacing: 0.1em; font-weight: 500; }
-    .summary-total-val { font-family: 'Playfair Display', serif; font-size: 30px; color: #b8954a; font-weight: 600; }
-    .summary-total-val .won-big { font-size: 18px; margin-left: 3px; }
+    .summary-total-label { font-size: 15px; color: #ddd; letter-spacing: 0.08em; font-weight: 500; }
+    .summary-total-val { font-family: 'Playfair Display', serif; font-size: 34px; color: #b8954a; font-weight: 600; }
+    .summary-total-val .won-big { font-size: 20px; margin-left: 3px; }
 
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
-    .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
+    .autosave-hint { font-size: 12px; color: #bbb; align-self: center; }
   `
 
   return (
