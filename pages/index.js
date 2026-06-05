@@ -104,26 +104,45 @@ function netSplit(startStr, endStr, rest) {
   return { day, night }
 }
 
-// ── 주간/야간 자동 재계산 보정 ──
-// 출근~퇴근 시간이 저장돼 있으면 그 시간이 곧 권위 기준이므로, 주간/야간을
-// 항상 시간(+휴게)으로 다시 계산해 옛/잘못된 분리값을 바로잡음.
-// 예: 21:30~06:30 + 휴게1 → 야간(22:00~06:00)8 - 휴게1 = 7, 주간1.
-// 안전장치: 그 날에 시간이 직접 저장돼 있을 때만 동작(시간 없이 수동 입력한 시간은 보존),
-// 시작=종료(0시간)면 손대지 않음. 멱등(idempotent) — 여러 번 돌려도 결과 동일.
+// ── 주간/야간 보정 (보수적: 수동 입력값은 절대 안 건드림) ──
+// 매니저가 직접 넣은 주간/야간 값을 시간 기준으로 덮어쓰면 안 됨(예: 박태주 5/16 주간8).
+// 그래서 "명백히 비었거나(0/0) 물리적으로 불가능하거나 휴게 미반영"인 경우에만 보정한다.
+// 멱등(idempotent) — 여러 번 돌려도 결과 동일.
 function fixRestDeduction(d) {
   if (!d || typeof d !== 'object') return d
   const type = d.type || '평'
   if (type === '공' || type === '연') return d // 휴무·연차는 시간 없음
-  if (!d.timeStart || !d.timeEnd) return d      // 시간이 직접 저장된 날만 보정 (수동 입력값 보존)
+  if (!d.timeStart || !d.timeEnd) return d      // 시간이 직접 저장된 날만 대상
   const gross = calcDayNightHours(d.timeStart, d.timeEnd)
   if (!gross || gross.total <= 0) return d       // 0시간(시작=종료)이면 손대지 않음
+
   const isHol = type === '휴'
-  const rest = isHol ? (d.holidayRestH || 0) : (d.restH || 0)
-  const net = netSplit(d.timeStart, d.timeEnd, rest)
-  if (!net) return d
-  return isHol
-    ? { ...d, holidayDaytimeH: net.day, holidayNightH: net.night }
-    : { ...d, daytimeH: net.day, nightH: net.night }
+  const dayKey   = isHol ? 'holidayDaytimeH' : 'daytimeH'
+  const nightKey = isHol ? 'holidayNightH'   : 'nightH'
+  const restKey  = isHol ? 'holidayRestH'    : 'restH'
+  const sDay   = d[dayKey]   || 0
+  const sNight = d[nightKey] || 0
+  const rest   = d[restKey]  || 0
+  const storedTotal = sDay + sNight
+  const netTotal = Math.max(0, gross.total - rest)
+
+  // (a) 주간·야간이 모두 비어있음(0/0) → 입력 누락. 시간 기준으로 자동 채움.
+  // (b) 저장 시간이 실제 근무시간(출근~퇴근)보다 큼 → 물리적으로 불가능한 깨진 값. 재계산.
+  if ((sDay === 0 && sNight === 0) || storedTotal > gross.total + 0.001) {
+    const net = netSplit(d.timeStart, d.timeEnd, rest)
+    if (!net) return d
+    return { ...d, [dayKey]: net.day, [nightKey]: net.night }
+  }
+  // (c) 값은 있는데 휴게가 아직 안 빠진 경우 → "입력된 분리값"에서 휴게만 차감(야간 먼저).
+  //     시간 기준으로 다시 쪼개지 않으므로 매니저가 넣은 주간/야간 비율은 보존됨.
+  if (rest > 0 && storedTotal > netTotal + 0.001) {
+    const night2 = Math.max(0, sNight - rest)
+    const leftover = Math.max(0, rest - sNight)
+    const day2 = Math.max(0, sDay - leftover)
+    return { ...d, [dayKey]: day2, [nightKey]: night2 }
+  }
+  // (d) 그 외(수동 입력값 포함) → 절대 건드리지 않음.
+  return d
 }
 
 // ── 구버전 데이터 마이그레이션 ──
