@@ -534,9 +534,10 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
-  function addEmployee() {
+  function addEmployee(empType = '알바') {
     const newEmp = {
       ...EMPTY_EMP, id: Date.now(),
+      empType,
       year: activeEmp.year, month: activeEmp.month,
       hourlyWage: activeEmp.hourlyWage,
       defaultTimeStart: activeEmp.defaultTimeStart,
@@ -578,7 +579,7 @@ export default function Home() {
       }
     })
     const weekWorkH = weekDayH + weekNightH + weekOtH // 휴게 제외
-    const isStaffNoCalc = emp.empType === '직원' && !emp.useBasicCalc
+    const isStaffNoCalc = emp.empType === '직원' // 직원은 기본급(시급×209)에 주휴 포함 → 주휴 별도계산 안 함
     // 주휴수당: 소정근로(주간+야간) 시간 기준으로 계산
     return {
       weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH,
@@ -630,7 +631,7 @@ export default function Home() {
     const autoHolidayNightPay = calcHolidayNight(mHolidayNightH, emp.hourlyWage)
 
     const isStaff = emp.empType === '직원'
-    const isStaffNoCalc = isStaff && !emp.useBasicCalc
+    const isStaffNoCalc = isStaff // 직원은 기본급(시급×209)에 주휴 포함
     // ── 기본수당: 직원 = 시급 × 209 고정 / 알바 = 실제 근무(주간+야간) × 시급 ──
     const hoursBaseAlba = mDayH + mNightH
     const totalBasic           = isStaff
@@ -791,7 +792,7 @@ export default function Home() {
     setActiveEmpId(id)
   }
 
-  function fmt(n) { return Math.round(n || 0).toLocaleString('ko-KR') + '원' }
+  function fmt(n) { return Math.round(n || 0).toLocaleString('ko-KR') }
 
   function numInput(val, onChange) {
     return (
@@ -1253,14 +1254,14 @@ export default function Home() {
     .emp-tab-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
     .emp-tab:hover { color: #1a1a1a; }
     .emp-tab.active { color: #1a1a1a; border-bottom-color: #b8954a; font-weight: 600; }
-    .emp-tab.staff-tab { background: #e8f5e9; border-radius: 8px 8px 0 0; }
-    .emp-tab.staff-tab.active { border-bottom-color: #4caf50; }
-    .emp-tab.alba-tab { background: #fff9e6; border-radius: 8px 8px 0 0; }
-    .emp-tab.alba-tab.active { border-bottom-color: #f6c90e; }
+    .emp-tab.staff-tab { background: #f1efe9; border-radius: 8px 8px 0 0; }
+    .emp-tab.staff-tab.active { background: #faf8f3; border-bottom-color: #b8954a; }
+    .emp-tab.alba-tab { background: #f6f1e7; border-radius: 8px 8px 0 0; }
+    .emp-tab.alba-tab.active { background: #faf8f3; border-bottom-color: #b8954a; }
     .emp-tab-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 2px; }
-    .emp-tab-badge.staff { background: #c8e6c9; color: #2e7d32; }
-    .emp-tab-badge.alba { background: #fff3cd; color: #856404; }
-    .hour-label.daytime { color: #4a90d9; }
+    .emp-tab-badge.staff { background: #e3dfd5; color: #6b6253; }
+    .emp-tab-badge.alba { background: #ece0c9; color: #9c7f44; }
+    .hour-label.daytime { color: #8a8378; }
     .emp-tab-del {
       width: 18px; height: 18px; border-radius: 50%; background: #e8e5e0;
       display: flex; align-items: center; justify-content: center;
@@ -1308,6 +1309,26 @@ export default function Home() {
     }
     .note-input:focus { border-color: #b8954a; }
     .note-input::placeholder { color: #bbb; }
+
+    /* ── 지점별 인건비 총금액 카드 ── */
+    .branch-cost-card {
+      background: linear-gradient(135deg, #1f1d1a 0%, #2e2a24 100%);
+      border-radius: 14px; padding: 20px 24px; margin-bottom: 24px;
+      box-shadow: 0 8px 24px rgba(26,24,20,0.12);
+    }
+    .branch-cost-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
+    .branch-cost-title { font-size: 14px; font-weight: 700; color: #e7c98a; letter-spacing: 0.04em; }
+    .branch-cost-sub { font-size: 12px; color: #a39c90; letter-spacing: 0.02em; }
+    .branch-cost-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 600px) { .branch-cost-grid { grid-template-columns: 1fr; } }
+    .branch-cost-item {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(231,201,138,0.18);
+      border-radius: 10px; padding: 14px 18px;
+    }
+    .bc-label { font-size: 11px; color: #b3aa9b; letter-spacing: 0.06em; margin-bottom: 6px; }
+    .bc-val { font-family: 'Pretendard', sans-serif; font-size: 26px; font-weight: 700; color: #fff; line-height: 1; }
+    .bc-val.net { color: #e7c98a; }
+    .bc-val .won { font-size: 14px; font-weight: 500; margin-left: 2px; color: #c9c0b0; }
 
     /* ── 월 합계 요약 박스 ── */
     .month-stat-box { background: #fff; border: 1px solid #e6e3dd; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
@@ -1387,7 +1408,7 @@ export default function Home() {
     }
     .day-total.is-zero { color: #c4c0b8; font-weight: 600; }
 
-    .hour-label { font-size: 11px; color: #aaa; text-align: center; margin-bottom: 2px; letter-spacing: 0.04em; }
+    .hour-label { font-size: 11px; color: #8a8378; font-weight: 500; text-align: center; margin-bottom: 2px; letter-spacing: 0.04em; }
     .hour-input {
       width: 100%; border: none; border-bottom: 1px solid #ebe9e4;
       background: transparent; font-size: 15px; font-weight: 500; color: #1a1a1a;
@@ -1425,7 +1446,7 @@ export default function Home() {
       margin-top: 22px; padding-top: 20px; border-top: 2px solid #b8954a;
     }
     .summary-total-label { font-size: 15px; color: #ddd; letter-spacing: 0.08em; font-weight: 500; }
-    .summary-total-val { font-family: 'Playfair Display', serif; font-size: 34px; color: #b8954a; font-weight: 600; }
+    .summary-total-val { font-family: 'Pretendard', sans-serif; font-size: 32px; color: #b8954a; font-weight: 700; letter-spacing: -0.01em; }
     .summary-total-val .won-big { font-size: 20px; margin-left: 3px; }
 
     /* ── 공제 내역 & 실수령액 ── */
@@ -1437,7 +1458,7 @@ export default function Home() {
       background: linear-gradient(135deg, #b8954a 0%, #9c7d36 100%);
     }
     .net-pay-label { font-size: 17px; color: #fff; letter-spacing: 0.06em; font-weight: 600; }
-    .net-pay-val { font-family: 'Playfair Display', serif; font-size: 36px; color: #fff; font-weight: 600; }
+    .net-pay-val { font-family: 'Pretendard', sans-serif; font-size: 34px; color: #fff; font-weight: 700; letter-spacing: -0.01em; }
     .net-pay-val .won-big { font-size: 20px; margin-left: 3px; }
 
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
@@ -1596,6 +1617,33 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* ── 지점별 인건비 총금액 ── */}
+              {(() => {
+                const totalsList = employees.map(e => calcTotal(e))
+                const branchGross = totalsList.reduce((s, t) => s + (t.grossPay || 0), 0)
+                const branchNet   = totalsList.reduce((s, t) => s + (t.netPay || 0), 0)
+                const staffCount  = employees.filter(e => e.empType === '직원').length
+                const albaCount   = employees.length - staffCount
+                return (
+                  <div className="branch-cost-card">
+                    <div className="branch-cost-head">
+                      <span className="branch-cost-title">{branch} · {activeEmp.year}년 {activeEmp.month}월 인건비 총금액</span>
+                      <span className="branch-cost-sub">직원 {staffCount}명 · 알바 {albaCount}명 (총 {employees.length}명)</span>
+                    </div>
+                    <div className="branch-cost-grid">
+                      <div className="branch-cost-item">
+                        <div className="bc-label">지급액 합계 (식대 포함)</div>
+                        <div className="bc-val">{fmt(branchGross)}<span className="won">원</span></div>
+                      </div>
+                      <div className="branch-cost-item">
+                        <div className="bc-label">실지급 합계 (공제 후)</div>
+                        <div className="bc-val net">{fmt(branchNet)}<span className="won">원</span></div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {/* 직원 탭 - 직원 왼쪽/알바 오른쪽 */}
               <div className="emp-tabs" style={{ justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
@@ -1609,6 +1657,7 @@ export default function Home() {
                       )}
                     </div>
                   ))}
+                  <div className="emp-tab-add" onClick={() => addEmployee('직원')} title="직원 추가">＋</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
                   {/* 알바 탭 (오른쪽) */}
@@ -1621,7 +1670,7 @@ export default function Home() {
                       )}
                     </div>
                   ))}
-                  <div className="emp-tab-add" onClick={addEmployee} title="직원 추가">＋</div>
+                  <div className="emp-tab-add" onClick={() => addEmployee('알바')} title="알바 추가">＋</div>
                 </div>
               </div>
 
@@ -1639,15 +1688,9 @@ export default function Home() {
                   >알바</button>
                 </div>
                 {activeEmp.empType === '직원' && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, cursor: 'pointer', fontSize: 12, color: '#888' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!activeEmp.useBasicCalc}
-                      onChange={e => updateEmp('useBasicCalc', e.target.checked)}
-                      style={{ width: 14, height: 14, accentColor: '#b8954a' }}
-                    />
-                    기본급 및 주휴수당 계산기 켜기
-                  </label>
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#a89878', letterSpacing: '0.02em' }}>
+                    ※ 직원 기본급은 시급 × 209시간(주휴 포함)으로 자동 계산됩니다.
+                  </div>
                 )}
               </div>
 
@@ -1908,11 +1951,11 @@ export default function Home() {
                       <div className="week-summary">
                         <span className="week-summary-label">
                           근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간
-                          {!(activeEmp.empType === '직원' && !activeEmp.useBasicCalc) && ' · 주휴수당'}
+                          {activeEmp.empType !== '직원' && ' · 주휴수당'}
                         </span>
-                        {!(activeEmp.empType === '직원' && !activeEmp.useBasicCalc) && (
+                        {activeEmp.empType !== '직원' && (
                           <span className="week-summary-val">
-                            {weekDayH >= 15 ? fmt(weeklyHolidayPay) : '미적용 (15시간 미만)'}
+                            {weekDayH >= 15 ? <>{fmt(weeklyHolidayPay)}<span className="won">원</span></> : '미적용 (15시간 미만)'}
                           </span>
                         )}
                       </div>

@@ -97,8 +97,8 @@ export default function PayrollManager() {
       font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
       padding: 3px 8px; border-radius: 20px; margin-bottom: 4px; display: inline-block;
     }
-    .emp-type-badge.staff { background: #e8f0fe; color: #3b5bdb; }
-    .emp-type-badge.alba { background: #fff3e0; color: #e67700; }
+    .emp-type-badge.staff { background: #e3dfd5; color: #6b6253; }
+    .emp-type-badge.alba { background: #ece0c9; color: #9c7f44; }
     .emp-name { font-size: 17px; font-weight: 700; color: #1a1a1a; }
 
     .status-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -121,7 +121,7 @@ export default function PayrollManager() {
       display: flex; justify-content: space-between; align-items: center;
     }
     .total-label { font-size: 11px; color: #999; letter-spacing: 0.1em; }
-    .total-val { font-family: 'Playfair Display', serif; font-size: 22px; color: #b8954a; font-weight: 600; }
+    .total-val { font-family: 'Pretendard', sans-serif; font-size: 22px; color: #b8954a; font-weight: 700; letter-spacing: -0.01em; }
 
     .btn-delete {
       position: absolute; top: 14px; right: 14px;
