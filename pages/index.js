@@ -531,9 +531,13 @@ export default function Home() {
     // ── 시간 집계 (기본·휴일근로 칸 폐지, 휴게는 근무시간에서 제외) ──
     let hoursDay = 0, hoursNight = 0, hoursRest = 0, hoursOvertime = 0
     let mDayH = 0, mNightH = 0, mOtH = 0, mHolidayDayH = 0, mHolidayNightH = 0, mHolidayOtH = 0
+    let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0
     Object.values(emp.workData).forEach(d => {
-      if (d.type === '공' || d.type === '연') return // 휴무·연차: 근무시간/급여 미산입
+      if (d.type === '공') { offDays++; return }     // 휴무
+      if (d.type === '연') { annualDays++; return }   // 연차
       if (d.type === '휴') {
+        const dh = (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
+        if (dh > 0) { workDays++; holidayDays++ }
         hoursDay      += d.holidayDaytimeH || 0
         hoursNight    += d.holidayNightH || 0
         hoursRest     += d.holidayRestH || 0
@@ -542,6 +546,8 @@ export default function Home() {
         mHolidayNightH += d.holidayNightH || 0
         mHolidayOtH    += d.holidayOtH || 0
       } else {
+        const dh = (d.daytimeH || 0) + (d.nightH || 0) + (d.overtimeH || 0)
+        if (dh > 0) workDays++
         hoursDay      += d.daytimeH || 0
         hoursNight    += d.nightH || 0
         hoursRest     += d.restH || 0
@@ -582,7 +588,8 @@ export default function Home() {
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
-      deductions, netPay: deductions.net, totalDeduction: deductions.total }
+      deductions, netPay: deductions.net, totalDeduction: deductions.total,
+      workDays, offDays, annualDays, holidayDays }
   }
 
   // ── 자동저장: 로컬스토리지에만 저장 (Supabase 호출 없음) ──
@@ -1107,6 +1114,18 @@ export default function Home() {
     .note-input:focus { border-color: #b8954a; }
     .note-input::placeholder { color: #bbb; }
 
+    /* ── 월 합계 요약 박스 ── */
+    .month-stat-box { background: #fff; border: 1px solid #e6e3dd; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
+    .month-stat-title { font-size: 13px; letter-spacing: 0.08em; color: #b8954a; font-weight: 700; margin-bottom: 14px; }
+    .month-stat-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+    @media (max-width: 720px) { .month-stat-grid { grid-template-columns: repeat(4, 1fr); gap: 14px 6px; } }
+    .month-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; border-right: 1px solid #f0ede8; }
+    .month-stat:last-child { border-right: none; }
+    @media (max-width: 720px) { .month-stat { border-right: none; } }
+    .ms-val { font-size: 22px; font-weight: 700; color: #1a1a1a; line-height: 1; }
+    .ms-val small { font-size: 11px; font-weight: 500; color: #999; margin-left: 1px; }
+    .ms-label { font-size: 12px; color: #999; letter-spacing: 0.02em; }
+
     .cal-wrap { background: #fff; border: 1px solid #d0ccc5; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
     /* 주마다 표시되는 요일 헤더 */
     .week-dow-row { display: grid; grid-template-columns: 60px repeat(7, 1fr); background: #f6f4f0; border-bottom: 1px solid #ebe9e4; }
@@ -1527,6 +1546,23 @@ export default function Home() {
                   placeholder="예) 11월 야간 추가 5시간"
                 />
               </div>
+
+              {/* ── 월 합계 요약 ── */}
+              {totals && (
+                <div className="month-stat-box">
+                  <div className="month-stat-title">{activeEmp.year}년 {activeEmp.month}월 근무 요약</div>
+                  <div className="month-stat-grid">
+                    <div className="month-stat"><span className="ms-val">{totals.workDays}<small>일</small></span><span className="ms-label">근무일수</span></div>
+                    <div className="month-stat"><span className="ms-val">{totals.hoursWork}<small>시간</small></span><span className="ms-label">총 근로시간</span></div>
+                    <div className="month-stat"><span className="ms-val">{totals.hoursDay}<small>시간</small></span><span className="ms-label">주간</span></div>
+                    <div className="month-stat"><span className="ms-val">{totals.hoursNight}<small>시간</small></span><span className="ms-label">야간</span></div>
+                    <div className="month-stat"><span className="ms-val">{totals.hoursOvertime}<small>시간</small></span><span className="ms-label">연장</span></div>
+                    <div className="month-stat"><span className="ms-val">{totals.hoursHolidayDay + totals.hoursHolidayOt + totals.hoursHolidayNight}<small>시간</small></span><span className="ms-label">휴일근로</span></div>
+                    <div className="month-stat"><span className="ms-val">{totals.offDays}<small>일</small></span><span className="ms-label">휴무</span></div>
+                    <div className="month-stat"><span className="ms-val">{totals.annualDays}<small>일</small></span><span className="ms-label">연차</span></div>
+                  </div>
+                </div>
+              )}
 
               {/* 달력 */}
               <div className="cal-wrap">
