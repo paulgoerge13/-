@@ -560,16 +560,16 @@ export default function Home() {
   function calcWeekPay(week, emp) {
     // ── 주간/야간/휴게/연장 시간을 주별로 합산 (기본·휴일근로 칸 폐지) ──
     let weekDayH = 0, weekNightH = 0, weekRestH = 0, weekOtH = 0, weekRegH = 0
+    let weekHolidayH = 0 // 휴일근무(주간+야간) — 일반 야간과 분리
     week.forEach(day => {
       if (!day) return
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
       const d = emp.workData[ds] || {}
       if (d.type === '공' || d.type === '연') return // 휴무·연차 제외
       if (d.type === '휴') {
-        weekDayH   += d.holidayDaytimeH || 0
-        weekNightH += d.holidayNightH || 0
-        weekRestH  += d.holidayRestH || 0
-        weekOtH    += d.holidayOtH || 0
+        // 휴일근로는 일반 주간/야간에 섞지 않고 휴일근무로만 집계 (중복 방지)
+        weekHolidayH += (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
+        weekRestH    += d.holidayRestH || 0
       } else {
         weekDayH   += d.daytimeH || 0
         weekNightH += d.nightH || 0
@@ -578,11 +578,11 @@ export default function Home() {
         weekRegH   += (d.daytimeH || 0) + (d.nightH || 0) // 주휴 산정용 소정근로(주간+야간, 휴일 제외)
       }
     })
-    const weekWorkH = weekDayH + weekNightH + weekOtH // 휴게 제외
+    const weekWorkH = weekDayH + weekNightH + weekOtH + weekHolidayH // 휴게 제외 (휴일 포함)
     const isStaffNoCalc = emp.empType === '직원' // 직원은 기본급(시급×209)에 주휴 포함 → 주휴 별도계산 안 함
     // 주휴수당: 소정근로(주간+야간) 시간 기준으로 계산
     return {
-      weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH,
+      weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH, weekHolidayH,
       weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekRegH, emp.hourlyWage)
     }
   }
@@ -601,12 +601,10 @@ export default function Home() {
       if (d.type === '공') { offDays++; return }     // 휴무
       if (d.type === '연') { annualDays++; return }   // 연차
       if (d.type === '휴') {
+        // 휴일근로: 일반 주간/야간과 분리해서 휴일 항목으로만 집계 (중복 방지)
         const dh = (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
         if (dh > 0) { workDays++; holidayDays++ }
-        hoursDay      += d.holidayDaytimeH || 0
-        hoursNight    += d.holidayNightH || 0
-        hoursRest     += d.holidayRestH || 0
-        hoursOvertime += d.holidayOtH || 0
+        hoursRest      += d.holidayRestH || 0
         mHolidayDayH   += d.holidayDaytimeH || 0
         mHolidayNightH += d.holidayNightH || 0
         mHolidayOtH    += d.holidayOtH || 0
@@ -622,12 +620,17 @@ export default function Home() {
         mOtH    += d.overtimeH || 0
       }
     })
-    const hoursWork = hoursDay + hoursNight + hoursOvertime // 휴게 제외
+    // 휴일근무 시간(주간+야간) — 휴일근로수당(×1.5) 산정 기준
+    const hoursHolidayWork = mHolidayDayH + mHolidayNightH
+    // 총 근로시간: 일반(주간+야간+연장) + 휴일(주간+야간+연장), 휴게 제외
+    const hoursWork = hoursDay + hoursNight + hoursOvertime + hoursHolidayWork + mHolidayOtH
 
     const autoOvertime        = calcOvertime(mOtH, emp.hourlyWage)
     const autoNight           = calcNight(mNightH, emp.hourlyWage)
-    const autoHoliday         = calcHoliday(mHolidayDayH, emp.hourlyWage)
+    // 휴일근로수당: 휴일 전체 근무시간(주간+야간) × 시급 × 1.5
+    const autoHoliday         = calcHoliday(hoursHolidayWork, emp.hourlyWage)
     const autoHolidayOtPay    = calcHolidayOt(mHolidayOtH, emp.hourlyWage)
+    // 휴일야간 가산: 휴일 야간시간 × 시급 × 0.5 (휴일근로 1.5에 추가)
     const autoHolidayNightPay = calcHolidayNight(mHolidayNightH, emp.hourlyWage)
 
     const isStaff = emp.empType === '직원'
@@ -639,7 +642,7 @@ export default function Home() {
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
     const totalOvertime        = (emp.manualOvertime || 0) + autoOvertime
     const totalNight           = (emp.manualNight || 0) + autoNight
-    const totalHoliday         = (emp.manualHoliday || 0) + autoHoliday   // 휴일 주간시간 × 시급 × 1.5 자동계산
+    const totalHoliday         = (emp.manualHoliday || 0) + autoHoliday   // 휴일 전체근무(주간+야간) × 시급 × 1.5 자동계산
     const totalHolidayOtPay    = (emp.manualHolidayOt || 0) + autoHolidayOtPay
     const totalHolidayNightPay = (emp.manualHolidayNight || 0) + autoHolidayNightPay
     const totalWeeklyFinal     = isStaffNoCalc ? (emp.manualWeeklyHoliday || 0) : (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
@@ -657,6 +660,7 @@ export default function Home() {
       meal, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
+      hoursHolidayWork,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -1058,7 +1062,7 @@ export default function Home() {
       ['식대', t.meal, '비과세 식대'],
       ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
       ['야간근로수당', t.totalNight, `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 0.5배 가산`],
-      ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근로시간(${t.hoursHolidayDay}h) × 1.5배`],
+      ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근무시간(주간+야간 ${t.hoursHolidayWork}h) × 1.5배`],
       ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 2.0배`],
       ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
     ].filter(([l, v]) => v > 0 || l === '기본급')
@@ -1774,7 +1778,7 @@ export default function Home() {
               {/* 달력 */}
               <div className="cal-wrap">
                 {weeks.map((week, wi) => {
-                  const { weekDayH, weekNightH, weekWorkH, weeklyHolidayPay } = calcWeekPay(week, activeEmp)
+                  const { weekDayH, weekNightH, weekWorkH, weekHolidayH, weeklyHolidayPay } = calcWeekPay(week, activeEmp)
                   return (
                     <div key={wi} className="week-block">
                       <div className="week-dow-row">
@@ -1880,7 +1884,7 @@ export default function Home() {
                       </div>
                       <div className="week-summary">
                         <span className="week-summary-label">
-                          근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간
+                          근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간{weekHolidayH > 0 && ` · 휴일 ${weekHolidayH}시간`}
                           {activeEmp.empType !== '직원' && ' · 주휴수당'}
                         </span>
                         {activeEmp.empType !== '직원' && (
@@ -1949,9 +1953,9 @@ export default function Home() {
                       { label: '주휴수당',  total: totals.totalWeeklyHoliday,   hours: totals.hoursWeekly,        desc: `주간시간 ÷ 40 × 8 × 시급` },
                       { label: '연장수당',  total: totals.totalOvertime,        hours: totals.hoursOvertimePay,   desc: `연장 ${totals.hoursOvertimePay}시간 × 시급 × 1.5배` },
                       { label: '야간수당',  total: totals.totalNight,           hours: totals.hoursNightPay,      desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 0.5배` },
-                      { label: '휴일근로',  total: totals.totalHoliday,         hours: totals.hoursHolidayDay,    desc: `휴일주간 ${totals.hoursHolidayDay}시간 × 시급 × 1.5배` },
+                      { label: '휴일근로',  total: totals.totalHoliday,         hours: totals.hoursHolidayWork,   desc: `휴일근무 ${totals.hoursHolidayWork}시간(주간+야간) × 시급 × 1.5배` },
                       { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 2.0배` },
-                      { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배` },
+                      { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배 (휴일근로에 추가 가산)` },
                       { label: '식대',      total: totals.meal,                 hours: null,                      desc: `비과세 (4대보험·소득세 제외)` },
                     ].filter(row => row.total > 0 || row.label === '기본급').map(({ label, total, hours, desc }) => (
                       <div key={label} className="summary-row">
