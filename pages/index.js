@@ -1809,8 +1809,8 @@ export default function Home() {
                     />
                   </div>
                   <div className="info-card" style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center' }}>
-                    <div style={{ fontSize: 11, color: '#a89878', letterSpacing: '0.02em', lineHeight: 1.5 }}>
-                      ※ 입사일·퇴사일을 입력하면 해당 월 기본급이 <b>일할계산</b>(시급×209 ÷ 그달 총일수 × 재직일수)으로 자동 적용됩니다. 비워두면 한 달 전체 근무로 계산됩니다.
+                    <div style={{ fontSize: 11.5, color: '#5c5446', fontWeight: 500, letterSpacing: '0.02em', lineHeight: 1.5 }}>
+                      ※ 입사일·퇴사일을 입력하면 해당 월 기본급이 <b style={{ color: '#b8954a' }}>일할계산</b>(시급×209 ÷ 그달 총일수 × 재직일수)으로 자동 적용됩니다. 비워두면 한 달 전체 근무로 계산됩니다.
                     </div>
                   </div>
                 </div>
