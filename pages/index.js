@@ -602,9 +602,11 @@ export default function Home() {
 
   function toggleDayType(dateStr) {
     const current = activeEmp.workData[dateStr]?.type || '평'
-    // 평일 → 휴일근로(휴) → 휴무(공) → 연차(연) → 결근(결) → 평일
+    const isStaffEmp = activeEmp.empType === '직원'
+    // 직원: 평일 → 휴일근로(휴) → 휴무(공) → 연차(연) → 결근(결) → 평일
+    // 알바: 평일 → 휴무(공) → 연차(연) → 결근(결) → 평일  (알바는 휴일 자체가 없음 → '휴' 건너뜀)
     let nextType = '평'
-    if (current === '평') nextType = '휴'
+    if (current === '평') nextType = isStaffEmp ? '휴' : '공'
     else if (current === '휴') nextType = '공'
     else if (current === '공') nextType = '연'
     else if (current === '연') nextType = '결'
@@ -674,16 +676,21 @@ export default function Home() {
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
       const d = emp.workData[ds] || {}
       if (d.type === '공' || d.type === '연') return // 휴무·연차 제외
-      if (d.type === '휴') {
-        // 휴일근로는 일반 주간/야간에 섞지 않고 휴일근무로만 집계 (중복 방지)
+      if (d.type === '휴' && emp.empType === '직원') {
+        // 직원 휴일근로는 일반 주간/야간에 섞지 않고 휴일근무로만 집계 (중복 방지)
         weekHolidayH += (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
         weekRestH    += d.holidayRestH || 0
       } else {
-        weekDayH   += d.daytimeH || 0
-        weekNightH += d.nightH || 0
-        weekRestH  += d.restH || 0
-        weekOtH    += d.overtimeH || 0
-        weekRegH   += (d.daytimeH || 0) + (d.nightH || 0) // 주휴 산정용 소정근로(주간+야간, 휴일 제외)
+        // 평일. (알바의 '휴'는 휴일 가산 없이 평일처럼 처리 → 휴일칸 값을 일반 근무로 합산)
+        const albaHol = d.type === '휴'  // 여기 도달 = 알바인데 휴일
+        const dDay   = albaHol ? (d.holidayDaytimeH || 0) : (d.daytimeH || 0)
+        const dNight = albaHol ? (d.holidayNightH   || 0) : (d.nightH   || 0)
+        const dRest  = albaHol ? (d.holidayRestH    || 0) : (d.restH    || 0)
+        weekDayH   += dDay
+        weekNightH += dNight
+        weekRestH  += dRest
+        weekOtH    += albaHol ? 0 : (d.overtimeH || 0)
+        weekRegH   += dDay + dNight // 주휴 산정용 소정근로(주간+야간)
       }
     })
     const weekWorkH = weekDayH + weekNightH + weekHolidayH // 휴게·연장 제외(연장은 주간/야간 안에 포함됨), 휴일 포함
@@ -719,8 +726,8 @@ export default function Home() {
       }
       if (d.type === '공') { offDays++; return }     // 휴무
       if (d.type === '연') { annualDays++; return }   // 연차
-      if (d.type === '휴') {
-        // 휴일근로: 일반 주간/야간과 분리해서 휴일 항목으로만 집계 (중복 방지)
+      if (d.type === '휴' && emp.empType === '직원') {
+        // 직원 휴일근로: 일반 주간/야간과 분리해서 휴일 항목으로만 집계 (중복 방지)
         const dh = (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
         if (dh > 0) { workDays++; holidayDays++ }
         hoursRest      += d.holidayRestH || 0
@@ -728,15 +735,21 @@ export default function Home() {
         mHolidayNightH += d.holidayNightH || 0
         mHolidayOtH    += d.holidayOtH || 0
       } else {
-        const dh = (d.daytimeH || 0) + (d.nightH || 0) + (d.overtimeH || 0)
+        // 평일. (알바의 '휴'는 휴일 가산 없이 평일처럼 처리 → 휴일칸 값을 일반 근무로 합산)
+        const albaHol = d.type === '휴'  // 여기 도달 = 알바인데 휴일
+        const dDay   = albaHol ? (d.holidayDaytimeH || 0) : (d.daytimeH || 0)
+        const dNight = albaHol ? (d.holidayNightH   || 0) : (d.nightH   || 0)
+        const dRest  = albaHol ? (d.holidayRestH    || 0) : (d.restH    || 0)
+        const dOt    = albaHol ? 0 : (d.overtimeH || 0)
+        const dh = dDay + dNight + dOt
         if (dh > 0) workDays++
-        hoursDay      += d.daytimeH || 0
-        hoursNight    += d.nightH || 0
-        hoursRest     += d.restH || 0
-        hoursOvertime += d.overtimeH || 0
-        mDayH   += d.daytimeH || 0
-        mNightH += d.nightH || 0
-        mOtH    += d.overtimeH || 0
+        hoursDay      += dDay
+        hoursNight    += dNight
+        hoursRest     += dRest
+        hoursOvertime += dOt
+        mDayH   += dDay
+        mNightH += dNight
+        mOtH    += dOt
       }
     })
     // 휴일근무 시간(주간+야간) — 휴일근로수당(×1.5) 산정 기준
@@ -1964,7 +1977,9 @@ export default function Home() {
                     {activeEmp.empType === '직원' && (
                       <div className="month-stat"><span className="ms-val">{totals.hoursOvertime}<small>시간</small></span><span className="ms-label">연장</span></div>
                     )}
-                    <div className="month-stat"><span className="ms-val">{totals.hoursHolidayDay + totals.hoursHolidayOt + totals.hoursHolidayNight}<small>시간</small></span><span className="ms-label">휴일근로</span></div>
+                    {activeEmp.empType === '직원' && (
+                      <div className="month-stat"><span className="ms-val">{totals.hoursHolidayDay + totals.hoursHolidayOt + totals.hoursHolidayNight}<small>시간</small></span><span className="ms-label">휴일근로</span></div>
+                    )}
                     <div className="month-stat"><span className="ms-val">{totals.offDays}<small>일</small></span><span className="ms-label">휴무</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.annualDays}<small>일</small></span><span className="ms-label">연차</span></div>
                     {totals.absentDays > 0 && (
@@ -1995,7 +2010,8 @@ export default function Home() {
                           const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
                           const d = activeEmp.workData[ds] || {}
                           const type = d.type || '평'
-                          const isHolidayWork = type === '휴'
+                          // 알바는 휴일 자체가 없음 → '휴'여도 평일 입력칸으로 표시(휴일 가산 없음)
+                          const isHolidayWork = type === '휴' && activeEmp.empType === '직원'
                           const isDayOff = type === '공'
                           const isAnnual = type === '연'
                           const isAbsent = type === '결'
