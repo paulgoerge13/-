@@ -1627,7 +1627,7 @@ export default function Home() {
                 return (
                   <div className="branch-cost-card">
                     <div className="branch-cost-head">
-                      <span className="branch-cost-title">{branch} · {activeEmp.year}년 {activeEmp.month}월 인건비 총금액</span>
+                      <span className="branch-cost-title">{selectedBranch?.name} · {activeEmp.year}년 {activeEmp.month}월 인건비 총금액</span>
                       <span className="branch-cost-sub">직원 {staffCount}명 · 알바 {albaCount}명 (총 {employees.length}명)</span>
                     </div>
                     <div className="branch-cost-grid">
