@@ -22,13 +22,20 @@ export default async function handler(req, res) {
     totalHolidayOtPay,
     totalHolidayNightPay,
     grandTotal,
+    // ── 여러 기기 공유용 고정 설정 (DB 컬럼 추가분) ──
+    hire_date,
+    resign_date,
+    birth_date,
+    deduction_type,
+    income_tax,
+    meal_allowance,
   } = req.body
 
   if (!branch || !emp_name) {
     return res.status(400).json({ error: '지점과 직원 이름은 필수입니다.' })
   }
 
-  const upsertData = {
+  const baseData = {
     branch,
     emp_name,
     emp_type:             emp_type || '알바',
@@ -55,11 +62,32 @@ export default async function handler(req, res) {
     updated_at:           new Date().toISOString(),
   }
 
-  const { data, error } = await supabase
+  // 새 컬럼(고정 설정). DB에 아직 컬럼이 없으면(마이그레이션 전) 자동으로 빼고 재시도한다.
+  const extraData = {
+    hire_date:      hire_date || '',
+    resign_date:    resign_date || '',
+    birth_date:     birth_date || '',
+    deduction_type: deduction_type || 'none',
+    income_tax:     Number(income_tax) || 0,
+    meal_allowance: Number(meal_allowance) || 0,
+  }
+
+  const opts = { onConflict: 'branch,emp_name,year,month' }
+  let { data, error } = await supabase
     .from('payroll')
-    .upsert(upsertData, { onConflict: 'branch,emp_name,year,month' })
+    .upsert({ ...baseData, ...extraData }, opts)
     .select()
     .single()
+
+  // 컬럼이 아직 없을 때(마이그레이션 전) → 새 필드 제외하고 재시도해 저장은 깨지지 않게 함
+  if (error && /column|schema cache|could not find/i.test(`${error.message} ${error.details || ''}`)) {
+    console.warn('새 컬럼 미존재 → 기본 필드만 저장:', error.message)
+    ;({ data, error } = await supabase
+      .from('payroll')
+      .upsert(baseData, opts)
+      .select()
+      .single())
+  }
 
   if (error) {
     console.error('Supabase upsert error:', error)

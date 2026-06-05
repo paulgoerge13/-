@@ -395,12 +395,23 @@ export default function Home() {
         setEmployees(prev => prev.map(e => {
           if (e.id !== targetId) return e
           if (e._dirty) return e   // 엑셀로 불러온/미저장 데이터는 덮어쓰지 않음
-          return {
+          const r = result.data
+          // DB에 저장된 고정 설정이 있으면 그것을 우선, 없으면 기존 값 유지
+          const keepIf = (dbVal, cur) => (dbVal !== undefined && dbVal !== null && dbVal !== '') ? dbVal : cur
+          const merged = {
             ...e,
-            workData: migrateWorkData(result.data.work_data || {}),
-            specialNote: result.data.special_note || '',
-            hourlyWage: result.data.hourly_wage || 10320,
+            workData: migrateWorkData(r.work_data || {}),
+            specialNote: r.special_note || '',
+            hourlyWage: r.hourly_wage || 10320,
+            hireDate:        keepIf(r.hire_date, e.hireDate),
+            resignDate:      keepIf(r.resign_date, e.resignDate),
+            birthDate:       keepIf(r.birth_date, e.birthDate),
+            deductionType:   keepIf(r.deduction_type, e.deductionType),
+            manualIncomeTax: keepIf(r.income_tax, e.manualIncomeTax),
+            mealAllowance:   keepIf(r.meal_allowance, e.mealAllowance),
           }
+          merged.workData = pruneWorkDataToEmployment(merged.workData, merged.hireDate, merged.resignDate)
+          return merged
         }))
       }
       // 데이터 없으면 workData 빈 상태 유지 (이미 초기화됐으므로 OK)
@@ -818,6 +829,13 @@ export default function Home() {
       totalHolidayOtPay: totals.totalHolidayOtPay,
       totalHolidayNightPay: totals.totalHolidayNightPay,
       grandTotal: totals.grandTotal,
+      // ── 여러 기기 공유용 고정 설정 (DB 저장) ──
+      hire_date:      emp.hireDate || '',
+      resign_date:    emp.resignDate || '',
+      birth_date:     emp.birthDate || '',
+      deduction_type: emp.deductionType || 'none',
+      income_tax:     emp.manualIncomeTax || 0,
+      meal_allowance: emp.mealAllowance || 0,
     }
     try {
       const res = await fetch('/api/save', {
@@ -848,8 +866,15 @@ export default function Home() {
     const mo = now.getMonth() + 1
 
     const settingsMap = loadAllEmpSettings(branchName)
+    // DB 값 우선, 비어있으면 브라우저 저장값(보조)으로 채움
+    const pick = (dbVal, lsVal, dflt) => {
+      if (dbVal !== undefined && dbVal !== null && dbVal !== '') return dbVal
+      if (lsVal !== undefined && lsVal !== null && lsVal !== '') return lsVal
+      return dflt
+    }
     function parseEmployees(data, fallbackYr, fallbackMo) {
       return data.map(r => {
+        const s = settingsMap[r.emp_name] || {}
         const emp = {
           ...EMPTY_EMP,
           id: Date.now() + Math.random(),
@@ -868,12 +893,17 @@ export default function Home() {
           status: r.status || 'saved',
           year: r.year || fallbackYr,
           month: r.month || fallbackMo,
+          // ── 고정 설정: DB 우선 + 브라우저 저장값 보조 ──
+          hireDate:        pick(r.hire_date, s.hireDate, ''),
+          resignDate:      pick(r.resign_date, s.resignDate, ''),
+          birthDate:       pick(r.birth_date, s.birthDate, ''),
+          deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
+          manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
+          mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
         }
-        // DB에 없는 고정 설정(입·퇴사일·공제·식대 등)을 별도 저장소에서 복원
-        const restored = applyEmpSettings(emp, settingsMap)
-        // 퇴사일이 복원되면 그 범위 밖 근무표도 다시 정리
-        restored.workData = pruneWorkDataToEmployment(restored.workData, restored.hireDate, restored.resignDate)
-        return restored
+        // 퇴사일이 있으면 그 범위 밖 근무표도 정리
+        emp.workData = pruneWorkDataToEmployment(emp.workData, emp.hireDate, emp.resignDate)
+        return emp
       })
     }
 
