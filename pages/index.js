@@ -122,15 +122,25 @@ function fixRestDeduction(d) {
   const restKey  = isHol ? 'holidayRestH'    : 'restH'
   const sDay   = d[dayKey]   || 0
   const sNight = d[nightKey] || 0
+  const rest   = d[restKey]  || 0
 
-  // ★ 매니저가 입력한 값은 무슨 일이 있어도 절대 건드리지 않는다.
+  // ★ 휴게 미차감 정정: 휴게를 입력했는데 주간+야간 합이 "실근무 시계시간"과 똑같으면
+  //   = 휴게가 주간/야간에서 전혀 안 빠진 것(명백) → 휴게만큼 차감해 정정한다.
+  //   (예: 09:30~18:30(9시간) 휴게1인데 주간9로 저장된 날 → 주간8. 야간에서 먼저 빼고 모자라면 주간.)
+  //   매니저가 시간과 다르게 직접 늘리거나 줄인 값(합 ≠ 시계시간)은 건드리지 않는다. 멱등.
+  if (rest > 0 && Math.abs((sDay + sNight) - gross.total) < 0.001) {
+    const night2 = Math.max(0, sNight - rest)
+    const leftover = Math.max(0, rest - sNight)
+    const day2 = Math.max(0, sDay - leftover)
+    return { ...d, [dayKey]: day2, [nightKey]: night2 }
+  }
+
+  // ★ 매니저가 입력한 값은 (휴게 정정 외에는) 절대 건드리지 않는다.
   //   주간·야간 중 하나라도 0이 아니면 = 사람이 직접 넣은 값 → 그대로 둠.
-  //   (시간 합과 안 맞아도, 휴게가 안 빠진 것처럼 보여도 손대지 않는다. 급여=DB가 기준.)
   if (sDay !== 0 || sNight !== 0) return d
 
   // 주간·야간이 "완전히 비어있는(0/0)" 날만, 입력된 시간 기준으로 채움.
   //   (시간은 있는데 분리값이 누락된 경우. 안 채우면 0시간=0원으로 보임.)
-  const rest = d[restKey] || 0
   const net = netSplit(d.timeStart, d.timeEnd, rest)
   if (!net) return d
   return { ...d, [dayKey]: net.day, [nightKey]: net.night }
