@@ -1667,49 +1667,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* 공제 방식 */}
-              <div style={{ marginBottom: 8 }}>
-                <div className="field-label" style={{ marginBottom: 6 }}>공제 방식 (세금·4대보험)</div>
-                <div className="emp-type-tabs">
-                  {[
-                    { v: 'none', t: '공제 없음' },
-                    { v: '3.3',  t: '3.3% 원천징수' },
-                    { v: '4대',  t: '4대보험' },
-                  ].map(({ v, t }) => (
-                    <button
-                      key={v}
-                      className={`emp-type-tab${(activeEmp.deductionType || 'none') === v ? ' active' : ''}`}
-                      onClick={() => updateEmp('deductionType', v)}
-                    >{t}</button>
-                  ))}
-                </div>
-                {activeEmp.deductionType === '4대' && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888' }}>
-                    소득세 (세무사 안내 금액)
-                    <input
-                      type="number"
-                      value={activeEmp.manualIncomeTax || 0}
-                      onChange={e => updateEmp('manualIncomeTax', Number(e.target.value))}
-                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
-                    />
-                    원 <span style={{ color: '#bbb' }}>(지방소득세는 10% 자동)</span>
-                  </label>
-                )}
-                {activeEmp.deductionType === '3.3' && (
-                  <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
-                )}
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
-                  식대 (비과세)
-                  <input
-                    type="number"
-                    value={activeEmp.mealAllowance || 0}
-                    onChange={e => updateEmp('mealAllowance', Number(e.target.value))}
-                    style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
-                  />
-                  원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
-                </label>
-              </div>
-
               {/* 직원 정보 1행 */}
               <div className="info-grid">
                 <div className="info-card">
@@ -1935,6 +1892,49 @@ export default function Home() {
                     </div>
                   )
                 })}
+              </div>
+
+              {/* 공제 방식 (급여 내역 바로 위) */}
+              <div style={{ marginBottom: 16 }}>
+                <div className="field-label" style={{ marginBottom: 6 }}>공제 방식 (세금·4대보험)</div>
+                <div className="emp-type-tabs">
+                  {[
+                    { v: 'none', t: '공제 없음' },
+                    { v: '3.3',  t: '3.3% 원천징수' },
+                    { v: '4대',  t: '4대보험' },
+                  ].map(({ v, t }) => (
+                    <button
+                      key={v}
+                      className={`emp-type-tab${(activeEmp.deductionType || 'none') === v ? ' active' : ''}`}
+                      onClick={() => updateEmp('deductionType', v)}
+                    >{t}</button>
+                  ))}
+                </div>
+                {activeEmp.deductionType === '4대' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888' }}>
+                    소득세 (세무사 안내 금액)
+                    <input
+                      type="number"
+                      value={activeEmp.manualIncomeTax || 0}
+                      onChange={e => updateEmp('manualIncomeTax', Number(e.target.value))}
+                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                    />
+                    원 <span style={{ color: '#bbb' }}>(지방소득세는 10% 자동)</span>
+                  </label>
+                )}
+                {activeEmp.deductionType === '3.3' && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
+                  식대 (비과세)
+                  <input
+                    type="number"
+                    value={activeEmp.mealAllowance || 0}
+                    onChange={e => updateEmp('mealAllowance', Number(e.target.value))}
+                    style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                  />
+                  원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
+                </label>
               </div>
 
               {/* ── 수정 #5: 급여 합계 (수동 입력 + 자동계산 합산) ── */}
