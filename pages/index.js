@@ -2103,7 +2103,13 @@ export default function Home() {
               {(() => {
                 const totalsList = employees.map(e => calcTotal(e))
                 const branchGross = totalsList.reduce((s, t) => s + (t.grossPay || 0), 0)
-                const branchNet   = totalsList.reduce((s, t) => s + (t.netPay || 0), 0)
+                // 실지급 합계는 개별 공제 설정과 무관하게: 직원=4대보험, 알바=3.3% 원천징수 강제 적용
+                const branchNet = employees.reduce((s, e, i) => {
+                  const t = totalsList[i]
+                  const forcedType = e.empType === '직원' ? '4대' : '3.3'
+                  const ded = calcDeductions(t.grandTotal, { ...e, deductionType: forcedType })
+                  return s + (t.grossPay - ded.total)
+                }, 0)
                 const staffCount  = employees.filter(e => e.empType === '직원').length
                 const albaCount   = employees.length - staffCount
                 return (
@@ -2118,7 +2124,7 @@ export default function Home() {
                         <div className="bc-val">{fmt(branchGross)}<span className="won">원</span></div>
                       </div>
                       <div className="branch-cost-item">
-                        <div className="bc-label">실지급 합계 (공제 후)</div>
+                        <div className="bc-label">실지급 합계 (직원 4대보험·알바 3.3% 공제)</div>
                         <div className="bc-val net">{fmt(branchNet)}<span className="won">원</span></div>
                       </div>
                     </div>
