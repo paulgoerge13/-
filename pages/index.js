@@ -848,6 +848,62 @@ export default function Home() {
     URL.revokeObjectURL(url)
   }
 
+  // ── 지점 전체 엑셀: 한 파일 안에 직원별 시트로 분리 ──
+  async function downloadExcelBranch() {
+    const named = employees.filter(e => e.name && e.name.trim())
+    if (named.length === 0) { alert('저장할 직원이 없습니다.'); return }
+    const XLSX = await import('xlsx')
+    const wb = XLSX.utils.book_new()
+    const usedNames = {}
+    // 시트명 정리: 엑셀 금지문자 제거 + 31자 제한 + 중복 방지
+    const safeSheetName = (raw) => {
+      let n = String(raw).replace(/[\\\/\?\*\[\]:]/g, ' ').trim().slice(0, 28) || '직원'
+      if (usedNames[n] === undefined) { usedNames[n] = 1; return n }
+      usedNames[n] += 1
+      return `${n}(${usedNames[n]})`
+    }
+    named.forEach(emp => {
+      const totals = calcTotal(emp)
+      const headers = ['날짜', '유형', '시작', '종료', '주간', '야간', '휴게', '연장', '휴일주간', '휴일야간', '휴일휴게', '휴일연장']
+      const dayRows = []
+      const weeks = getWeeksInMonth(emp.year, emp.month)
+      weeks.forEach(week => {
+        week.forEach(day => {
+          if (!day) return
+          const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+          const d = emp.workData[ds]
+          if (!d) return
+          dayRows.push([
+            ds, d.type || '평',
+            d.timeStart || '', d.timeEnd || '',
+            d.daytimeH || 0, d.nightH || 0, d.restH || 0, d.overtimeH || 0,
+            d.holidayDaytimeH || 0, d.holidayNightH || 0, d.holidayRestH || 0, d.holidayOtH || 0,
+          ])
+        })
+      })
+      const aoa = [
+        [`직원명: ${emp.name}`, `지점: ${selectedBranch?.name || ''}`, `${emp.year}년 ${emp.month}월`, `구분: ${emp.empType || '알바'}`],
+        [],
+        headers,
+        ...dayRows,
+        [],
+        ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '세전합계'],
+        [
+          '급여합계',
+          Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday),
+          Math.round(totals.totalOvertime), Math.round(totals.totalNight),
+          Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
+          Math.round(totals.totalHolidayNightPay), Math.round(totals.grandTotal),
+        ],
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      ws['!cols'] = headers.map(() => ({ wch: 11 }))
+      XLSX.utils.book_append_sheet(wb, ws, safeSheetName(emp.name))
+    })
+    const ym = `${activeEmp?.year || named[0].year}년${activeEmp?.month || named[0].month}월`
+    XLSX.writeFile(wb, `급여명세_${selectedBranch?.name || '지점'}_${ym}.xlsx`)
+  }
+
   const totals = activeEmp ? calcTotal(activeEmp) : null
   const weeks = activeEmp ? getWeeksInMonth(activeEmp.year, activeEmp.month) : []
   const DAY_LABELS = ['월','화','수','목','금','토','일']
@@ -1213,7 +1269,20 @@ export default function Home() {
                       letterSpacing: '0.05em', whiteSpace: 'nowrap',
                       fontFamily: "'DM Sans', sans-serif",
                     }}
-                  >엑셀 다운로드 ↓</button>
+                  >이 직원만 ↓</button>
+                  <button
+                    onClick={downloadExcelBranch}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#b8954a',
+                      color: '#fff',
+                      border: 'none', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600,
+                      cursor: 'pointer',
+                      letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >지점 전체 엑셀 ↓</button>
                   <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
                 </div>
               </div>
@@ -1461,13 +1530,14 @@ export default function Home() {
                       </div>
                       <div className="week-summary">
                         <span className="week-summary-label">
-                          근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간 · 주휴수당
+                          근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간
+                          {!(activeEmp.empType === '직원' && !activeEmp.useBasicCalc) && ' · 주휴수당'}
                         </span>
-                        <span className="week-summary-val">
-                          {activeEmp.empType === '직원' && !activeEmp.useBasicCalc
-                            ? '직원 고정급 (계산 꺼짐)'
-                            : weekDayH >= 15 ? fmt(weeklyHolidayPay) : '미적용 (15시간 미만)'}
-                        </span>
+                        {!(activeEmp.empType === '직원' && !activeEmp.useBasicCalc) && (
+                          <span className="week-summary-val">
+                            {weekDayH >= 15 ? fmt(weeklyHolidayPay) : '미적용 (15시간 미만)'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )
