@@ -111,7 +111,7 @@ function netSplit(startStr, endStr, rest) {
 function fixRestDeduction(d) {
   if (!d || typeof d !== 'object') return d
   const type = d.type || '평'
-  if (type === '공' || type === '연') return d // 휴무·연차는 시간 없음
+  if (type === '공' || type === '연' || type === '결') return d // 휴무·연차·결근은 시간 없음
   if (!d.timeStart || !d.timeEnd) return d      // 시간이 직접 저장된 날만 대상
   const gross = calcDayNightHours(d.timeStart, d.timeEnd)
   if (!gross || gross.total <= 0) return d       // 0시간(시작=종료)이면 손대지 않음
@@ -243,6 +243,31 @@ const EMPTY_EMP = {
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
 }
 
+// ── 날짜 문자열(YYYY-MM-DD) → Date (시각 0시), 못 읽으면 null ──
+function parseYMD(s) {
+  if (!s) return null
+  const m = String(s).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (!m) return null
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+}
+
+// ── 입사일 이전 / 퇴사일 이후 근무표 칸 제거 (퇴사자 정리) ──
+// 입사일·퇴사일을 입력하면 그 범위 밖의 날짜 데이터를 깔끔하게 비운다.
+function pruneWorkDataToEmployment(workData, hireDate, resignDate) {
+  if (!workData || typeof workData !== 'object') return workData || {}
+  const hire = parseYMD(hireDate)
+  const resign = parseYMD(resignDate)
+  if (!hire && !resign) return workData
+  const out = {}
+  for (const [ds, d] of Object.entries(workData)) {
+    const dd = parseYMD(ds)
+    if (dd && hire && dd < hire) continue        // 입사 전 → 제거
+    if (dd && resign && dd > resign) continue     // 퇴사 후 → 제거
+    out[ds] = d
+  }
+  return out
+}
+
 // ── 직원 중도 입·퇴사 일할계산: 해당 월의 재직일수 / 그 달 총일수 비율 ──
 // hireDate/resignDate가 해당 월 범위에 걸치면 재직일수를 역일(달력일) 기준으로 계산.
 // 반환: { ratio, activeDays, monthDays } — 만근이면 ratio 1
@@ -250,14 +275,8 @@ function calcProration(emp) {
   const monthDays = new Date(emp.year, emp.month, 0).getDate()
   const monthStart = new Date(emp.year, emp.month - 1, 1)
   const monthEnd   = new Date(emp.year, emp.month - 1, monthDays)
-  const parse = (s) => {
-    if (!s) return null
-    const m = String(s).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-    if (!m) return null
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-  }
-  const hire = parse(emp.hireDate)
-  const resign = parse(emp.resignDate)
+  const hire = parseYMD(emp.hireDate)
+  const resign = parseYMD(emp.resignDate)
   // 입사일이 이 달 이후이거나, 퇴사일이 이 달 이전이면 재직 0일
   if (hire && hire > monthEnd) return { ratio: 0, activeDays: 0, monthDays }
   if (resign && resign < monthStart) return { ratio: 0, activeDays: 0, monthDays }
@@ -405,7 +424,15 @@ export default function Home() {
   }
 
   function updateEmp(field, value) {
-    setEmployees(prev => prev.map(e => e.id === activeEmpId ? { ...e, [field]: value } : e))
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const next = { ...e, [field]: value }
+      // 입사일/퇴사일을 바꾸면 그 범위 밖의 근무표 칸을 즉시 정리(퇴사자 정리)
+      if (field === 'hireDate' || field === 'resignDate') {
+        next.workData = pruneWorkDataToEmployment(next.workData, next.hireDate, next.resignDate)
+      }
+      return next
+    }))
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
@@ -534,11 +561,12 @@ export default function Home() {
 
   function toggleDayType(dateStr) {
     const current = activeEmp.workData[dateStr]?.type || '평'
-    // 평일 → 휴일근로(휴) → 휴무(공) → 연차(연) → 평일
+    // 평일 → 휴일근로(휴) → 휴무(공) → 연차(연) → 결근(결) → 평일
     let nextType = '평'
     if (current === '평') nextType = '휴'
     else if (current === '휴') nextType = '공'
     else if (current === '공') nextType = '연'
+    else if (current === '연') nextType = '결'
     else nextType = '평'
 
     // ── 유형 전환 시 입력해 둔 시간을 그대로 유지 ──
@@ -635,8 +663,19 @@ export default function Home() {
     // ── 시간 집계 (기본·휴일근로 칸 폐지, 휴게는 근무시간에서 제외) ──
     let hoursDay = 0, hoursNight = 0, hoursRest = 0, hoursOvertime = 0
     let mDayH = 0, mNightH = 0, mOtH = 0, mHolidayDayH = 0, mHolidayNightH = 0, mHolidayOtH = 0
-    let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0
-    Object.values(emp.workData).forEach(d => {
+    let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
+    const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
+    Object.entries(emp.workData).forEach(([ds, d]) => {
+      if (d.type === '결') {                          // 결근
+        absentDays++
+        const dd = parseYMD(ds)
+        if (dd) {
+          const dayNum = dd.getDate()
+          const wi = weeks.findIndex(w => w.includes(dayNum))
+          if (wi >= 0) absentWeekSet.add(wi)
+        }
+        return
+      }
       if (d.type === '공') { offDays++; return }     // 휴무
       if (d.type === '연') { annualDays++; return }   // 연차
       if (d.type === '휴') {
@@ -679,8 +718,12 @@ export default function Home() {
     // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 실제 근무(주간+야간) × 시급 ──
     const hoursBaseAlba = mDayH + mNightH
     const staffMonthlyBasic = Math.round(emp.hourlyWage * 209)
+    // ── 결근 공제 (직원만): 결근 1일당 시급×8(하루치) + 결근이 든 주마다 시급×8(주휴) ──
+    //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
+    const absentHours = isStaff ? (absentDays * 8 + absentWeekSet.size * 8) : 0
+    const absentDeduction = Math.round(absentHours * emp.hourlyWage)
     const totalBasic           = isStaff
-      ? Math.round(staffMonthlyBasic * proration.ratio)
+      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
     const totalOvertime        = (emp.manualOvertime || 0) + autoOvertime
     const totalNight           = (emp.manualNight || 0) + autoNight
@@ -703,6 +746,7 @@ export default function Home() {
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic,
+      absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -1438,6 +1482,10 @@ export default function Home() {
     .day-date.off-type { background: #dcdcdc; color: #777; }
     .day-date.annual-type { background: #dbeafe; color: #3b82c4; }
     .day-date.annual-type:hover { background: #c3ddfb; }
+    .day-date.absent-type { background: #ffd9d9; color: #d32f2f; font-weight: 700; }
+    .day-date.absent-type:hover { background: #ffbdbd; }
+    .day-cell.out-of-emp { opacity: 0.5; background: #f3f1ee; }
+    .day-cell.out-of-emp .day-date { cursor: default; }
     /* 법정공휴일 (참고용 표시) */
     .day-date.gov-holiday { color: #e05555; box-shadow: 0 0 0 1.5px #f4c4c4 inset; }
     .gov-holiday-name { font-size: 10px; color: #e05555; text-align: center; font-weight: 600; margin: 3px 0 0; letter-spacing: -0.02em; line-height: 1.1; }
@@ -1840,6 +1888,9 @@ export default function Home() {
                     <div className="month-stat"><span className="ms-val">{totals.hoursHolidayDay + totals.hoursHolidayOt + totals.hoursHolidayNight}<small>시간</small></span><span className="ms-label">휴일근로</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.offDays}<small>일</small></span><span className="ms-label">휴무</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.annualDays}<small>일</small></span><span className="ms-label">연차</span></div>
+                    {totals.absentDays > 0 && (
+                      <div className="month-stat"><span className="ms-val" style={{ color:'#e05555' }}>{totals.absentDays}<small>일</small></span><span className="ms-label">결근</span></div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1868,7 +1919,15 @@ export default function Home() {
                           const isHolidayWork = type === '휴'
                           const isDayOff = type === '공'
                           const isAnnual = type === '연'
-                          const noInput = isDayOff || isAnnual
+                          const isAbsent = type === '결'
+                          // ── 입사 전 / 퇴사 후: 재직 범위 밖이면 입력 차단 ──
+                          const cellDate = parseYMD(ds)
+                          const hireD = parseYMD(activeEmp.hireDate)
+                          const resignD = parseYMD(activeEmp.resignDate)
+                          const beforeHire = cellDate && hireD && cellDate < hireD
+                          const afterResign = cellDate && resignD && cellDate > resignD
+                          const outOfEmp = beforeHire || afterResign
+                          const noInput = isDayOff || isAnnual || isAbsent || outOfEmp
                           // ── 하루 총 근무시간 (휴게 제외): 주간+야간+연장 (휴일이면 휴일주간+휴일야간+휴일연장) ──
                           const dayTotal = isHolidayWork
                             ? (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
@@ -1882,19 +1941,21 @@ export default function Home() {
                           const isEmptyWork = !noInput && dayTotal === 0
 
                           return (
-                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''}`}>
+                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''} ${outOfEmp ? 'out-of-emp' : ''}`}>
                               <div className="day-head">
                                 <div
-                                  className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
-                                  onClick={() => toggleDayType(ds)}
-                                  title={holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 전환'}
+                                  className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAbsent ? 'absent-type' : isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
+                                  onClick={() => { if (!outOfEmp) toggleDayType(ds) }}
+                                  title={outOfEmp ? (beforeHire ? '입사 전' : '퇴사 후') : (holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환')}
                                 >{day}</div>
                                 {holidayName && <div className="gov-holiday-name">{holidayName}</div>}
                               </div>
                               <div className="day-sep" />
 
-                              {noInput ? (
-                                <div className="off-text" style={isAnnual ? { color:'#3b82c4' } : undefined}>{isAnnual ? '연차' : '휴무'}</div>
+                              {outOfEmp ? (
+                                <div className="off-text" style={{ color:'#bbb' }}>{beforeHire ? '입사 전' : '퇴사 후'}</div>
+                              ) : noInput ? (
+                                <div className="off-text" style={isAbsent ? { color:'#e05555', fontWeight:700 } : isAnnual ? { color:'#3b82c4' } : undefined}>{isAbsent ? '결근' : isAnnual ? '연차' : '휴무'}</div>
                               ) : (
                                 <>
                                   {/* 시간 입력 행 */}
@@ -2019,9 +2080,13 @@ export default function Home() {
                       totals.isStaff
                         ? { label: '기본급',  total: totals.totalBasic, hours: 209,
                             desc: totals.proration.partial
-                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)`
-                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)` }
+                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}`
+                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간+야간)` },
+                      ...(totals.isStaff && totals.absentDeduction > 0
+                        ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
+                            desc: `결근 ${totals.absentDays}일 × 8시간 + 주휴 ${totals.absentWeeks}주 × 8시간 = ${(totals.absentDays*8 + totals.absentWeeks*8)}시간 × 시급 (기본급에서 차감됨)` }]
+                        : []),
                       { label: '주휴수당',  total: totals.totalWeeklyHoliday,   hours: totals.hoursWeekly,        desc: `주간시간 ÷ 40 × 8 × 시급` },
                       { label: '연장수당',  total: totals.totalOvertime,        hours: totals.hoursOvertimePay,   desc: `연장 ${totals.hoursOvertimePay}시간 × 시급 × 1.5배` },
                       { label: '야간수당',  total: totals.totalNight,           hours: totals.hoursNightPay,      desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 0.5배` },
@@ -2029,13 +2094,13 @@ export default function Home() {
                       { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 2.0배` },
                       { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배 (휴일근로에 추가 가산)` },
                       { label: '식대',      total: totals.meal,                 hours: null,                      desc: `비과세 (4대보험·소득세 제외)` },
-                    ].filter(row => row.total > 0 || row.label === '기본급').map(({ label, total, hours, desc }) => (
+                    ].filter(row => row.total > 0 || row.label === '기본급' || row.neg).map(({ label, total, hours, desc, neg }) => (
                       <div key={label} className="summary-row">
                         <div className="summary-row-left">
-                          <div className="summary-row-label">{label}</div>
+                          <div className="summary-row-label" style={neg ? { color:'#e05555' } : undefined}>{label}</div>
                           <div className="summary-row-desc">{desc}</div>
                         </div>
-                        <div className="summary-row-val">{fmt(total)}<span className="won">원</span></div>
+                        <div className="summary-row-val" style={neg ? { color:'#e05555' } : undefined}>{neg ? `−${fmt(-neg)}` : fmt(total)}<span className="won">원</span></div>
                       </div>
                     ))}
                   </div>
