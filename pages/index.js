@@ -243,6 +243,32 @@ const EMPTY_EMP = {
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
 }
 
+// ── DB에 컬럼이 없는 '직원 고정 설정' 영구 저장 ──
+// 공제방식·소득세·식대·생년월일·입사일·퇴사일은 Supabase payroll 테이블에 컬럼이 없어서
+// DB에서 다시 불러올 때 매번 초기화됐다(=리셋 버그). 이 값들은 지점별·직원이름별로
+// 별도 localStorage 키에 따로 저장해 두고, DB 로드 후 다시 덮어 씌워 유지한다.
+const EMP_SETTINGS_FIELDS = ['deductionType', 'manualIncomeTax', 'mealAllowance', 'birthDate', 'hireDate', 'resignDate']
+function empSettingsKey(branchName) { return `payroll_empsettings_${branchName}` }
+function loadAllEmpSettings(branchName) {
+  if (typeof window === 'undefined' || !branchName) return {}
+  try { return JSON.parse(localStorage.getItem(empSettingsKey(branchName)) || '{}') } catch { return {} }
+}
+function saveEmpSettings(branchName, empName, emp) {
+  if (typeof window === 'undefined' || !branchName || !empName) return
+  const all = loadAllEmpSettings(branchName)
+  const patch = {}
+  EMP_SETTINGS_FIELDS.forEach(f => { patch[f] = emp[f] })
+  all[empName] = patch
+  localStorage.setItem(empSettingsKey(branchName), JSON.stringify(all))
+}
+function applyEmpSettings(emp, settingsMap) {
+  const s = settingsMap[emp.name]
+  if (!s) return emp
+  const out = { ...emp }
+  EMP_SETTINGS_FIELDS.forEach(f => { if (s[f] !== undefined && s[f] !== '') out[f] = s[f] })
+  return out
+}
+
 // ── 날짜 문자열(YYYY-MM-DD) → Date (시각 0시), 못 읽으면 null ──
 function parseYMD(s) {
   if (!s) return null
@@ -430,6 +456,10 @@ export default function Home() {
       // 입사일/퇴사일을 바꾸면 그 범위 밖의 근무표 칸을 즉시 정리(퇴사자 정리)
       if (field === 'hireDate' || field === 'resignDate') {
         next.workData = pruneWorkDataToEmployment(next.workData, next.hireDate, next.resignDate)
+      }
+      // DB 컬럼이 없는 고정 설정(입·퇴사일·공제·식대 등)은 별도 키에 영구 저장 → 리셋 방지
+      if (EMP_SETTINGS_FIELDS.includes(field) && selectedBranch && next.name) {
+        saveEmpSettings(selectedBranch.name, next.name, next)
       }
       return next
     }))
@@ -817,26 +847,34 @@ export default function Home() {
     const yr = now.getFullYear()
     const mo = now.getMonth() + 1
 
+    const settingsMap = loadAllEmpSettings(branchName)
     function parseEmployees(data, fallbackYr, fallbackMo) {
-      return data.map(r => ({
-        ...EMPTY_EMP,
-        id: Date.now() + Math.random(),
-        name: r.emp_name || '',
-        residentId: r.resident_id || '',
-        phone: r.phone || '',
-        email: r.email || '',
-        accountNumber: r.account_number || '',
-        empType: r.emp_type || '알바',
-        hourlyWage: r.hourly_wage || 10320,
-        scheduledHours: r.scheduled_hours || 8,
-        defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
-        defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
-        workData: migrateWorkData(r.work_data || {}),
-        specialNote: r.special_note || '',
-        status: r.status || 'saved',
-        year: r.year || fallbackYr,
-        month: r.month || fallbackMo,
-      }))
+      return data.map(r => {
+        const emp = {
+          ...EMPTY_EMP,
+          id: Date.now() + Math.random(),
+          name: r.emp_name || '',
+          residentId: r.resident_id || '',
+          phone: r.phone || '',
+          email: r.email || '',
+          accountNumber: r.account_number || '',
+          empType: r.emp_type || '알바',
+          hourlyWage: r.hourly_wage || 10320,
+          scheduledHours: r.scheduled_hours || 8,
+          defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
+          defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
+          workData: migrateWorkData(r.work_data || {}),
+          specialNote: r.special_note || '',
+          status: r.status || 'saved',
+          year: r.year || fallbackYr,
+          month: r.month || fallbackMo,
+        }
+        // DB에 없는 고정 설정(입·퇴사일·공제·식대 등)을 별도 저장소에서 복원
+        const restored = applyEmpSettings(emp, settingsMap)
+        // 퇴사일이 복원되면 그 범위 밖 근무표도 다시 정리
+        restored.workData = pruneWorkDataToEmployment(restored.workData, restored.hireDate, restored.resignDate)
+        return restored
+      })
     }
 
     try {
