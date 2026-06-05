@@ -907,14 +907,22 @@ export default function Home() {
       })
     }
 
+    // DB에서 받은 데이터를 화면에 반영하고, 그 지점의 옛 임시저장값(localStorage)도
+    // DB값으로 덮어써서 "옛날 잘못된 값이 화면을 가리는" 문제를 차단한다.
+    const applyLoaded = (loaded) => {
+      setEmployees(loaded)
+      setActiveEmpId(loaded[0].id)
+      try {
+        localStorage.setItem(`payroll_backup_${branchName}`, JSON.stringify(loaded))
+      } catch (e) {}
+    }
+
     try {
       // 1) 현재 달 먼저 시도
       const res = await fetch(`/api/load-all?branch=${encodeURIComponent(branchName)}&year=${yr}&month=${mo}`)
       const result = await res.json()
       if (result.success && result.data && result.data.length > 0) {
-        const loaded = parseEmployees(result.data, yr, mo)
-        setEmployees(loaded)
-        setActiveEmpId(loaded[0].id)
+        applyLoaded(parseEmployees(result.data, yr, mo))
         return true
       }
 
@@ -924,9 +932,7 @@ export default function Home() {
       const res2 = await fetch(`/api/load-all?branch=${encodeURIComponent(branchName)}&year=${prevYr}&month=${prevMo}`)
       const result2 = await res2.json()
       if (result2.success && result2.data && result2.data.length > 0) {
-        const loaded = parseEmployees(result2.data, prevYr, prevMo)
-        setEmployees(loaded)
-        setActiveEmpId(loaded[0].id)
+        applyLoaded(parseEmployees(result2.data, prevYr, prevMo))
         return true
       }
     } catch (e) {
