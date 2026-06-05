@@ -192,6 +192,8 @@ const EMPTY_EMP = {
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
   deductionType: 'none',   // 공제 방식: 'none' | '3.3' | '4대'
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
+  mealAllowance: 0,        // 식대 (비과세) — 4대보험·소득세 산정에서 제외
+  birthDate: '',           // 생년월일 (명세서용, 비우면 주민번호 앞자리에서 자동)
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
 }
 
@@ -207,12 +209,12 @@ function calcDeductions(gross, emp) {
   const dt = emp.deductionType || 'none'
   let pension = 0, health = 0, care = 0, employment = 0, incomeTax = 0, localTax = 0, bizTax = 0
   if (dt === '4대') {
-    pension    = Math.round(gross * RATE_PENSION / 10) * 10   // 10원 단위 절사
-    health     = Math.round(gross * RATE_HEALTH / 10) * 10
-    care       = Math.round(health * RATE_CARE / 10) * 10
-    employment = Math.round(gross * RATE_EMPLOYMENT / 10) * 10
+    pension    = Math.floor(gross * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
+    health     = Math.floor(gross * RATE_HEALTH / 10) * 10
+    care       = Math.floor(health * RATE_CARE / 10) * 10
+    employment = Math.floor(gross * RATE_EMPLOYMENT / 10) * 10
     incomeTax  = emp.manualIncomeTax || 0
-    localTax   = Math.round((incomeTax * 0.1) / 10) * 10
+    localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
   } else if (dt === '3.3') {
     bizTax     = Math.round(gross * 0.03)    // 사업소득세 3%
     localTax   = Math.round(gross * 0.003)   // 지방소득세 0.3%
@@ -596,13 +598,17 @@ export default function Home() {
 
     const hoursWeekly = emp.hourlyWage > 0 ? Math.round((totalWeeklyFinal / emp.hourlyWage) * 10) / 10 : 0
 
-    // ── 공제(4대보험/3.3%) 및 실수령액 ──
-    const deductions = calcDeductions(grandTotal, emp)
+    // ── 식대(비과세) · 지급액계 · 공제 · 실수령액 ──
+    const meal = emp.mealAllowance || 0
+    const grossPay = grandTotal + meal                      // 지급액계 (과세 + 비과세)
+    const deductions = calcDeductions(grandTotal, emp)        // 공제는 과세급여(식대 제외) 기준
+    const netPay = grossPay - deductions.total                // 실지급액
 
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
+      meal, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
-      deductions, netPay: deductions.net, totalDeduction: deductions.total,
+      deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
 
@@ -873,13 +879,13 @@ export default function Home() {
         ])
       })
     })
-    const summaryHeaders = ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '세전합계']
+    const summaryHeaders = ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '식대', '지급액계']
     const summaryRow = [
       '급여합계',
       Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday),
       Math.round(totals.totalOvertime), Math.round(totals.totalNight),
       Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
-      Math.round(totals.totalHolidayNightPay), Math.round(totals.grandTotal),
+      Math.round(totals.totalHolidayNightPay), Math.round(totals.meal), Math.round(totals.grossPay),
     ]
     const deductHeaders = ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '사업소득세', '지방소득세', '공제합계']
     const deductRow = [
@@ -902,7 +908,7 @@ export default function Home() {
       deductHeaders.map(v => `"${v}"`).join(','),
       deductRow.map(v => `"${String(v)}"`).join(','),
       '',
-      `"실수령액","${totals.netPay}"`,
+      `"실지급액","${totals.netPay}"`,
     ].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -952,13 +958,13 @@ export default function Home() {
         headers,
         ...dayRows,
         [],
-        ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '세전합계'],
+        ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '식대', '지급액계'],
         [
           '급여합계',
           Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday),
           Math.round(totals.totalOvertime), Math.round(totals.totalNight),
           Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
-          Math.round(totals.totalHolidayNightPay), Math.round(totals.grandTotal),
+          Math.round(totals.totalHolidayNightPay), Math.round(totals.meal), Math.round(totals.grossPay),
         ],
         [],
         ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '사업소득세', '지방소득세', '공제합계'],
@@ -969,7 +975,7 @@ export default function Home() {
           totals.deductions.localTax, totals.totalDeduction,
         ],
         [],
-        ['실수령액', totals.netPay],
+        ['실지급액', totals.netPay],
       ]
       const ws = XLSX.utils.aoa_to_sheet(aoa)
       ws['!cols'] = headers.map(() => ({ wch: 11 }))
@@ -979,95 +985,121 @@ export default function Home() {
     XLSX.writeFile(wb, `급여명세_${selectedBranch?.name || '지점'}_${ym}.xlsx`)
   }
 
-  // ── 급여명세서 인쇄/PDF (근로기준법 제48조 항목별 명세서) ──
+  // ── 급여명세서 인쇄/PDF (근로기준법 제48조 · 더콤마 표준 양식) ──
   function printPayslip() {
     if (!activeEmp?.name) { alert('직원 이름을 먼저 입력해주세요.'); return }
     const t = calcTotal(activeEmp)
     const w = (n) => Number(n || 0).toLocaleString()
-    const dt = t.deductions.dt
-    // 지급 항목 (0원 제외, 기본급은 항상)
+    const wage = activeEmp.hourlyWage || 0
+
+    // 생년월일: 입력값 우선, 없으면 주민번호 앞자리에서 추정
+    const birth = (() => {
+      if (activeEmp.birthDate) return activeEmp.birthDate
+      const g = String(activeEmp.residentId || '').replace(/[^0-9]/g, '')
+      if (g.length < 7) return ''
+      const yy = g.slice(0,2), mm = g.slice(2,4), dd = g.slice(4,6)
+      const c = ['1','2','5','6'].includes(g[6]) ? '19' : ['3','4','7','8'].includes(g[6]) ? '20' : '19'
+      return `${c}${yy}.${mm}.${dd}`
+    })()
+
+    // 지급 항목: [라벨, 금액, 산출식]
     const payItems = [
-      ['기본급', t.totalBasic],
-      ['주휴수당', t.totalWeeklyHoliday],
-      ['연장근로수당', t.totalOvertime],
-      ['야간근로수당', t.totalNight],
-      ['휴일근로수당', t.totalHoliday],
-      ['휴일연장수당', t.totalHolidayOtPay],
-      ['휴일야간수당', t.totalHolidayNightPay],
+      ['기본급', t.totalBasic, t.isStaff ? '통상시급 × 월 209시간 (주휴 포함)' : `통상시급 × ${t.hoursBaseAlba}시간 (주간+야간)`],
+      ['주휴수당', t.totalWeeklyHoliday, '주간근로시간 ÷ 40 × 8 × 통상시급'],
+      ['식대', t.meal, '비과세 식대'],
+      ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
+      ['야간근로수당', t.totalNight, `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 0.5배 가산`],
+      ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근로시간(${t.hoursHolidayDay}h) × 1.5배`],
+      ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 2.0배`],
+      ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
     ].filter(([l, v]) => v > 0 || l === '기본급')
-    // 공제 항목
-    const dedItems = dt === 'none' ? [] : [
-      ['국민연금', t.deductions.pension],
-      ['건강보험', t.deductions.health],
-      ['장기요양', t.deductions.care],
-      ['고용보험', t.deductions.employment],
-      ['소득세', t.deductions.incomeTax],
-      ['사업소득세', t.deductions.bizTax],
-      ['지방소득세', t.deductions.localTax],
+
+    // 공제 항목: [라벨, 금액]
+    const d = t.deductions
+    const dedItems = d.dt === 'none' ? [] : [
+      ['국민연금', d.pension], ['건강보험', d.health], ['고용보험', d.employment],
+      ['장기요양보험료', d.care], ['소득세', d.incomeTax], ['사업소득세', d.bizTax], ['지방소득세', d.localTax],
     ].filter(([l, v]) => v > 0)
-    const rows = (items) => items.map(([l, v]) => `<tr><td class="lbl">${l}</td><td class="amt">${w(v)}</td></tr>`).join('')
+
+    // 세부내역 본문 (좌: 지급 / 우: 공제) 행별 정렬
+    const maxRows = Math.max(payItems.length, dedItems.length)
+    let bodyRows = ''
+    for (let i = 0; i < maxRows; i++) {
+      const p = payItems[i], de = dedItems[i]
+      bodyRows += `<tr>
+        <td class="c-gubun">${p ? '매월' : ''}</td>
+        <td class="c-item">${p ? p[0] : ''}</td>
+        <td class="c-amt">${p ? w(p[1]) : ''}</td>
+        <td class="c-item">${de ? de[0] : ''}</td>
+        <td class="c-amt">${de ? w(de[1]) : ''}</td>
+      </tr>`
+    }
+
+    // 계산방법 표
+    const methodRows = payItems.map(([l, v, f]) => `<tr><td class="c-item">${l}</td><td class="c-formula">${f}</td><td class="c-amt">${w(v)}</td></tr>`).join('')
+
     const today = new Date()
-    const issueDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`
+    const pay = `${today.getFullYear()}.${String(today.getMonth()+1).padStart(2,'0')}.${String(today.getDate()).padStart(2,'0')}`
+
     const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>급여명세서_${activeEmp.name}_${activeEmp.year}년${activeEmp.month}월</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  body { font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#1a1a1a; padding:40px; background:#fff; }
-  .sheet { max-width:680px; margin:0 auto; }
-  .top { text-align:center; border-bottom:3px solid #1a1a1a; padding-bottom:16px; margin-bottom:22px; }
-  .top .brand { font-size:12px; letter-spacing:0.3em; color:#b8954a; font-weight:700; }
-  .top h1 { font-size:28px; margin:8px 0 4px; letter-spacing:0.1em; }
-  .top .period { font-size:14px; color:#666; }
-  .meta { display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; font-size:13px; margin-bottom:24px; }
-  .meta div { display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding:7px 2px; }
-  .meta .k { color:#888; }
-  .meta .v { font-weight:600; }
-  .cols { display:flex; gap:20px; margin-bottom:20px; }
-  .col { flex:1; }
-  .col h2 { font-size:14px; background:#1a1a1a; color:#fff; padding:8px 12px; letter-spacing:0.05em; }
-  .col.ded h2 { background:#b8954a; }
-  table { width:100%; border-collapse:collapse; }
-  td { padding:9px 12px; font-size:13px; border-bottom:1px solid #eee; }
-  td.lbl { color:#555; }
-  td.amt { text-align:right; font-weight:600; }
-  .subtotal { display:flex; justify-content:space-between; padding:10px 12px; font-weight:700; font-size:14px; background:#f6f4f0; border-top:2px solid #ddd; }
-  .net { margin-top:22px; background:linear-gradient(135deg,#b8954a,#9c7d36); color:#fff; padding:20px 24px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; }
-  .net .nl { font-size:16px; font-weight:600; letter-spacing:0.05em; }
-  .net .nv { font-size:30px; font-weight:800; }
-  .foot { margin-top:26px; font-size:11px; color:#999; line-height:1.7; border-top:1px solid #eee; padding-top:14px; }
-  .sign { margin-top:20px; text-align:right; font-size:13px; color:#555; }
-  @media print { body { padding:0; } @page { margin:14mm; } }
+  body { font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#000; padding:30px 36px; background:#fff; font-size:12px; }
+  .sheet { max-width:760px; margin:0 auto; }
+  h1 { text-align:center; font-size:22px; font-weight:700; margin-bottom:18px; letter-spacing:0.06em; }
+  .hdr { display:flex; justify-content:space-between; font-size:12px; margin-bottom:10px; padding:0 2px; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  table.bordered td, table.bordered th { border:1px solid #555; padding:6px 8px; font-weight:400; vertical-align:middle; }
+  .unit { text-align:right; font-size:11px; color:#333; margin:3px 2px 14px; }
+  .lbl-cell { background:#eee; font-weight:700; text-align:center; }
+  .ctr { text-align:center; }
+  .c-amt { text-align:right; }
+  .c-formula { text-align:left; }
+  .sect-title { background:#ddd; font-weight:700; text-align:center; }
+  .total-lbl { background:#eee; font-weight:700; text-align:center; }
+  .foot { text-align:center; margin-top:30px; font-size:13px; }
+  @media print { body { padding:0; } @page { size:A4; margin:14mm; } }
 </style></head><body><div class="sheet">
-  <div class="top">
-    <div class="brand">THE COMMA' LOUNGE</div>
-    <h1>급 여 명 세 서</h1>
-    <div class="period">${activeEmp.year}년 ${activeEmp.month}월분</div>
-  </div>
-  <div class="meta">
-    <div><span class="k">성명</span><span class="v">${activeEmp.name}</span></div>
-    <div><span class="k">지점</span><span class="v">${selectedBranch?.name || '-'}</span></div>
-    <div><span class="k">구분</span><span class="v">${activeEmp.empType || '알바'}</span></div>
-    <div><span class="k">시급</span><span class="v">${w(activeEmp.hourlyWage)}원</span></div>
-    <div><span class="k">근무일수</span><span class="v">${t.workDays}일</span></div>
-    <div><span class="k">총 근로시간</span><span class="v">${t.hoursWork}시간</span></div>
-  </div>
-  <div class="cols">
-    <div class="col">
-      <h2>지급 내역</h2>
-      <table>${rows(payItems)}</table>
-      <div class="subtotal"><span>지급 합계</span><span>${w(t.grandTotal)}원</span></div>
-    </div>
-    <div class="col ded">
-      <h2>공제 내역</h2>
-      <table>${dedItems.length ? rows(dedItems) : '<tr><td class="lbl">공제 없음</td><td class="amt">0</td></tr>'}</table>
-      <div class="subtotal"><span>공제 합계</span><span>${w(t.totalDeduction)}원</span></div>
-    </div>
-  </div>
-  <div class="net"><span class="nl">실수령액</span><span class="nv">${w(t.netPay)}원</span></div>
-  <div class="foot">
-    ※ 본 명세서는 근로기준법 제48조에 따라 발행된 임금명세서입니다.<br>
-    ※ 4대보험 요율은 발행 시점 기준이며, 소득세는 간이세액표/세무 안내에 따릅니다.
-  </div>
-  <div class="sign">발행일: ${issueDate}　／　${selectedBranch?.name || ''}</div>
+  <h1>${activeEmp.year}년 ${activeEmp.month}월분 급여명세서</h1>
+  <div class="hdr"><span>회사명: ${selectedBranch?.name || '더콤마라운지'}</span><span>지급일: ${pay}</span></div>
+
+  <table class="bordered">
+    <colgroup><col style="width:14%"><col style="width:36%"><col style="width:18%"><col style="width:14%"><col style="width:18%"></colgroup>
+    <tr><td class="lbl-cell">성명</td><td>${activeEmp.name}</td><td class="lbl-cell">생년월일</td><td colspan="2">${birth}</td></tr>
+    <tr><td class="lbl-cell">부서</td><td></td><td class="lbl-cell">직급</td><td colspan="2"></td></tr>
+  </table>
+  <div style="height:8px"></div>
+  <table class="bordered">
+    <colgroup><col><col><col><col><col><col></colgroup>
+    <tr>
+      <td class="lbl-cell">근로일수</td><td class="lbl-cell">총 근무시간</td><td class="lbl-cell">연장근로시간</td>
+      <td class="lbl-cell">야간근로시간</td><td class="lbl-cell">휴일근로시간</td><td class="lbl-cell">통상시급(원)</td>
+    </tr>
+    <tr>
+      <td class="ctr">${t.workDays}</td><td class="ctr">${t.hoursWork}</td><td class="ctr">${t.hoursOvertimePay}</td>
+      <td class="ctr">${t.hoursNightPay}</td><td class="ctr">${t.hoursHolidayDay + t.hoursHolidayOt + t.hoursHolidayNight}</td><td class="ctr">${w(wage)}</td>
+    </tr>
+  </table>
+  <div class="unit">(단위, 원)</div>
+
+  <table class="bordered">
+    <colgroup><col style="width:11%"><col style="width:25%"><col style="width:19%"><col style="width:24%"><col style="width:21%"></colgroup>
+    <tr><td class="sect-title" colspan="5">세부내역</td></tr>
+    <tr><td class="lbl-cell">구분</td><td class="lbl-cell">지급 항목</td><td class="lbl-cell">지급 금액</td><td class="lbl-cell">공제 항목</td><td class="lbl-cell">공제 금액</td></tr>
+    ${bodyRows}
+    <tr><td></td><td></td><td></td><td class="total-lbl">공 제 액 계</td><td class="c-amt">${w(t.totalDeduction)}</td></tr>
+    <tr><td class="total-lbl" colspan="2">지 급 액 계</td><td class="c-amt">${w(t.grossPay)}</td><td class="total-lbl">실지급액</td><td class="c-amt"><b>${w(t.netPay)}</b></td></tr>
+  </table>
+  <div class="unit">(단위, 원)</div>
+
+  <table class="bordered">
+    <colgroup><col style="width:22%"><col style="width:58%"><col style="width:20%"></colgroup>
+    <tr><td class="sect-title" colspan="3">계산방법</td></tr>
+    <tr><td class="lbl-cell">구분</td><td class="lbl-cell">산출식 또는 산출방법</td><td class="lbl-cell">지급액</td></tr>
+    ${methodRows}
+  </table>
+
+  <div class="foot">귀하의 노고에 감사드립니다.</div>
 </div>
 <script>window.onload=function(){window.print()}</script>
 </body></html>`
@@ -1587,6 +1619,16 @@ export default function Home() {
                 {activeEmp.deductionType === '3.3' && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
                 )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
+                  식대 (비과세)
+                  <input
+                    type="number"
+                    value={activeEmp.mealAllowance || 0}
+                    onChange={e => updateEmp('mealAllowance', Number(e.target.value))}
+                    style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}
+                  />
+                  원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
+                </label>
               </div>
 
               {/* 직원 정보 1행 */}
@@ -1825,6 +1867,7 @@ export default function Home() {
                       { label: '휴일근로',  total: totals.totalHoliday,         hours: totals.hoursHolidayDay,    desc: `휴일주간 ${totals.hoursHolidayDay}시간 × 시급 × 1.5배` },
                       { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 2.0배` },
                       { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배` },
+                      { label: '식대',      total: totals.meal,                 hours: null,                      desc: `비과세 (4대보험·소득세 제외)` },
                     ].filter(row => row.total > 0 || row.label === '기본급').map(({ label, total, hours, desc }) => (
                       <div key={label} className="summary-row">
                         <div className="summary-row-left">
@@ -1836,8 +1879,8 @@ export default function Home() {
                     ))}
                   </div>
                   <div className="summary-total-row">
-                    <div className="summary-total-label">세전 합계</div>
-                    <div className="summary-total-val">{fmt(totals.grandTotal)}<span className="won-big">원</span></div>
+                    <div className="summary-total-label">지급액 계{totals.meal > 0 ? ' (식대 포함)' : ''}</div>
+                    <div className="summary-total-val">{fmt(totals.grossPay)}<span className="won-big">원</span></div>
                   </div>
 
                   {/* ── 공제 내역 & 실수령액 ── */}
@@ -1846,13 +1889,13 @@ export default function Home() {
                       <div className="deduct-title">공제 내역</div>
                       <div className="summary-list">
                         {[
-                          { label: '국민연금',   total: totals.deductions.pension,    desc: '세전 × 4.5%' },
-                          { label: '건강보험',   total: totals.deductions.health,     desc: '세전 × 3.545%' },
+                          { label: '국민연금',   total: totals.deductions.pension,    desc: '과세급여 × 4.5%' },
+                          { label: '건강보험',   total: totals.deductions.health,     desc: '과세급여 × 3.545%' },
                           { label: '장기요양',   total: totals.deductions.care,       desc: '건강보험료 × 12.95%' },
-                          { label: '고용보험',   total: totals.deductions.employment, desc: '세전 × 0.9%' },
+                          { label: '고용보험',   total: totals.deductions.employment, desc: '과세급여 × 0.9%' },
                           { label: '소득세',     total: totals.deductions.incomeTax,  desc: '세무사 안내 금액' },
-                          { label: '사업소득세', total: totals.deductions.bizTax,     desc: '세전 × 3%' },
-                          { label: '지방소득세', total: totals.deductions.localTax,   desc: totals.deductions.dt === '3.3' ? '세전 × 0.3%' : '소득세 × 10%' },
+                          { label: '사업소득세', total: totals.deductions.bizTax,     desc: '과세급여 × 3%' },
+                          { label: '지방소득세', total: totals.deductions.localTax,   desc: totals.deductions.dt === '3.3' ? '과세급여 × 0.3%' : '소득세 × 10%' },
                         ].filter(r => r.total > 0).map(({ label, total, desc }) => (
                           <div key={label} className="summary-row">
                             <div className="summary-row-left">
