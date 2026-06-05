@@ -115,11 +115,12 @@ function migrateWorkData(workData) {
   for (const [ds, d] of Object.entries(workData)) {
     if (d && ((d.basicH || 0) > 0 || (d.holidayH || 0) > 0)) {
       const night = d.nightH || 0
+      // 옛 필드(basicH/holidayH)가 권위 있는 값이므로 새 필드를 "덮어쓰기"(누적 X)
       out[ds] = {
         ...d,
-        daytimeH: (d.daytimeH || 0) + Math.max(0, (d.basicH || 0) - night),
+        daytimeH: Math.max(0, (d.basicH || 0) - night),
         nightH: night,
-        holidayDaytimeH: (d.holidayDaytimeH || 0) + (d.holidayH || 0),
+        holidayDaytimeH: (d.holidayH || 0),
         holidayNightH: d.holidayNightH || 0,
         basicH: 0,
         holidayH: 0,
