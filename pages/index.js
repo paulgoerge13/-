@@ -228,7 +228,36 @@ const EMPTY_EMP = {
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
   mealAllowance: 0,        // 식대 (비과세) — 4대보험·소득세 산정에서 제외
   birthDate: '',           // 생년월일 (명세서용, 비우면 주민번호 앞자리에서 자동)
+  hireDate: '',            // 입사일 (YYYY-MM-DD) — 직원 기본급 일할계산용. 비우면 월초부터 만근
+  resignDate: '',          // 퇴사일 (YYYY-MM-DD) — 직원 기본급 일할계산용. 비우면 월말까지 만근
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
+}
+
+// ── 직원 중도 입·퇴사 일할계산: 해당 월의 재직일수 / 그 달 총일수 비율 ──
+// hireDate/resignDate가 해당 월 범위에 걸치면 재직일수를 역일(달력일) 기준으로 계산.
+// 반환: { ratio, activeDays, monthDays } — 만근이면 ratio 1
+function calcProration(emp) {
+  const monthDays = new Date(emp.year, emp.month, 0).getDate()
+  const monthStart = new Date(emp.year, emp.month - 1, 1)
+  const monthEnd   = new Date(emp.year, emp.month - 1, monthDays)
+  const parse = (s) => {
+    if (!s) return null
+    const m = String(s).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+    if (!m) return null
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  }
+  const hire = parse(emp.hireDate)
+  const resign = parse(emp.resignDate)
+  // 입사일이 이 달 이후이거나, 퇴사일이 이 달 이전이면 재직 0일
+  if (hire && hire > monthEnd) return { ratio: 0, activeDays: 0, monthDays }
+  if (resign && resign < monthStart) return { ratio: 0, activeDays: 0, monthDays }
+  const start = hire && hire > monthStart ? hire : monthStart
+  const end   = resign && resign < monthEnd ? resign : monthEnd
+  if (end < start) return { ratio: 0, activeDays: 0, monthDays }
+  const activeDays = Math.round((end - start) / 86400000) + 1 // 양끝 포함
+  // 만근(둘 다 월 범위 밖)이면 그대로 1
+  const isFull = (!hire || hire <= monthStart) && (!resign || resign >= monthEnd)
+  return { ratio: isFull ? 1 : activeDays / monthDays, activeDays, monthDays, partial: !isFull }
 }
 
 // ── 4대보험 요율 (2025년 기준 · 근로자 부담분) ──
@@ -635,10 +664,13 @@ export default function Home() {
 
     const isStaff = emp.empType === '직원'
     const isStaffNoCalc = isStaff // 직원은 기본급(시급×209)에 주휴 포함
-    // ── 기본수당: 직원 = 시급 × 209 고정 / 알바 = 실제 근무(주간+야간) × 시급 ──
+    // ── 중도 입·퇴사 일할계산 (직원만): 재직일수 / 그 달 총일수 ──
+    const proration = calcProration(emp)
+    // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 실제 근무(주간+야간) × 시급 ──
     const hoursBaseAlba = mDayH + mNightH
+    const staffMonthlyBasic = Math.round(emp.hourlyWage * 209)
     const totalBasic           = isStaff
-      ? Math.round(emp.hourlyWage * 209)
+      ? Math.round(staffMonthlyBasic * proration.ratio)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
     const totalOvertime        = (emp.manualOvertime || 0) + autoOvertime
     const totalNight           = (emp.manualNight || 0) + autoNight
@@ -660,7 +692,7 @@ export default function Home() {
       meal, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
-      hoursHolidayWork,
+      hoursHolidayWork, proration, staffMonthlyBasic,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -1747,6 +1779,33 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* 입사일 / 퇴사일 (직원만) — 중도 입·퇴사 시 기본급 자동 일할계산 */}
+              {activeEmp.empType === '직원' && (
+                <div className="info-grid-2" style={{ marginTop: 10 }}>
+                  <div className="info-card">
+                    <div className="info-card-label">입사일 (선택)</div>
+                    <input
+                      type="date"
+                      value={activeEmp.hireDate || ''}
+                      onChange={e => updateEmp('hireDate', e.target.value)}
+                    />
+                  </div>
+                  <div className="info-card">
+                    <div className="info-card-label">퇴사일 (선택)</div>
+                    <input
+                      type="date"
+                      value={activeEmp.resignDate || ''}
+                      onChange={e => updateEmp('resignDate', e.target.value)}
+                    />
+                  </div>
+                  <div className="info-card" style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#a89878', letterSpacing: '0.02em', lineHeight: 1.5 }}>
+                      ※ 입사일·퇴사일을 입력하면 해당 월 기본급이 <b>일할계산</b>(시급×209 ÷ 그달 총일수 × 재직일수)으로 자동 적용됩니다. 비워두면 한 달 전체 근무로 계산됩니다.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 특이사항 */}
               <div className="note-row">
                 <p className="field-label" style={{ marginBottom: 8 }}>이달의 특이사항</p>
@@ -1948,7 +2007,10 @@ export default function Home() {
                   <div className="summary-list">
                     {[
                       totals.isStaff
-                        ? { label: '기본급',  total: totals.totalBasic, hours: 209,                      desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정)` }
+                        ? { label: '기본급',  total: totals.totalBasic, hours: 209,
+                            desc: totals.proration.partial
+                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)`
+                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간+야간)` },
                       { label: '주휴수당',  total: totals.totalWeeklyHoliday,   hours: totals.hoursWeekly,        desc: `주간시간 ÷ 40 × 8 × 시급` },
                       { label: '연장수당',  total: totals.totalOvertime,        hours: totals.hoursOvertimePay,   desc: `연장 ${totals.hoursOvertimePay}시간 × 시급 × 1.5배` },
