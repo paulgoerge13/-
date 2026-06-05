@@ -424,37 +424,19 @@ export default function Home() {
     else if (current === '공') nextType = '연'
     else nextType = '평'
 
-    // ── B2: 타입 전환 시 이전 타입의 시간/급여 데이터 초기화 ──
+    // ── 유형만 전환하고 입력값은 보존 (한 바퀴 돌아와도 숫자 유지) ──
+    // 휴무/연차 날은 계산식에서 제외되므로 데이터를 지울 필요 없음.
     setEmployees(prev => prev.map(e => {
       if (e.id !== activeEmpId) return e
       const existing = e.workData[dateStr] || {}
-      let resetFields = {}
-
-      if (nextType === '휴' || nextType === '공' || nextType === '연') {
-        // 평일→휴일근로/휴무/연차: 평일 데이터 초기화
-        resetFields = {
-          basicH: 0, daytimeH: 0, restH: 0, nightH: 0, overtimeH: 0,
-          timeStart: '00:00', timeEnd: '00:00',
-        }
-      } else if (nextType === '평') {
-        // 휴일근로/휴무/연차→평일: 휴일 데이터 초기화
-        resetFields = {
-          holidayH: 0, holidayDaytimeH: 0, holidayRestH: 0, holidayNightH: 0, holidayOtH: 0,
-          timeStart: '00:00', timeEnd: '00:00',
-        }
-      }
-
       return {
         ...e,
         workData: {
           ...e.workData,
-          [dateStr]: { ...existing, ...resetFields, type: nextType }
+          [dateStr]: { ...existing, type: nextType }
         }
       }
     }))
-
-    // timeInputs 임시 상태도 초기화
-    setTimeInputs(prev => ({ ...prev, [dateStr]: {} }))
 
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
@@ -489,11 +471,19 @@ export default function Home() {
       if (!day) return
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
       const d = emp.workData[ds] || {}
-      weekDayH   += (d.daytimeH || 0) + (d.holidayDaytimeH || 0)
-      weekNightH += (d.nightH || 0)   + (d.holidayNightH || 0)
-      weekRestH  += (d.restH || 0)    + (d.holidayRestH || 0)
-      weekOtH    += (d.overtimeH || 0) + (d.holidayOtH || 0)
-      weekRegH   += (d.daytimeH || 0) + (d.nightH || 0) // 주휴 산정용 소정근로(주간+야간, 휴일 제외)
+      if (d.type === '공' || d.type === '연') return // 휴무·연차 제외
+      if (d.type === '휴') {
+        weekDayH   += d.holidayDaytimeH || 0
+        weekNightH += d.holidayNightH || 0
+        weekRestH  += d.holidayRestH || 0
+        weekOtH    += d.holidayOtH || 0
+      } else {
+        weekDayH   += d.daytimeH || 0
+        weekNightH += d.nightH || 0
+        weekRestH  += d.restH || 0
+        weekOtH    += d.overtimeH || 0
+        weekRegH   += (d.daytimeH || 0) + (d.nightH || 0) // 주휴 산정용 소정근로(주간+야간, 휴일 제외)
+      }
     })
     const weekWorkH = weekDayH + weekNightH + weekOtH // 휴게 제외
     const isStaffNoCalc = emp.empType === '직원' && !emp.useBasicCalc
@@ -514,18 +504,23 @@ export default function Home() {
     let hoursDay = 0, hoursNight = 0, hoursRest = 0, hoursOvertime = 0
     let mDayH = 0, mNightH = 0, mOtH = 0, mHolidayDayH = 0, mHolidayNightH = 0, mHolidayOtH = 0
     Object.values(emp.workData).forEach(d => {
-      hoursDay      += (d.daytimeH || 0) + (d.holidayDaytimeH || 0)
-      hoursNight    += (d.nightH || 0)   + (d.holidayNightH || 0)
-      hoursRest     += (d.restH || 0)    + (d.holidayRestH || 0)
-      hoursOvertime += (d.overtimeH || 0) + (d.holidayOtH || 0)
-      if (d.type !== '휴') {
-        mDayH   += d.daytimeH || 0
-        mNightH += d.nightH || 0
-        mOtH    += d.overtimeH || 0
-      } else {
+      if (d.type === '공' || d.type === '연') return // 휴무·연차: 근무시간/급여 미산입
+      if (d.type === '휴') {
+        hoursDay      += d.holidayDaytimeH || 0
+        hoursNight    += d.holidayNightH || 0
+        hoursRest     += d.holidayRestH || 0
+        hoursOvertime += d.holidayOtH || 0
         mHolidayDayH   += d.holidayDaytimeH || 0
         mHolidayNightH += d.holidayNightH || 0
         mHolidayOtH    += d.holidayOtH || 0
+      } else {
+        hoursDay      += d.daytimeH || 0
+        hoursNight    += d.nightH || 0
+        hoursRest     += d.restH || 0
+        hoursOvertime += d.overtimeH || 0
+        mDayH   += d.daytimeH || 0
+        mNightH += d.nightH || 0
+        mOtH    += d.overtimeH || 0
       }
     })
     const hoursWork = hoursDay + hoursNight + hoursOvertime // 휴게 제외
@@ -1018,7 +1013,8 @@ export default function Home() {
     .week-label { padding: 10px 0 10px 12px; font-size: 12px; color: #aaa; font-weight: 600; display: flex; align-items: flex-start; padding-top: 16px; }
 
     /* ── 수정 #3: 칸이 4개로 늘어 min-height 증가 ── */
-    .day-cell { padding: 10px 7px; border-left: 1px solid #f0ede8; min-height: 200px; position: relative; transition: background 0.2s; }
+    .day-cell { padding: 10px 7px; border-left: 1.5px solid #e6e3dd; min-height: 200px; position: relative; transition: background 0.2s; }
+    .day-cell:first-child { border-left: none; }
     .day-cell.empty { background: #fafaf9; }
     .day-cell.is-holiday { background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); }
     .day-cell.is-off {
@@ -1027,13 +1023,18 @@ export default function Home() {
     }
     .off-text { font-size: 18px; font-weight: 800; color: #999; letter-spacing: 0.1em; margin-top: 10px; }
 
+    /* 날짜 숫자와 아래 입력값 구분용 가로선 */
+    .day-sep { height: 1px; background: #e8e4dd; margin: 0 -7px 9px; }
+    .day-cell.is-holiday .day-sep { background: #f4d6cf; }
+    .day-cell.is-off .day-sep { display: none; }
+
     .day-date {
-      font-size: 15px; font-weight: 600; color: #1a1a1a; cursor: pointer;
-      width: 28px; height: 28px; border-radius: 50%;
+      font-size: 15px; font-weight: 700; color: #555; cursor: pointer;
+      width: 30px; height: 30px; border-radius: 50%; background: #f1efe9;
       display: flex; align-items: center; justify-content: center;
       margin: 0 auto 8px; transition: all 0.15s;
     }
-    .day-date:hover { background: #f0ede8; }
+    .day-date:hover { background: #e6e2da; color: #1a1a1a; }
     .day-date.holiday-type { background: #ffe0e0; color: #e05555; }
     .day-date.holiday-type:hover { background: #ffc0c0; }
     .day-date.off-type { background: #dcdcdc; color: #777; }
@@ -1399,6 +1400,7 @@ export default function Home() {
                                 onClick={() => toggleDayType(ds)}
                                 title="클릭: 평일 → 휴일근로 → 휴무 → 연차 전환"
                               >{day}</div>
+                              <div className="day-sep" />
 
                               {noInput ? (
                                 <div className="off-text" style={isAnnual ? { color:'#3b82c4' } : undefined}>{isAnnual ? '연차' : '휴무'}</div>
