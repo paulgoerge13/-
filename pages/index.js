@@ -998,16 +998,18 @@ export default function Home() {
     .note-input::placeholder { color: #bbb; }
 
     .cal-wrap { background: #fff; border: 1px solid #d0ccc5; border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
-    .cal-week-header { display: grid; grid-template-columns: 60px repeat(7, 1fr); background: #f8f7f4; border-bottom: 1px solid #ebe9e4; }
-    .cal-week-th {
-      padding: 14px 4px; font-size: 13px; letter-spacing: 0.1em; color: #777;
-      font-weight: 600; text-align: center; cursor: pointer; transition: background 0.15s;
-      user-select: none;
+    /* 주마다 표시되는 요일 헤더 */
+    .week-dow-row { display: grid; grid-template-columns: 60px repeat(7, 1fr); background: #f6f4f0; border-bottom: 1px solid #ebe9e4; }
+    .week-dow-corner {
+      display: flex; align-items: center; padding-left: 12px;
+      font-size: 13px; font-weight: 700; color: #b8954a; letter-spacing: 0.02em;
     }
-    .cal-week-th:first-child { text-align: left; padding-left: 12px; cursor: default; }
-    .cal-week-th:not(:first-child):hover { background: #f0ede8; }
+    .week-dow {
+      padding: 8px 4px; font-size: 13px; font-weight: 600; color: #888;
+      text-align: center; letter-spacing: 0.05em; user-select: none;
+    }
 
-    .week-block { border-bottom: 1px solid #f0ede8; }
+    .week-block { border-bottom: 2px solid #e8e4dd; }
     .week-block:last-child { border-bottom: none; }
     .week-row { display: grid; grid-template-columns: 60px repeat(7, 1fr); }
     .week-label { padding: 10px 0 10px 12px; font-size: 12px; color: #aaa; font-weight: 600; display: flex; align-items: flex-start; padding-top: 16px; }
@@ -1062,9 +1064,9 @@ export default function Home() {
     .time-row { display: flex; gap: 3px; align-items: center; margin-bottom: 8px; }
     .time-tilde { font-size: 11px; color: #ccc; }
 
-    .week-summary { background: #faf9f6; border-top: 1px solid #f0ede8; padding: 11px 14px; display: flex; justify-content: space-between; }
+    .week-summary { background: #faf9f6; border-top: 1px solid #f0ede8; padding: 11px 14px; display: flex; justify-content: flex-start; align-items: center; gap: 8px; flex-wrap: wrap; }
     .week-summary-label { font-size: 13px; color: #888; }
-    .week-summary-val { font-size: 13px; font-weight: 600; color: #b8954a; }
+    .week-summary-val { font-size: 13px; font-weight: 700; color: #b8954a; }
 
     /* ── 급여 내역 (읽기 전용, 자동계산) ── */
     .summary-card { background: #1a1a1a; border-radius: 16px; padding: 30px 32px; color: #fff; margin-bottom: 20px; }
@@ -1360,21 +1362,20 @@ export default function Home() {
 
               {/* 달력 */}
               <div className="cal-wrap">
-                <div className="cal-week-header">
-                  <div className="cal-week-th">주</div>
-                  {DAY_LABELS.map((d) => (
-                    <div key={d} className="cal-week-th"
-                      style={d==='일' ? { color:'#e05555' } : d==='토' ? { color:'#4a90d9' } : {}}
-                    >{d}</div>
-                  ))}
-                </div>
-
                 {weeks.map((week, wi) => {
                   const { weekDayH, weekNightH, weekWorkH, weeklyHolidayPay } = calcWeekPay(week, activeEmp)
                   return (
                     <div key={wi} className="week-block">
+                      <div className="week-dow-row">
+                        <div className="week-dow-corner">{wi + 1}주</div>
+                        {DAY_LABELS.map((d) => (
+                          <div key={d} className="week-dow"
+                            style={d==='일' ? { color:'#e05555' } : d==='토' ? { color:'#4a90d9' } : {}}
+                          >{d}</div>
+                        ))}
+                      </div>
                       <div className="week-row">
-                        <div className="week-label">{wi + 1}주</div>
+                        <div className="week-label"></div>
                         {week.map((day, di) => {
                           if (!day) return <div key={di} className="day-cell empty" />
                           const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
