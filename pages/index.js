@@ -1582,6 +1582,8 @@ export default function Home() {
 
     /* ── 근무 없는 날(0시간)은 흐리게: 근무한 날이 한눈에 도드라지도록 ── */
     .day-cell.empty-work { background: #fbfbfa; }
+    /* 휴일(휴)로 지정한 날은 시간이 0이어도 휴일 배경색을 유지 (empty-work가 덮지 않도록) */
+    .day-cell.is-holiday.empty-work { background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); }
     .day-cell.empty-work .hour-input,
     .day-cell.empty-work .time-input-small { color: #c9c6c0; }
     .day-cell.empty-work .hour-label { color: #cdcac4; }
