@@ -1418,13 +1418,14 @@ export default function Home() {
     .emp-tab-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
     .emp-tab:hover { color: #1a1a1a; }
     .emp-tab.active { color: #1a1a1a; border-bottom-color: #b8954a; font-weight: 600; }
-    .emp-tab.staff-tab { background: #f1efe9; border-radius: 8px 8px 0 0; }
-    .emp-tab.staff-tab.active { background: #faf8f3; border-bottom-color: #b8954a; }
-    .emp-tab.alba-tab { background: #f6f1e7; border-radius: 8px 8px 0 0; }
-    .emp-tab.alba-tab.active { background: #faf8f3; border-bottom-color: #b8954a; }
-    .emp-tab-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 2px; }
-    .emp-tab-badge.staff { background: #e3dfd5; color: #6b6253; }
-    .emp-tab-badge.alba { background: #ece0c9; color: #9c7f44; }
+    /* 직원 = 초록 계열 / 알바 = 금색 계열 로 색을 확실히 분리 */
+    .emp-tab.staff-tab { background: #eaf3ed; border-radius: 8px 8px 0 0; border-top: 3px solid #2f8f5b; }
+    .emp-tab.staff-tab.active { background: #f4faf6; border-bottom-color: #2f8f5b; color: #1f6b42; }
+    .emp-tab.alba-tab { background: #f8efdc; border-radius: 8px 8px 0 0; border-top: 3px solid #c79a3f; }
+    .emp-tab.alba-tab.active { background: #fdf8ee; border-bottom-color: #c79a3f; color: #8a6a23; }
+    .emp-tab-badge { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; margin-left: 2px; color: #fff; letter-spacing: 0.5px; flex-shrink: 0; }
+    .emp-tab-badge.staff { background: #2f8f5b; }
+    .emp-tab-badge.alba { background: #c79a3f; }
     .hour-label.daytime { color: #8a8378; }
     .emp-tab-del {
       width: 18px; height: 18px; border-radius: 50%; background: #e8e5e0;
