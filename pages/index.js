@@ -104,6 +104,33 @@ function netSplit(startStr, endStr, rest) {
   return { day, night }
 }
 
+// ── 구버전 데이터 마이그레이션 ──
+// 예전 버전은 평일 근무를 basicH(주간+야간 합), 휴일을 holidayH 에 저장했음.
+// 새 버전은 daytimeH(주간)/nightH(야간), holidayDaytimeH/holidayNightH 로 분리해 계산함.
+// 5월 등 기존 입력 데이터가 새 계산식에서도 동일하게 나오도록 옛 필드를 새 필드로 접어 넣음.
+// 멱등(idempotent): 이미 변환된 데이터는 basicH/holidayH 가 0 이라 그대로 통과.
+function migrateWorkData(workData) {
+  if (!workData || typeof workData !== 'object') return workData || {}
+  const out = {}
+  for (const [ds, d] of Object.entries(workData)) {
+    if (d && ((d.basicH || 0) > 0 || (d.holidayH || 0) > 0)) {
+      const night = d.nightH || 0
+      out[ds] = {
+        ...d,
+        daytimeH: (d.daytimeH || 0) + Math.max(0, (d.basicH || 0) - night),
+        nightH: night,
+        holidayDaytimeH: (d.holidayDaytimeH || 0) + (d.holidayH || 0),
+        holidayNightH: d.holidayNightH || 0,
+        basicH: 0,
+        holidayH: 0,
+      }
+    } else {
+      out[ds] = d
+    }
+  }
+  return out
+}
+
 // ── 근무기록 엑셀 파싱 헬퍼 ──
 const pad2 = (n) => String(n).padStart(2, '0')
 
@@ -183,7 +210,10 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem('payroll_backup')
     if (saved) {
-      try { setEmployees(JSON.parse(saved)) } catch (e) {}
+      try {
+        const parsed = JSON.parse(saved)
+        setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData) })))
+      } catch (e) {}
     }
   }, [])
 
@@ -204,7 +234,7 @@ export default function Home() {
           if (e._dirty) return e   // 엑셀로 불러온/미저장 데이터는 덮어쓰지 않음
           return {
             ...e,
-            workData: result.data.work_data || {},
+            workData: migrateWorkData(result.data.work_data || {}),
             specialNote: result.data.special_note || '',
             hourlyWage: result.data.hourly_wage || 10320,
           }
@@ -229,7 +259,7 @@ export default function Home() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
-          setEmployees(parsed)
+          setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData) })))
           if (parsed.length > 0) setActiveEmpId(parsed[0].id)
         } catch (e) {}
       } else {
@@ -453,7 +483,7 @@ export default function Home() {
 
   function calcWeekPay(week, emp) {
     // ── 주간/야간/휴게/연장 시간을 주별로 합산 (기본·휴일근로 칸 폐지) ──
-    let weekDayH = 0, weekNightH = 0, weekRestH = 0, weekOtH = 0
+    let weekDayH = 0, weekNightH = 0, weekRestH = 0, weekOtH = 0, weekRegH = 0
     week.forEach(day => {
       if (!day) return
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
@@ -462,13 +492,14 @@ export default function Home() {
       weekNightH += (d.nightH || 0)   + (d.holidayNightH || 0)
       weekRestH  += (d.restH || 0)    + (d.holidayRestH || 0)
       weekOtH    += (d.overtimeH || 0) + (d.holidayOtH || 0)
+      weekRegH   += (d.daytimeH || 0) + (d.nightH || 0) // 주휴 산정용 소정근로(주간+야간, 휴일 제외)
     })
     const weekWorkH = weekDayH + weekNightH + weekOtH // 휴게 제외
     const isStaffNoCalc = emp.empType === '직원' && !emp.useBasicCalc
-    // 주휴수당: 주간 시간 기준으로 계산
+    // 주휴수당: 소정근로(주간+야간) 시간 기준으로 계산
     return {
       weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH,
-      weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekDayH, emp.hourlyWage)
+      weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekRegH, emp.hourlyWage)
     }
   }
 
@@ -606,7 +637,7 @@ export default function Home() {
         scheduledHours: r.scheduled_hours || 8,
         defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
         defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
-        workData: r.work_data || {},
+        workData: migrateWorkData(r.work_data || {}),
         specialNote: r.special_note || '',
         status: r.status || 'saved',
         year: r.year || fallbackYr,
