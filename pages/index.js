@@ -122,27 +122,18 @@ function fixRestDeduction(d) {
   const restKey  = isHol ? 'holidayRestH'    : 'restH'
   const sDay   = d[dayKey]   || 0
   const sNight = d[nightKey] || 0
-  const rest   = d[restKey]  || 0
-  const storedTotal = sDay + sNight
-  const netTotal = Math.max(0, gross.total - rest)
 
-  // (a) 주간·야간이 모두 비어있음(0/0) → 입력 누락. 시간 기준으로 자동 채움.
-  // (b) 저장 시간이 실제 근무시간(출근~퇴근)보다 큼 → 물리적으로 불가능한 깨진 값. 재계산.
-  if ((sDay === 0 && sNight === 0) || storedTotal > gross.total + 0.001) {
-    const net = netSplit(d.timeStart, d.timeEnd, rest)
-    if (!net) return d
-    return { ...d, [dayKey]: net.day, [nightKey]: net.night }
-  }
-  // (c) 값은 있는데 휴게가 아직 안 빠진 경우 → "입력된 분리값"에서 휴게만 차감(야간 먼저).
-  //     시간 기준으로 다시 쪼개지 않으므로 매니저가 넣은 주간/야간 비율은 보존됨.
-  if (rest > 0 && storedTotal > netTotal + 0.001) {
-    const night2 = Math.max(0, sNight - rest)
-    const leftover = Math.max(0, rest - sNight)
-    const day2 = Math.max(0, sDay - leftover)
-    return { ...d, [dayKey]: day2, [nightKey]: night2 }
-  }
-  // (d) 그 외(수동 입력값 포함) → 절대 건드리지 않음.
-  return d
+  // ★ 매니저가 입력한 값은 무슨 일이 있어도 절대 건드리지 않는다.
+  //   주간·야간 중 하나라도 0이 아니면 = 사람이 직접 넣은 값 → 그대로 둠.
+  //   (시간 합과 안 맞아도, 휴게가 안 빠진 것처럼 보여도 손대지 않는다. 급여=DB가 기준.)
+  if (sDay !== 0 || sNight !== 0) return d
+
+  // 주간·야간이 "완전히 비어있는(0/0)" 날만, 입력된 시간 기준으로 채움.
+  //   (시간은 있는데 분리값이 누락된 경우. 안 채우면 0시간=0원으로 보임.)
+  const rest = d[restKey] || 0
+  const net = netSplit(d.timeStart, d.timeEnd, rest)
+  if (!net) return d
+  return { ...d, [dayKey]: net.day, [nightKey]: net.night }
 }
 
 // ── 구버전 데이터 마이그레이션 ──
