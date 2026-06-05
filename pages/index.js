@@ -221,6 +221,20 @@ function calcDeductions(gross, emp) {
   return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, total, net: gross - total }
 }
 
+// ── 법정공휴일 (참고용 시각 표시 · 급여 계산에는 영향 없음) ──
+// 휴일근로 수당은 달력에서 직접 '휴' 유형으로 지정해야 적용됩니다.
+const HOLIDAYS = {
+  '2025-01-01': '신정', '2025-01-28': '설날', '2025-01-29': '설날', '2025-01-30': '설날',
+  '2025-03-01': '삼일절', '2025-03-03': '대체휴일', '2025-05-05': '어린이날·석가탄신일', '2025-05-06': '대체휴일',
+  '2025-06-06': '현충일', '2025-08-15': '광복절', '2025-10-03': '개천절',
+  '2025-10-05': '추석', '2025-10-06': '추석', '2025-10-07': '추석', '2025-10-08': '대체휴일',
+  '2025-10-09': '한글날', '2025-12-25': '성탄절',
+  '2026-01-01': '신정', '2026-02-16': '설날', '2026-02-17': '설날', '2026-02-18': '설날',
+  '2026-03-01': '삼일절', '2026-03-02': '대체휴일', '2026-05-05': '어린이날', '2026-05-24': '석가탄신일', '2026-05-25': '대체휴일',
+  '2026-06-06': '현충일', '2026-08-15': '광복절', '2026-08-17': '대체휴일', '2026-09-24': '추석', '2026-09-25': '추석', '2026-09-26': '추석',
+  '2026-10-03': '개천절', '2026-10-05': '대체휴일', '2026-10-09': '한글날', '2026-12-25': '성탄절',
+}
+
 export default function Home() {
   const [step, setStep] = useState('branch')
   const [selectedBranch, setSelectedBranch] = useState(null)
@@ -1269,6 +1283,9 @@ export default function Home() {
     .day-date.off-type { background: #dcdcdc; color: #777; }
     .day-date.annual-type { background: #dbeafe; color: #3b82c4; }
     .day-date.annual-type:hover { background: #c3ddfb; }
+    /* 법정공휴일 (참고용 표시) */
+    .day-date.gov-holiday { color: #e05555; box-shadow: 0 0 0 1.5px #f4c4c4 inset; }
+    .gov-holiday-name { font-size: 10px; color: #e05555; text-align: center; font-weight: 600; margin: -4px 0 6px; letter-spacing: -0.02em; }
 
     .day-total {
       margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e6e3dd;
@@ -1709,14 +1726,16 @@ export default function Home() {
                           // ── 수정 #2: 임시 입력 상태 우선 표시 ──
                           const tStart = timeInputs[ds]?.start !== undefined ? timeInputs[ds].start : (d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart)
                           const tEnd   = timeInputs[ds]?.end   !== undefined ? timeInputs[ds].end   : (d.timeEnd   !== undefined ? d.timeEnd   : activeEmp.defaultTimeEnd)
+                          const holidayName = HOLIDAYS[ds]
 
                           return (
                             <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''}`}>
                               <div
-                                className={`day-date ${isHolidayWork ? 'holiday-type' : ''} ${isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
+                                className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
                                 onClick={() => toggleDayType(ds)}
-                                title="클릭: 평일 → 휴일근로 → 휴무 → 연차 전환"
+                                title={holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 전환'}
                               >{day}</div>
+                              {holidayName && <div className="gov-holiday-name">{holidayName}</div>}
                               <div className="day-sep" />
 
                               {noInput ? (
