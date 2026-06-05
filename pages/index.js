@@ -745,7 +745,8 @@ export default function Home() {
     //   연장은 주간/야간 안에 포함된 시간이라 합계에 또 더하지 않는다.
     const hoursWork = hoursDay + hoursNight + hoursHolidayWork
 
-    const autoOvertime        = calcOvertime(mOtH, emp.hourlyWage)
+    // 연장수당은 직원만. 알바는 연장수당 자체가 없음(전 지점 공통).
+    const autoOvertime        = emp.empType === '직원' ? calcOvertime(mOtH, emp.hourlyWage) : 0
     const autoNight           = calcNight(mNightH, emp.hourlyWage)
     // 휴일근로수당: 휴일 전체 근무시간(주간+야간) × 시급 × 1.5
     const autoHoliday         = calcHoliday(hoursHolidayWork, emp.hourlyWage)
@@ -767,7 +768,7 @@ export default function Home() {
     const totalBasic           = isStaff
       ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
-    const totalOvertime        = (emp.manualOvertime || 0) + autoOvertime
+    const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight
     const totalHoliday         = (emp.manualHoliday || 0) + autoHoliday   // 휴일 전체근무(주간+야간) × 시급 × 1.5 자동계산
     const totalHolidayOtPay    = (emp.manualHolidayOt || 0) + autoHolidayOtPay
@@ -1960,7 +1961,9 @@ export default function Home() {
                     <div className="month-stat"><span className="ms-val">{totals.hoursWork}<small>시간</small></span><span className="ms-label">총 근로시간</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.hoursDay}<small>시간</small></span><span className="ms-label">주간</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.hoursNight}<small>시간</small></span><span className="ms-label">야간</span></div>
-                    <div className="month-stat"><span className="ms-val">{totals.hoursOvertime}<small>시간</small></span><span className="ms-label">연장</span></div>
+                    {activeEmp.empType === '직원' && (
+                      <div className="month-stat"><span className="ms-val">{totals.hoursOvertime}<small>시간</small></span><span className="ms-label">연장</span></div>
+                    )}
                     <div className="month-stat"><span className="ms-val">{totals.hoursHolidayDay + totals.hoursHolidayOt + totals.hoursHolidayNight}<small>시간</small></span><span className="ms-label">휴일근로</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.offDays}<small>일</small></span><span className="ms-label">휴무</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.annualDays}<small>일</small></span><span className="ms-label">연차</span></div>
@@ -2064,8 +2067,12 @@ export default function Home() {
                                       {numInput(d.nightH, v => updateWorkDay(ds, 'nightH', v))}
                                       <div className="hour-label">휴게</div>
                                       {numInput(d.restH, v => handleRestChange(ds, v, false))}
-                                      <div className="hour-label">연장</div>
-                                      {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
+                                      {activeEmp.empType === '직원' && (
+                                        <>
+                                          <div className="hour-label">연장</div>
+                                          {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
+                                        </>
+                                      )}
                                     </>
                                   ) : (
                                     <>
