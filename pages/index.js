@@ -502,16 +502,30 @@ export default function Home() {
     else if (current === '공') nextType = '연'
     else nextType = '평'
 
-    // ── 유형만 전환하고 입력값은 보존 (한 바퀴 돌아와도 숫자 유지) ──
-    // 휴무/연차 날은 계산식에서 제외되므로 데이터를 지울 필요 없음.
+    // ── 유형 전환 시 입력해 둔 시간을 그대로 유지 ──
+    // 평일은 daytimeH/nightH/restH/overtimeH, 휴일은 holidayDaytimeH/holidayNightH/holidayRestH/holidayOtH
+    // 로 칸 이름이 달라서, 그냥 type만 바꾸면 휴일로 전환했을 때 숫자가 0으로 보였음.
+    // → 현재 유형에 들어있는 값을 읽어 양쪽 칸에 똑같이 써 둠. 시간(timeStart/timeEnd)은 공용이라 그대로.
     setEmployees(prev => prev.map(e => {
       if (e.id !== activeEmpId) return e
       const existing = e.workData[dateStr] || {}
+      const fromHol = current === '휴'
+      const h = {
+        day:   fromHol ? (existing.holidayDaytimeH || 0) : (existing.daytimeH || 0),
+        night: fromHol ? (existing.holidayNightH   || 0) : (existing.nightH   || 0),
+        rest:  fromHol ? (existing.holidayRestH    || 0) : (existing.restH    || 0),
+        ot:    fromHol ? (existing.holidayOtH      || 0) : (existing.overtimeH || 0),
+      }
       return {
         ...e,
         workData: {
           ...e.workData,
-          [dateStr]: { ...existing, type: nextType }
+          [dateStr]: {
+            ...existing,
+            type: nextType,
+            daytimeH: h.day, nightH: h.night, restH: h.rest, overtimeH: h.ot,
+            holidayDaytimeH: h.day, holidayNightH: h.night, holidayRestH: h.rest, holidayOtH: h.ot,
+          }
         }
       }
     }))
