@@ -1327,11 +1327,16 @@ export default function Home() {
     .day-cell.is-holiday .day-sep { background: #f4d6cf; }
     .day-cell.is-off .day-sep { display: none; }
 
+    /* 날짜+공휴일명 영역: 모든 칸이 같은 높이를 갖도록 고정 → 공휴일이 있어도 줄이 안 밀림 */
+    .day-head {
+      min-height: 46px; display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start; margin-bottom: 8px;
+    }
     .day-date {
       font-size: 15px; font-weight: 700; color: #555; cursor: pointer;
-      width: 30px; height: 30px; border-radius: 50%; background: #f1efe9;
+      width: 30px; height: 30px; border-radius: 50%; background: #f1efe9; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 8px; transition: all 0.15s;
+      transition: all 0.15s;
     }
     .day-date:hover { background: #e6e2da; color: #1a1a1a; }
     .day-date.holiday-type { background: #ffe0e0; color: #e05555; }
@@ -1341,12 +1346,19 @@ export default function Home() {
     .day-date.annual-type:hover { background: #c3ddfb; }
     /* 법정공휴일 (참고용 표시) */
     .day-date.gov-holiday { color: #e05555; box-shadow: 0 0 0 1.5px #f4c4c4 inset; }
-    .gov-holiday-name { font-size: 10px; color: #e05555; text-align: center; font-weight: 600; margin: -4px 0 6px; letter-spacing: -0.02em; }
+    .gov-holiday-name { font-size: 10px; color: #e05555; text-align: center; font-weight: 600; margin: 3px 0 0; letter-spacing: -0.02em; line-height: 1.1; }
+
+    /* ── 근무 없는 날(0시간)은 흐리게: 근무한 날이 한눈에 도드라지도록 ── */
+    .day-cell.empty-work { background: #fbfbfa; }
+    .day-cell.empty-work .hour-input,
+    .day-cell.empty-work .time-input-small { color: #c9c6c0; }
+    .day-cell.empty-work .hour-label { color: #cdcac4; }
 
     .day-total {
       margin-top: 10px; padding-top: 8px; border-top: 1px dashed #e6e3dd;
       font-size: 14px; font-weight: 700; color: #b8954a; text-align: center; letter-spacing: 0.03em;
     }
+    .day-total.is-zero { color: #c4c0b8; font-weight: 600; }
 
     .hour-label { font-size: 11px; color: #aaa; text-align: center; margin-bottom: 2px; letter-spacing: 0.04em; }
     .hour-input {
@@ -1793,15 +1805,19 @@ export default function Home() {
                           const tStart = timeInputs[ds]?.start !== undefined ? timeInputs[ds].start : (d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart)
                           const tEnd   = timeInputs[ds]?.end   !== undefined ? timeInputs[ds].end   : (d.timeEnd   !== undefined ? d.timeEnd   : activeEmp.defaultTimeEnd)
                           const holidayName = HOLIDAYS[ds]
+                          // ── 근무가 전혀 없는 날(0시간) 구분: 휴무/연차가 아닌데 총 근무 0이면 흐리게 표시 ──
+                          const isEmptyWork = !noInput && dayTotal === 0
 
                           return (
-                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''}`}>
-                              <div
-                                className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
-                                onClick={() => toggleDayType(ds)}
-                                title={holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 전환'}
-                              >{day}</div>
-                              {holidayName && <div className="gov-holiday-name">{holidayName}</div>}
+                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''}`}>
+                              <div className="day-head">
+                                <div
+                                  className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
+                                  onClick={() => toggleDayType(ds)}
+                                  title={holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 전환'}
+                                >{day}</div>
+                                {holidayName && <div className="gov-holiday-name">{holidayName}</div>}
+                              </div>
                               <div className="day-sep" />
 
                               {noInput ? (
@@ -1853,7 +1869,9 @@ export default function Home() {
                                     </>
                                   )}
                                   {/* 하루 총 근무시간 (휴게 제외) */}
-                                  <div className="day-total">일 {dayTotal}시간</div>
+                                  <div className={`day-total ${isEmptyWork ? 'is-zero' : ''}`}>
+                                    {isEmptyWork ? '미입력' : `일 ${dayTotal}시간`}
+                                  </div>
                                 </>
                               )}
                             </div>
