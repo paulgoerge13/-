@@ -104,19 +104,52 @@ function netSplit(startStr, endStr, rest) {
   return { day, night }
 }
 
+// ── 휴게 자동차감 보정 ──
+// 출근~퇴근 시간이 있는데 휴게가 주간/야간에 반영되지 않은(옛/잘못 저장된) 데이터를 바로잡음.
+// 예: 09:30~18:30(주간9) + 휴게1 인데 주간이 9로 남아있으면 → 주간8 로 보정.
+// 안전장치: 시간이 없거나, 이미 휴게가 반영돼 있거나, 사용자가 수동 조정한 값(총시간과 불일치)은
+// 절대 건드리지 않음. 멱등(idempotent) — 정상 데이터에 여러 번 돌려도 결과 동일.
+function fixRestDeduction(d, defStart, defEnd) {
+  if (!d || typeof d !== 'object') return d
+  const type = d.type || '평'
+  if (type === '공' || type === '연') return d // 휴무·연차는 시간 없음
+  const isHol = type === '휴'
+  const start = d.timeStart || defStart
+  const end   = d.timeEnd   || defEnd
+  if (!start || !end) return d // 시간 모르면 보정 불가 (수동값 존중)
+  const rest = isHol ? (d.holidayRestH || 0) : (d.restH || 0)
+  if (rest <= 0) return d // 휴게 없으면 보정 불필요
+  const gross = calcDayNightHours(start, end)
+  const net = netSplit(start, end, rest)
+  if (!gross || !net) return d
+  const sDay   = isHol ? (d.holidayDaytimeH || 0) : (d.daytimeH || 0)
+  const sNight = isHol ? (d.holidayNightH   || 0) : (d.nightH   || 0)
+  const stored     = sDay + sNight
+  const grossTotal = gross.day + gross.night
+  const netTotal   = net.day + net.night
+  // 저장값이 "휴게 미반영(=총시간 그대로)"이고, 휴게 반영 시 값이 달라지는 경우에만 보정
+  if (Math.abs(stored - grossTotal) < 0.001 && Math.abs(grossTotal - netTotal) > 0.001) {
+    return isHol
+      ? { ...d, holidayDaytimeH: net.day, holidayNightH: net.night }
+      : { ...d, daytimeH: net.day, nightH: net.night }
+  }
+  return d
+}
+
 // ── 구버전 데이터 마이그레이션 ──
 // 예전 버전은 평일 근무를 basicH(주간+야간 합), 휴일을 holidayH 에 저장했음.
 // 새 버전은 daytimeH(주간)/nightH(야간), holidayDaytimeH/holidayNightH 로 분리해 계산함.
 // 5월 등 기존 입력 데이터가 새 계산식에서도 동일하게 나오도록 옛 필드를 새 필드로 접어 넣음.
 // 멱등(idempotent): 이미 변환된 데이터는 basicH/holidayH 가 0 이라 그대로 통과.
-function migrateWorkData(workData) {
+function migrateWorkData(workData, defStart, defEnd) {
   if (!workData || typeof workData !== 'object') return workData || {}
   const out = {}
   for (const [ds, d] of Object.entries(workData)) {
+    let nd
     if (d && ((d.basicH || 0) > 0 || (d.holidayH || 0) > 0)) {
       const night = d.nightH || 0
       // 옛 필드(basicH/holidayH)가 권위 있는 값이므로 새 필드를 "덮어쓰기"(누적 X)
-      out[ds] = {
+      nd = {
         ...d,
         daytimeH: Math.max(0, (d.basicH || 0) - night),
         nightH: night,
@@ -126,8 +159,9 @@ function migrateWorkData(workData) {
         holidayH: 0,
       }
     } else {
-      out[ds] = d
+      nd = d
     }
+    out[ds] = fixRestDeduction(nd, defStart, defEnd) // 휴게 자동차감 보정
   }
   return out
 }
@@ -257,7 +291,7 @@ export default function Home() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
-        setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData) })))
+        setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData, e.defaultTimeStart, e.defaultTimeEnd) })))
       } catch (e) {}
     }
   }, [])
@@ -279,7 +313,7 @@ export default function Home() {
           if (e._dirty) return e   // 엑셀로 불러온/미저장 데이터는 덮어쓰지 않음
           return {
             ...e,
-            workData: migrateWorkData(result.data.work_data || {}),
+            workData: migrateWorkData(result.data.work_data || {}, e.defaultTimeStart, e.defaultTimeEnd),
             specialNote: result.data.special_note || '',
             hourlyWage: result.data.hourly_wage || 10320,
           }
@@ -304,7 +338,7 @@ export default function Home() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved)
-          setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData) })))
+          setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData, e.defaultTimeStart, e.defaultTimeEnd) })))
           if (parsed.length > 0) setActiveEmpId(parsed[0].id)
         } catch (e) {}
       } else {
@@ -692,7 +726,7 @@ export default function Home() {
         scheduledHours: r.scheduled_hours || 8,
         defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
         defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
-        workData: migrateWorkData(r.work_data || {}),
+        workData: migrateWorkData(r.work_data || {}, r.default_time ? r.default_time.split('~')[0] : '00:00', r.default_time ? r.default_time.split('~')[1] : '00:00'),
         specialNote: r.special_note || '',
         status: r.status || 'saved',
         year: r.year || fallbackYr,
