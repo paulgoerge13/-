@@ -48,16 +48,17 @@ export default function PayrollManager() {
   const totalGrand = records.reduce((s, r) => s + (r.grand_total || 0), 0)
 
   const css = `
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #f8f7f4; font-family: 'DM Sans', sans-serif; color: #1a1a1a; }
+    body { background: #f8f7f4; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
 
     .wrap { max-width: 900px; margin: 0 auto; padding: 28px 16px; }
 
     /* 헤더 */
     .page-header { margin-bottom: 20px; }
     .page-brand { font-size: 10px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 4px; }
-    .page-title { font-family: 'Playfair Display', serif; font-size: 20px; color: #1a1a1a; }
+    .page-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 19px; color: #1a1a1a; }
     .page-title span { color: #b8954a; }
 
     /* 필터 */
@@ -66,13 +67,13 @@ export default function PayrollManager() {
       flex: 1; min-width: 100px;
       background: #fff; border: 1px solid #d0ccc5; color: #1a1a1a;
       border-radius: 8px; padding: 10px 12px; font-size: 13px;
-      font-family: 'DM Sans', sans-serif; outline: none;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none;
     }
     .filter-select:focus { border-color: #b8954a; }
     .btn-refresh {
       background: #fff; border: 1px solid #d0ccc5; border-radius: 8px;
       padding: 10px 16px; font-size: 12px; cursor: pointer;
-      font-family: 'DM Sans', sans-serif; color: #666;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; color: #666;
       display: flex; align-items: center; gap: 6px;
     }
     .btn-refresh:hover { border-color: #1a1a1a; color: #1a1a1a; }
@@ -135,17 +136,17 @@ export default function PayrollManager() {
       padding: 36px 28px; width: 100%; max-width: 320px; text-align: center;
     }
     .login-brand { font-size: 10px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 4px; }
-    .login-title { font-family: 'Playfair Display', serif; font-size: 20px; margin-bottom: 24px; }
+    .login-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 19px; margin-bottom: 24px; }
     .login-input {
       width: 100%; background: #f8f7f4; border: 1.5px solid #d0ccc5;
       border-radius: 8px; padding: 12px 14px; font-size: 14px; color: #1a1a1a;
-      font-family: 'DM Sans', sans-serif; outline: none; margin-bottom: 10px;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none; margin-bottom: 10px;
     }
     .login-input:focus { border-color: #b8954a; background: #fff; }
     .login-btn {
       width: 100%; padding: 13px; background: #1a1a1a; color: #fff;
       border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
-      cursor: pointer; font-family: 'DM Sans', sans-serif; letter-spacing: 0.08em;
+      cursor: pointer; font-family: 'Pretendard', 'DM Sans', sans-serif; letter-spacing: 0.08em;
     }
     .login-btn:hover { background: #333; }
     .error-msg { font-size: 12px; color: #e05555; margin-bottom: 10px; }

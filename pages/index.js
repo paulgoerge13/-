@@ -1162,9 +1162,10 @@ export default function Home() {
   const DAY_LABELS = ['월','화','수','목','금','토','일']
 
   const css = `
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #f8f7f4; color: #1a1a1a; font-family: 'DM Sans', sans-serif; min-height: 100vh; }
+    body { background: #f8f7f4; color: #1a1a1a; font-family: 'Pretendard', 'DM Sans', sans-serif; min-height: 100vh; }
     .wrap { min-height: 100vh; display: flex; flex-direction: column; }
 
     .header {
@@ -1180,7 +1181,7 @@ export default function Home() {
     .main { flex: 1; padding: 48px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
     @media (max-width: 640px) { .header { padding: 16px 20px; } .main { padding: 28px 16px; } }
 
-    .page-title { font-family: 'Playfair Display', serif; font-size: 34px; margin-bottom: 10px; }
+    .page-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 30px; margin-bottom: 10px; }
     .page-sub { font-size: 15px; color: #999; letter-spacing: 0.04em; margin-bottom: 48px; }
     .branch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 900px; margin: 0 auto; }
     @media (max-width: 640px) { .branch-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -1203,12 +1204,12 @@ export default function Home() {
       padding: 40px; width: 340px; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,0.06);
     }
     .login-branch { font-size: 11px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 6px; }
-    .login-title { font-family: 'Playfair Display', serif; font-size: 22px; margin-bottom: 28px; }
+    .login-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 21px; margin-bottom: 28px; }
     .field-label { font-size: 11px; letter-spacing: 0.12em; color: #999; margin-bottom: 6px; font-weight: 500; }
     .text-input {
       width: 100%; background: #fff; border: 1.5px solid #d0ccc5;
       border-radius: 8px; padding: 11px 14px; font-size: 14px; color: #1a1a1a;
-      font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s; margin-bottom: 12px;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s; margin-bottom: 12px;
     }
     .text-input:focus { border-color: #b8954a; }
     .text-input::placeholder { color: #bbb; }
@@ -1216,7 +1217,7 @@ export default function Home() {
     .btn {
       background: #1a1a1a; color: #fff; border: none; border-radius: 8px;
       padding: 12px 26px; font-size: 14px; font-weight: 600; cursor: pointer;
-      letter-spacing: 0.08em; font-family: 'DM Sans', sans-serif; transition: all 0.2s; white-space: nowrap;
+      letter-spacing: 0.08em; font-family: 'Pretendard', 'DM Sans', sans-serif; transition: all 0.2s; white-space: nowrap;
     }
     .btn:hover { background: #333; }
     .btn.outline { background: #fff; color: #1a1a1a; border: 1px solid #d0ccc5; }
@@ -1229,7 +1230,7 @@ export default function Home() {
     .error-msg { font-size: 12px; color: #e05555; margin-bottom: 12px; }
 
     .section-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
-    .section-title { font-family: 'Playfair Display', serif; font-size: 26px; }
+    .section-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 24px; }
     .section-sub { font-size: 13px; color: #999; margin-top: 5px; }
 
     /* ── 수정 #6: 직원/알바 탭 스타일 ── */
@@ -1237,17 +1238,19 @@ export default function Home() {
     .emp-type-tab {
       padding: 8px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
       background: #fff; color: #999; transition: all 0.15s; letter-spacing: 0.06em;
-      border: none; font-family: 'DM Sans', sans-serif;
+      border: none; font-family: 'Pretendard', 'DM Sans', sans-serif;
     }
     .emp-type-tab.active { background: #1a1a1a; color: #fff; }
     .emp-type-tab:first-child { border-right: 1.5px solid #d0ccc5; }
 
     .emp-tabs { display: flex; align-items: center; border-bottom: 2px solid #ebe9e4; margin-bottom: 28px; overflow-x: auto; }
     .emp-tab {
-      padding: 12px 22px; font-size: 15px; font-weight: 500; cursor: pointer;
+      padding: 12px 14px; font-size: 15px; font-weight: 500; cursor: pointer;
       border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap;
-      color: #999; transition: all 0.15s; display: flex; align-items: center; gap: 8px;
+      color: #999; transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+      box-sizing: border-box; width: 150px;
     }
+    .emp-tab-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
     .emp-tab:hover { color: #1a1a1a; }
     .emp-tab.active { color: #1a1a1a; border-bottom-color: #b8954a; font-weight: 600; }
     .emp-tab.staff-tab { background: #e8f5e9; border-radius: 8px 8px 0 0; }
@@ -1276,7 +1279,7 @@ export default function Home() {
       text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
     }
     .modal-icon { font-size: 36px; margin-bottom: 16px; }
-    .modal-title { font-family: 'Playfair Display', serif; font-size: 20px; margin-bottom: 10px; color: #1a1a1a; }
+    .modal-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 19px; margin-bottom: 10px; color: #1a1a1a; }
     .modal-desc { font-size: 13px; color: #888; line-height: 1.6; margin-bottom: 28px; }
     .modal-emp-name { font-weight: 700; color: #e05555; }
     .modal-btns { display: flex; gap: 10px; }
@@ -1291,7 +1294,7 @@ export default function Home() {
       width: 100%; background: transparent; border: none;
       border-bottom: 1.5px solid #d0ccc5; padding: 5px 0;
       font-size: 16px; font-weight: 600; color: #1a1a1a;
-      font-family: 'DM Sans', sans-serif; outline: none;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none;
     }
     .info-card input:focus, .info-card select:focus { border-bottom-color: #b8954a; }
     .time-range { display: flex; align-items: center; gap: 6px; }
@@ -1301,7 +1304,7 @@ export default function Home() {
     .note-input {
       width: 100%; background: #fff; border: 1.5px solid #d0ccc5;
       border-radius: 8px; padding: 13px 16px; font-size: 15px; color: #1a1a1a;
-      font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
     }
     .note-input:focus { border-color: #b8954a; }
     .note-input::placeholder { color: #bbb; }
@@ -1388,13 +1391,13 @@ export default function Home() {
     .hour-input {
       width: 100%; border: none; border-bottom: 1px solid #ebe9e4;
       background: transparent; font-size: 15px; font-weight: 500; color: #1a1a1a;
-      font-family: 'DM Sans', sans-serif; padding: 4px 2px; outline: none; text-align: center; margin-bottom: 6px;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; padding: 4px 2px; outline: none; text-align: center; margin-bottom: 6px;
     }
     .hour-input:focus { border-bottom-color: #b8954a; }
     .time-input-small {
       width: 100%; border: none; border-bottom: 1px solid #ebe9e4;
       background: transparent; font-size: 13px; color: #777;
-      font-family: 'DM Sans', sans-serif; padding: 4px 2px; outline: none; text-align: center;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; padding: 4px 2px; outline: none; text-align: center;
     }
     .time-input-small:focus { border-bottom-color: #b8954a; }
     .time-row { display: flex; gap: 3px; align-items: center; margin-bottom: 8px; }
@@ -1545,7 +1548,7 @@ export default function Home() {
                       fontSize: 13, fontWeight: 600,
                       cursor: importing ? 'wait' : 'pointer',
                       letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontFamily: "'Pretendard', 'DM Sans', sans-serif",
                     }}
                   >{importing ? '불러오는 중…' : '근무기록 불러오기 ↑'}</button>
                   <button
@@ -1559,7 +1562,7 @@ export default function Home() {
                       fontSize: 13, fontWeight: 600,
                       cursor: !activeEmp?.name ? 'not-allowed' : 'pointer',
                       letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontFamily: "'Pretendard', 'DM Sans', sans-serif",
                     }}
                   >이 직원만 ↓</button>
                   <button
@@ -1572,7 +1575,7 @@ export default function Home() {
                       fontSize: 13, fontWeight: 600,
                       cursor: 'pointer',
                       letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontFamily: "'Pretendard', 'DM Sans', sans-serif",
                     }}
                   >지점 전체 엑셀 ↓</button>
                   <button
@@ -1586,7 +1589,7 @@ export default function Home() {
                       fontSize: 13, fontWeight: 600,
                       cursor: !activeEmp?.name ? 'not-allowed' : 'pointer',
                       letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontFamily: "'Pretendard', 'DM Sans', sans-serif",
                     }}
                   >급여명세서 🖨</button>
                   <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
@@ -1600,7 +1603,7 @@ export default function Home() {
                   {employees.filter(emp => emp.empType === '직원').map(emp => (
                     <div key={emp.id} className={`emp-tab staff-tab${emp.id === activeEmpId ? ' active' : ''}`} onClick={() => handleTabSwitch(emp.id)}>
                       <span className="emp-tab-badge staff">직</span>
-                      {emp.name || '이름 미입력'}
+                      <span className="emp-tab-name">{emp.name || '이름 미입력'}</span>
                       {employees.length > 1 && (
                         <span className="emp-tab-del" onClick={e => { e.stopPropagation(); confirmDelete(emp.id) }}>×</span>
                       )}
@@ -1612,7 +1615,7 @@ export default function Home() {
                   {employees.filter(emp => emp.empType !== '직원').map(emp => (
                     <div key={emp.id} className={`emp-tab alba-tab${emp.id === activeEmpId ? ' active' : ''}`} onClick={() => handleTabSwitch(emp.id)}>
                       <span className="emp-tab-badge alba">알</span>
-                      {emp.name || '이름 미입력'}
+                      <span className="emp-tab-name">{emp.name || '이름 미입력'}</span>
                       {employees.length > 1 && (
                         <span className="emp-tab-del" onClick={e => { e.stopPropagation(); confirmDelete(emp.id) }}>×</span>
                       )}
@@ -1671,7 +1674,7 @@ export default function Home() {
                       type="number"
                       value={activeEmp.manualIncomeTax || 0}
                       onChange={e => updateEmp('manualIncomeTax', Number(e.target.value))}
-                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}
+                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                     />
                     원 <span style={{ color: '#bbb' }}>(지방소득세는 10% 자동)</span>
                   </label>
@@ -1685,7 +1688,7 @@ export default function Home() {
                     type="number"
                     value={activeEmp.mealAllowance || 0}
                     onChange={e => updateEmp('mealAllowance', Number(e.target.value))}
-                    style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}
+                    style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                   />
                   원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
                 </label>
