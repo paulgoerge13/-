@@ -190,7 +190,35 @@ const EMPTY_EMP = {
   workData: {}, specialNote: '',
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
+  deductionType: 'none',   // 공제 방식: 'none' | '3.3' | '4대'
+  manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
   year: new Date().getFullYear(), month: new Date().getMonth() + 1,
+}
+
+// ── 4대보험 요율 (2025년 기준 · 근로자 부담분) ──
+// 매년 변동될 수 있어, 필요 시 이 숫자만 수정하면 전체에 반영됩니다.
+const RATE_PENSION    = 0.045    // 국민연금 4.5%
+const RATE_HEALTH     = 0.03545  // 건강보험 3.545%
+const RATE_CARE       = 0.1295   // 장기요양 (건강보험료의 12.95%)
+const RATE_EMPLOYMENT = 0.009    // 고용보험 0.9%
+
+// ── 공제 계산: 세전 총액(gross) 기준으로 항목별 공제액 산출 ──
+function calcDeductions(gross, emp) {
+  const dt = emp.deductionType || 'none'
+  let pension = 0, health = 0, care = 0, employment = 0, incomeTax = 0, localTax = 0, bizTax = 0
+  if (dt === '4대') {
+    pension    = Math.round(gross * RATE_PENSION / 10) * 10   // 10원 단위 절사
+    health     = Math.round(gross * RATE_HEALTH / 10) * 10
+    care       = Math.round(health * RATE_CARE / 10) * 10
+    employment = Math.round(gross * RATE_EMPLOYMENT / 10) * 10
+    incomeTax  = emp.manualIncomeTax || 0
+    localTax   = Math.round((incomeTax * 0.1) / 10) * 10
+  } else if (dt === '3.3') {
+    bizTax     = Math.round(gross * 0.03)    // 사업소득세 3%
+    localTax   = Math.round(gross * 0.003)   // 지방소득세 0.3%
+  }
+  const total = pension + health + care + employment + incomeTax + localTax + bizTax
+  return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, total, net: gross - total }
 }
 
 export default function Home() {
@@ -548,9 +576,13 @@ export default function Home() {
 
     const hoursWeekly = emp.hourlyWage > 0 ? Math.round((totalWeeklyFinal / emp.hourlyWage) * 10) / 10 : 0
 
+    // ── 공제(4대보험/3.3%) 및 실수령액 ──
+    const deductions = calcDeductions(grandTotal, emp)
+
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
-      hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH }
+      hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
+      deductions, netPay: deductions.net, totalDeduction: deductions.total }
   }
 
   // ── 자동저장: 로컬스토리지에만 저장 (Supabase 호출 없음) ──
@@ -828,6 +860,13 @@ export default function Home() {
       Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
       Math.round(totals.totalHolidayNightPay), Math.round(totals.grandTotal),
     ]
+    const deductHeaders = ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '사업소득세', '지방소득세', '공제합계']
+    const deductRow = [
+      totals.deductions.dt === '4대' ? '4대보험' : totals.deductions.dt === '3.3' ? '3.3%' : '없음',
+      totals.deductions.pension, totals.deductions.health, totals.deductions.care,
+      totals.deductions.employment, totals.deductions.incomeTax, totals.deductions.bizTax,
+      totals.deductions.localTax, totals.totalDeduction,
+    ]
     const infoRow = [`직원명: ${activeEmp.name}`, `지점: ${selectedBranch?.name}`, `${activeEmp.year}년 ${activeEmp.month}월`, `구분: ${activeEmp.empType || '알바'}`]
     const BOM = '\uFEFF'
     const csv = BOM + [
@@ -838,6 +877,11 @@ export default function Home() {
       '',
       summaryHeaders.map(v => `"${v}"`).join(','),
       summaryRow.map(v => `"${String(v)}"`).join(','),
+      '',
+      deductHeaders.map(v => `"${v}"`).join(','),
+      deductRow.map(v => `"${String(v)}"`).join(','),
+      '',
+      `"실수령액","${totals.netPay}"`,
     ].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -895,6 +939,16 @@ export default function Home() {
           Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
           Math.round(totals.totalHolidayNightPay), Math.round(totals.grandTotal),
         ],
+        [],
+        ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '사업소득세', '지방소득세', '공제합계'],
+        [
+          totals.deductions.dt === '4대' ? '4대보험' : totals.deductions.dt === '3.3' ? '3.3%' : '없음',
+          totals.deductions.pension, totals.deductions.health, totals.deductions.care,
+          totals.deductions.employment, totals.deductions.incomeTax, totals.deductions.bizTax,
+          totals.deductions.localTax, totals.totalDeduction,
+        ],
+        [],
+        ['실수령액', totals.netPay],
       ]
       const ws = XLSX.utils.aoa_to_sheet(aoa)
       ws['!cols'] = headers.map(() => ({ wch: 11 }))
@@ -1145,6 +1199,18 @@ export default function Home() {
     .summary-total-val { font-family: 'Playfair Display', serif; font-size: 34px; color: #b8954a; font-weight: 600; }
     .summary-total-val .won-big { font-size: 20px; margin-left: 3px; }
 
+    /* ── 공제 내역 & 실수령액 ── */
+    .deduct-title { font-size: 13px; letter-spacing: 0.12em; color: #e0a0a0; margin: 26px 0 4px; }
+    .summary-row-val.deduct-val { color: #f0a0a0; }
+    .net-pay-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 18px; padding: 20px 22px; border-radius: 12px;
+      background: linear-gradient(135deg, #b8954a 0%, #9c7d36 100%);
+    }
+    .net-pay-label { font-size: 17px; color: #fff; letter-spacing: 0.06em; font-weight: 600; }
+    .net-pay-val { font-family: 'Playfair Display', serif; font-size: 36px; color: #fff; font-weight: 600; }
+    .net-pay-val .won-big { font-size: 20px; margin-left: 3px; }
+
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 12px; color: #bbb; align-self: center; }
   `
@@ -1339,6 +1405,39 @@ export default function Home() {
                     />
                     기본급 및 주휴수당 계산기 켜기
                   </label>
+                )}
+              </div>
+
+              {/* 공제 방식 */}
+              <div style={{ marginBottom: 8 }}>
+                <div className="field-label" style={{ marginBottom: 6 }}>공제 방식 (세금·4대보험)</div>
+                <div className="emp-type-tabs">
+                  {[
+                    { v: 'none', t: '공제 없음' },
+                    { v: '3.3',  t: '3.3% 원천징수' },
+                    { v: '4대',  t: '4대보험' },
+                  ].map(({ v, t }) => (
+                    <button
+                      key={v}
+                      className={`emp-type-tab${(activeEmp.deductionType || 'none') === v ? ' active' : ''}`}
+                      onClick={() => updateEmp('deductionType', v)}
+                    >{t}</button>
+                  ))}
+                </div>
+                {activeEmp.deductionType === '4대' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888' }}>
+                    소득세 (세무사 안내 금액)
+                    <input
+                      type="number"
+                      value={activeEmp.manualIncomeTax || 0}
+                      onChange={e => updateEmp('manualIncomeTax', Number(e.target.value))}
+                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}
+                    />
+                    원 <span style={{ color: '#bbb' }}>(지방소득세는 10% 자동)</span>
+                  </label>
+                )}
+                {activeEmp.deductionType === '3.3' && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
                 )}
               </div>
 
@@ -1573,6 +1672,40 @@ export default function Home() {
                     <div className="summary-total-label">세전 합계</div>
                     <div className="summary-total-val">{fmt(totals.grandTotal)}<span className="won-big">원</span></div>
                   </div>
+
+                  {/* ── 공제 내역 & 실수령액 ── */}
+                  {totals.deductions.dt !== 'none' && (
+                    <>
+                      <div className="deduct-title">공제 내역</div>
+                      <div className="summary-list">
+                        {[
+                          { label: '국민연금',   total: totals.deductions.pension,    desc: '세전 × 4.5%' },
+                          { label: '건강보험',   total: totals.deductions.health,     desc: '세전 × 3.545%' },
+                          { label: '장기요양',   total: totals.deductions.care,       desc: '건강보험료 × 12.95%' },
+                          { label: '고용보험',   total: totals.deductions.employment, desc: '세전 × 0.9%' },
+                          { label: '소득세',     total: totals.deductions.incomeTax,  desc: '세무사 안내 금액' },
+                          { label: '사업소득세', total: totals.deductions.bizTax,     desc: '세전 × 3%' },
+                          { label: '지방소득세', total: totals.deductions.localTax,   desc: totals.deductions.dt === '3.3' ? '세전 × 0.3%' : '소득세 × 10%' },
+                        ].filter(r => r.total > 0).map(({ label, total, desc }) => (
+                          <div key={label} className="summary-row">
+                            <div className="summary-row-left">
+                              <div className="summary-row-label">{label}</div>
+                              <div className="summary-row-desc">{desc}</div>
+                            </div>
+                            <div className="summary-row-val deduct-val">- {fmt(total)}<span className="won">원</span></div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="summary-total-row" style={{ borderTop: '1px dashed #e6e3dd' }}>
+                        <div className="summary-total-label" style={{ color: '#999', fontSize: 15 }}>공제 합계</div>
+                        <div className="summary-total-val" style={{ color: '#e05555', fontSize: 20 }}>- {fmt(totals.totalDeduction)}<span className="won-big">원</span></div>
+                      </div>
+                      <div className="net-pay-row">
+                        <div className="net-pay-label">실수령액</div>
+                        <div className="net-pay-val">{fmt(totals.netPay)}<span className="won-big">원</span></div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
