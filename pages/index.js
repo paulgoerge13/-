@@ -1617,33 +1617,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ── 지점별 인건비 총금액 ── */}
-              {(() => {
-                const totalsList = employees.map(e => calcTotal(e))
-                const branchGross = totalsList.reduce((s, t) => s + (t.grossPay || 0), 0)
-                const branchNet   = totalsList.reduce((s, t) => s + (t.netPay || 0), 0)
-                const staffCount  = employees.filter(e => e.empType === '직원').length
-                const albaCount   = employees.length - staffCount
-                return (
-                  <div className="branch-cost-card">
-                    <div className="branch-cost-head">
-                      <span className="branch-cost-title">{selectedBranch?.name} · {activeEmp.year}년 {activeEmp.month}월 인건비 총금액</span>
-                      <span className="branch-cost-sub">직원 {staffCount}명 · 알바 {albaCount}명 (총 {employees.length}명)</span>
-                    </div>
-                    <div className="branch-cost-grid">
-                      <div className="branch-cost-item">
-                        <div className="bc-label">지급액 합계 (식대 포함)</div>
-                        <div className="bc-val">{fmt(branchGross)}<span className="won">원</span></div>
-                      </div>
-                      <div className="branch-cost-item">
-                        <div className="bc-label">실지급 합계 (공제 후)</div>
-                        <div className="bc-val net">{fmt(branchNet)}<span className="won">원</span></div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
-
               {/* 직원 탭 - 직원 왼쪽/알바 오른쪽 */}
               <div className="emp-tabs" style={{ justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
@@ -2059,6 +2032,33 @@ export default function Home() {
                   }
                 }}>데이터 초기화</button>
               </div>
+
+              {/* ── 지점별 인건비 총금액 (맨 아래) ── */}
+              {(() => {
+                const totalsList = employees.map(e => calcTotal(e))
+                const branchGross = totalsList.reduce((s, t) => s + (t.grossPay || 0), 0)
+                const branchNet   = totalsList.reduce((s, t) => s + (t.netPay || 0), 0)
+                const staffCount  = employees.filter(e => e.empType === '직원').length
+                const albaCount   = employees.length - staffCount
+                return (
+                  <div className="branch-cost-card" style={{ marginTop: 28, marginBottom: 0 }}>
+                    <div className="branch-cost-head">
+                      <span className="branch-cost-title">{selectedBranch?.name} · {activeEmp.year}년 {activeEmp.month}월 인건비 총금액</span>
+                      <span className="branch-cost-sub">직원 {staffCount}명 · 알바 {albaCount}명 (총 {employees.length}명)</span>
+                    </div>
+                    <div className="branch-cost-grid">
+                      <div className="branch-cost-item">
+                        <div className="bc-label">지급액 합계 (식대 포함)</div>
+                        <div className="bc-val">{fmt(branchGross)}<span className="won">원</span></div>
+                      </div>
+                      <div className="branch-cost-item">
+                        <div className="bc-label">실지급 합계 (공제 후)</div>
+                        <div className="bc-val net">{fmt(branchNet)}<span className="won">원</span></div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )}
         </main>
