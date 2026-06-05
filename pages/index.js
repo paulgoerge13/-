@@ -965,6 +965,104 @@ export default function Home() {
     XLSX.writeFile(wb, `급여명세_${selectedBranch?.name || '지점'}_${ym}.xlsx`)
   }
 
+  // ── 급여명세서 인쇄/PDF (근로기준법 제48조 항목별 명세서) ──
+  function printPayslip() {
+    if (!activeEmp?.name) { alert('직원 이름을 먼저 입력해주세요.'); return }
+    const t = calcTotal(activeEmp)
+    const w = (n) => Number(n || 0).toLocaleString()
+    const dt = t.deductions.dt
+    // 지급 항목 (0원 제외, 기본급은 항상)
+    const payItems = [
+      ['기본급', t.totalBasic],
+      ['주휴수당', t.totalWeeklyHoliday],
+      ['연장근로수당', t.totalOvertime],
+      ['야간근로수당', t.totalNight],
+      ['휴일근로수당', t.totalHoliday],
+      ['휴일연장수당', t.totalHolidayOtPay],
+      ['휴일야간수당', t.totalHolidayNightPay],
+    ].filter(([l, v]) => v > 0 || l === '기본급')
+    // 공제 항목
+    const dedItems = dt === 'none' ? [] : [
+      ['국민연금', t.deductions.pension],
+      ['건강보험', t.deductions.health],
+      ['장기요양', t.deductions.care],
+      ['고용보험', t.deductions.employment],
+      ['소득세', t.deductions.incomeTax],
+      ['사업소득세', t.deductions.bizTax],
+      ['지방소득세', t.deductions.localTax],
+    ].filter(([l, v]) => v > 0)
+    const rows = (items) => items.map(([l, v]) => `<tr><td class="lbl">${l}</td><td class="amt">${w(v)}</td></tr>`).join('')
+    const today = new Date()
+    const issueDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>급여명세서_${activeEmp.name}_${activeEmp.year}년${activeEmp.month}월</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body { font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#1a1a1a; padding:40px; background:#fff; }
+  .sheet { max-width:680px; margin:0 auto; }
+  .top { text-align:center; border-bottom:3px solid #1a1a1a; padding-bottom:16px; margin-bottom:22px; }
+  .top .brand { font-size:12px; letter-spacing:0.3em; color:#b8954a; font-weight:700; }
+  .top h1 { font-size:28px; margin:8px 0 4px; letter-spacing:0.1em; }
+  .top .period { font-size:14px; color:#666; }
+  .meta { display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; font-size:13px; margin-bottom:24px; }
+  .meta div { display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding:7px 2px; }
+  .meta .k { color:#888; }
+  .meta .v { font-weight:600; }
+  .cols { display:flex; gap:20px; margin-bottom:20px; }
+  .col { flex:1; }
+  .col h2 { font-size:14px; background:#1a1a1a; color:#fff; padding:8px 12px; letter-spacing:0.05em; }
+  .col.ded h2 { background:#b8954a; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:9px 12px; font-size:13px; border-bottom:1px solid #eee; }
+  td.lbl { color:#555; }
+  td.amt { text-align:right; font-weight:600; }
+  .subtotal { display:flex; justify-content:space-between; padding:10px 12px; font-weight:700; font-size:14px; background:#f6f4f0; border-top:2px solid #ddd; }
+  .net { margin-top:22px; background:linear-gradient(135deg,#b8954a,#9c7d36); color:#fff; padding:20px 24px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; }
+  .net .nl { font-size:16px; font-weight:600; letter-spacing:0.05em; }
+  .net .nv { font-size:30px; font-weight:800; }
+  .foot { margin-top:26px; font-size:11px; color:#999; line-height:1.7; border-top:1px solid #eee; padding-top:14px; }
+  .sign { margin-top:20px; text-align:right; font-size:13px; color:#555; }
+  @media print { body { padding:0; } @page { margin:14mm; } }
+</style></head><body><div class="sheet">
+  <div class="top">
+    <div class="brand">THE COMMA' LOUNGE</div>
+    <h1>급 여 명 세 서</h1>
+    <div class="period">${activeEmp.year}년 ${activeEmp.month}월분</div>
+  </div>
+  <div class="meta">
+    <div><span class="k">성명</span><span class="v">${activeEmp.name}</span></div>
+    <div><span class="k">지점</span><span class="v">${selectedBranch?.name || '-'}</span></div>
+    <div><span class="k">구분</span><span class="v">${activeEmp.empType || '알바'}</span></div>
+    <div><span class="k">시급</span><span class="v">${w(activeEmp.hourlyWage)}원</span></div>
+    <div><span class="k">근무일수</span><span class="v">${t.workDays}일</span></div>
+    <div><span class="k">총 근로시간</span><span class="v">${t.hoursWork}시간</span></div>
+  </div>
+  <div class="cols">
+    <div class="col">
+      <h2>지급 내역</h2>
+      <table>${rows(payItems)}</table>
+      <div class="subtotal"><span>지급 합계</span><span>${w(t.grandTotal)}원</span></div>
+    </div>
+    <div class="col ded">
+      <h2>공제 내역</h2>
+      <table>${dedItems.length ? rows(dedItems) : '<tr><td class="lbl">공제 없음</td><td class="amt">0</td></tr>'}</table>
+      <div class="subtotal"><span>공제 합계</span><span>${w(t.totalDeduction)}원</span></div>
+    </div>
+  </div>
+  <div class="net"><span class="nl">실수령액</span><span class="nv">${w(t.netPay)}원</span></div>
+  <div class="foot">
+    ※ 본 명세서는 근로기준법 제48조에 따라 발행된 임금명세서입니다.<br>
+    ※ 4대보험 요율은 발행 시점 기준이며, 소득세는 간이세액표/세무 안내에 따릅니다.
+  </div>
+  <div class="sign">발행일: ${issueDate}　／　${selectedBranch?.name || ''}</div>
+</div>
+<script>window.onload=function(){window.print()}</script>
+</body></html>`
+    const win = window.open('', '_blank')
+    if (!win) { alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.'); return }
+    win.document.write(html)
+    win.document.close()
+  }
+
   const totals = activeEmp ? calcTotal(activeEmp) : null
   const weeks = activeEmp ? getWeeksInMonth(activeEmp.year, activeEmp.month) : []
   const DAY_LABELS = ['월','화','수','목','금','토','일']
@@ -1368,6 +1466,20 @@ export default function Home() {
                       fontFamily: "'DM Sans', sans-serif",
                     }}
                   >지점 전체 엑셀 ↓</button>
+                  <button
+                    onClick={printPayslip}
+                    disabled={!activeEmp?.name}
+                    style={{
+                      padding: '8px 16px',
+                      background: !activeEmp?.name ? '#f0ede8' : '#fff',
+                      color: !activeEmp?.name ? '#ccc' : '#1a1a1a',
+                      border: '1px solid #d0ccc5', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600,
+                      cursor: !activeEmp?.name ? 'not-allowed' : 'pointer',
+                      letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >급여명세서 🖨</button>
                   <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
                 </div>
               </div>
