@@ -237,7 +237,7 @@ export default function PayrollManager() {
 
               <div className="pay-grid">
                 {[
-                  ['기본수당', r.basic_pay],
+                  ['기본급', r.basic_pay],
                   ['주휴수당', r.weekly_holiday_pay],
                   ['연장수당', r.overtime_pay],
                   ['야간수당', r.night_pay],

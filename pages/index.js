@@ -72,6 +72,86 @@ function calcAutoHours(startStr, endStr) {
   return raw > 0 ? Math.round(raw * 2) / 2 : 0
 }
 
+// ── 시작~종료 시간을 주간/야간으로 자동 분리 ──
+// 주간: 06:00~22:00 / 야간: 22:00~다음날 06:00
+function calcDayNightHours(startStr, endStr) {
+  if (!startStr || !endStr) return null
+  const parseTime = (t) => { const [h, m] = t.split(':').map(Number); return h + (m || 0) / 60 }
+  let s = parseTime(startStr)
+  let e = parseTime(endStr)
+  if (isNaN(s) || isNaN(e)) return null
+  if (e === s) return { day: 0, night: 0, total: 0 } // 시작=종료 → 0시간
+  if (e < s) e += 24 // 자정 넘기는 케이스
+  const overlap = (a, b) => Math.max(0, Math.min(e, b) - Math.max(s, a))
+  // 야간 구간: 매일 22:00~다음날 06:00 (전날/당일/다음날 반복)
+  let night = 0
+  for (let d = -1; d <= 1; d++) night += overlap(d * 24 + 22, d * 24 + 30)
+  const total = e - s
+  const r = (x) => Math.round(x * 2) / 2
+  const nightR = r(night)
+  return { day: r(total - night), night: nightR, total: r(total) }
+}
+
+// ── 휴게시간을 야간에서 먼저 차감, 모자라면 주간에서 차감 ──
+// 예: 20:00~05:00(주간2/야간7) + 휴게1 → 주간2 / 야간6
+function netSplit(startStr, endStr, rest) {
+  const split = calcDayNightHours(startStr, endStr)
+  if (!split) return null
+  const restH = Number(rest) || 0
+  const night = Math.max(0, split.night - restH)
+  const leftover = Math.max(0, restH - split.night)
+  const day = Math.max(0, split.day - leftover)
+  return { day, night }
+}
+
+// ── 근무기록 엑셀 파싱 헬퍼 ──
+const pad2 = (n) => String(n).padStart(2, '0')
+
+function parseExcelDate(v) {
+  if (v == null || v === '') return null
+  if (v instanceof Date) return { year: v.getFullYear(), month: v.getMonth() + 1, day: v.getDate() }
+  const m = String(v).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/)
+  return m ? { year: +m[1], month: +m[2], day: +m[3] } : null
+}
+
+function parseExcelTime(v) {
+  if (v == null || v === '') return null
+  if (v instanceof Date) return `${pad2(v.getHours())}:${pad2(v.getMinutes())}`
+  const s = String(v)
+  const m = s.match(/(\d{1,2}):(\d{2})/) // "20:48" 또는 "2026-05-01 20:48:00"
+  if (m) return `${pad2(+m[1])}:${m[2]}`
+  const num = Number(s) // 엑셀 시간 소수 (0~1)
+  if (!isNaN(num) && num >= 0 && num < 1) {
+    const totalMin = Math.round(num * 24 * 60)
+    return `${pad2(Math.floor(totalMin / 60))}:${pad2(totalMin % 60)}`
+  }
+  return null
+}
+
+function parseExcelHours(v) {
+  if (!v) return 0
+  if (v instanceof Date) return v.getHours() + v.getMinutes() / 60
+  const s = String(v).trim()
+  const colon = s.match(/(\d{1,2}):(\d{2})/) // "01:00" → 1.0
+  if (colon) return +colon[1] + (+colon[2]) / 60
+  // 한글 형식: "1시간 30분", "90분", "30분", "1시간"
+  if (s.includes('시간') || s.includes('분')) {
+    const hM = s.match(/(\d+)\s*시간/)
+    const mM = s.match(/(\d+)\s*분/)
+    return (hM ? +hM[1] : 0) + (mM ? +mM[1] / 60 : 0)
+  }
+  const num = Number(s)
+  if (!isNaN(num)) return num // 숫자만 있으면 시간 단위로 간주 (예: 0.5 → 30분)
+  return 0
+}
+
+// 지점명 매칭: "더콤마라운지 광명점" ↔ "광명GIDC점"
+function normBranch(s) { return String(s || '').replace(/더콤마라운지|점|\s/g, '') }
+function branchMatches(appName, wsName) {
+  const a = normBranch(appName), w = normBranch(wsName)
+  return !!(a && w && (a.includes(w) || w.includes(a)))
+}
+
 const EMPTY_EMP = {
   name: '', residentId: '', phone: '', email: '',
   accountNumber: '',
@@ -96,6 +176,8 @@ export default function Home() {
   const [tooltipInfo, setTooltipInfo] = useState(null)
   // ── 수정 #2: 시간 입력 임시 상태 (셀별) ──
   const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
+  const [importing, setImporting] = useState(false)
+  const importInputRef = useRef(null)
   const saveTimer = useRef(null)
 
   useEffect(() => {
@@ -117,14 +199,16 @@ export default function Home() {
       const res = await fetch(`/api/load?branch=${encodeURIComponent(branchName)}&name=${encodeURIComponent(empName)}&year=${yr}&month=${mo}`)
       const result = await res.json()
       if (result.success && result.data) {
-        setEmployees(prev => prev.map(e =>
-          e.id === targetId ? {
+        setEmployees(prev => prev.map(e => {
+          if (e.id !== targetId) return e
+          if (e._dirty) return e   // 엑셀로 불러온/미저장 데이터는 덮어쓰지 않음
+          return {
             ...e,
             workData: result.data.work_data || {},
             specialNote: result.data.special_note || '',
             hourlyWage: result.data.hourly_wage || 10320,
-          } : e
-        ))
+          }
+        }))
       }
       // 데이터 없으면 workData 빈 상태 유지 (이미 초기화됐으므로 OK)
     } catch (e) { console.error('데이터 로드 실패:', e) }
@@ -241,9 +325,18 @@ export default function Home() {
     const start = field === 'timeStart' ? formatted : (currentData.timeStart || activeEmp.defaultTimeStart)
     const end   = field === 'timeEnd'   ? formatted : (currentData.timeEnd   || activeEmp.defaultTimeEnd)
 
-    const autoH = calcAutoHours(start, end)
-    if (autoH !== null) {
-      updateWorkDay(dateStr, 'basicH', autoH)
+    const isHol = (currentData.type || '평') === '휴'
+    const rest = isHol ? (currentData.holidayRestH || 0) : (currentData.restH || 0)
+    const split = netSplit(start, end, rest) // 휴게를 야간에서 먼저 차감
+    if (split) {
+      // 시작~종료 시간을 주간/야간으로 자동 분리 (휴일이면 휴일주간/휴일야간)
+      if (isHol) {
+        updateWorkDay(dateStr, 'holidayDaytimeH', split.day)
+        updateWorkDay(dateStr, 'holidayNightH', split.night)
+      } else {
+        updateWorkDay(dateStr, 'daytimeH', split.day)
+        updateWorkDay(dateStr, 'nightH', split.night)
+      }
     }
     // 임시 입력 상태 초기화
     setTimeInputs(prev => {
@@ -262,6 +355,29 @@ export default function Home() {
     }))
   }
 
+  // ── 휴게시간 입력 시 야간에서 자동 차감 후 주간/야간 재계산 ──
+  function handleRestChange(dateStr, val, isHol) {
+    const restVal = Number(val) || 0
+    const currentData = activeEmp.workData[dateStr] || {}
+    const start = currentData.timeStart || activeEmp.defaultTimeStart
+    const end   = currentData.timeEnd   || activeEmp.defaultTimeEnd
+    if (isHol) {
+      updateWorkDay(dateStr, 'holidayRestH', restVal)
+      const split = netSplit(start, end, restVal)
+      if (split) {
+        updateWorkDay(dateStr, 'holidayDaytimeH', split.day)
+        updateWorkDay(dateStr, 'holidayNightH', split.night)
+      }
+    } else {
+      updateWorkDay(dateStr, 'restH', restVal)
+      const split = netSplit(start, end, restVal)
+      if (split) {
+        updateWorkDay(dateStr, 'daytimeH', split.day)
+        updateWorkDay(dateStr, 'nightH', split.night)
+      }
+    }
+  }
+
   // ── 기본 근무시간 입력 포커스 아웃 시 자동 포맷 ──
   function handleDefaultTimeBlur(field, rawVal) {
     const formatted = formatTimeInput(rawVal)
@@ -270,9 +386,11 @@ export default function Home() {
 
   function toggleDayType(dateStr) {
     const current = activeEmp.workData[dateStr]?.type || '평'
+    // 평일 → 휴일근로(휴) → 휴무(공) → 연차(연) → 평일
     let nextType = '평'
     if (current === '평') nextType = '휴'
     else if (current === '휴') nextType = '공'
+    else if (current === '공') nextType = '연'
     else nextType = '평'
 
     // ── B2: 타입 전환 시 이전 타입의 시간/급여 데이터 초기화 ──
@@ -281,16 +399,16 @@ export default function Home() {
       const existing = e.workData[dateStr] || {}
       let resetFields = {}
 
-      if (nextType === '휴' || nextType === '공') {
-        // 평일→휴일근로 or 평일→휴무: 평일 데이터 초기화
+      if (nextType === '휴' || nextType === '공' || nextType === '연') {
+        // 평일→휴일근로/휴무/연차: 평일 데이터 초기화
         resetFields = {
-          basicH: 0, restH: 0, nightH: 0, overtimeH: 0,
+          basicH: 0, daytimeH: 0, restH: 0, nightH: 0, overtimeH: 0,
           timeStart: '00:00', timeEnd: '00:00',
         }
       } else if (nextType === '평') {
-        // 휴일근로→평일 or 휴무→평일: 휴일 데이터 초기화
+        // 휴일근로/휴무/연차→평일: 휴일 데이터 초기화
         resetFields = {
-          holidayH: 0, holidayRestH: 0, holidayNightH: 0, holidayOtH: 0,
+          holidayH: 0, holidayDaytimeH: 0, holidayRestH: 0, holidayNightH: 0, holidayOtH: 0,
           timeStart: '00:00', timeEnd: '00:00',
         }
       }
@@ -334,63 +452,78 @@ export default function Home() {
   }
 
   function calcWeekPay(week, emp) {
-    let weekBasicH = 0
+    // ── 주간/야간/휴게/연장 시간을 주별로 합산 (기본·휴일근로 칸 폐지) ──
+    let weekDayH = 0, weekNightH = 0, weekRestH = 0, weekOtH = 0
     week.forEach(day => {
       if (!day) return
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-      weekBasicH += emp.workData[ds]?.basicH || 0
+      const d = emp.workData[ds] || {}
+      weekDayH   += (d.daytimeH || 0) + (d.holidayDaytimeH || 0)
+      weekNightH += (d.nightH || 0)   + (d.holidayNightH || 0)
+      weekRestH  += (d.restH || 0)    + (d.holidayRestH || 0)
+      weekOtH    += (d.overtimeH || 0) + (d.holidayOtH || 0)
     })
+    const weekWorkH = weekDayH + weekNightH + weekOtH // 휴게 제외
     const isStaffNoCalc = emp.empType === '직원' && !emp.useBasicCalc
-    return { weekBasicH, weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekBasicH, emp.hourlyWage) }
+    // 주휴수당: 주간 시간 기준으로 계산
+    return {
+      weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH,
+      weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekDayH, emp.hourlyWage)
+    }
   }
 
   // ── 수정 #5: 수동 입력 고정값 + 캘린더 계산값 합산 ──
   function calcTotal(emp) {
     const weeks = getWeeksInMonth(emp.year, emp.month)
-    let autoBasic = 0, autoOvertime = 0, autoNight = 0
-    let autoHoliday = 0, autoHolidayOtPay = 0, autoHolidayNightPay = 0
     let totalWeeklyHoliday = 0
     weeks.forEach(week => { totalWeeklyHoliday += calcWeekPay(week, emp).weeklyHolidayPay })
+
+    // ── 시간 집계 (기본·휴일근로 칸 폐지, 휴게는 근무시간에서 제외) ──
+    let hoursDay = 0, hoursNight = 0, hoursRest = 0, hoursOvertime = 0
+    let mDayH = 0, mNightH = 0, mOtH = 0, mHolidayDayH = 0, mHolidayNightH = 0, mHolidayOtH = 0
     Object.values(emp.workData).forEach(d => {
+      hoursDay      += (d.daytimeH || 0) + (d.holidayDaytimeH || 0)
+      hoursNight    += (d.nightH || 0)   + (d.holidayNightH || 0)
+      hoursRest     += (d.restH || 0)    + (d.holidayRestH || 0)
+      hoursOvertime += (d.overtimeH || 0) + (d.holidayOtH || 0)
       if (d.type !== '휴') {
-        autoBasic    += calcBasic(d.basicH || 0, emp.hourlyWage)
-        autoOvertime += calcOvertime(d.overtimeH || 0, emp.hourlyWage)
-        autoNight    += calcNight(d.nightH || 0, emp.hourlyWage)
+        mDayH   += d.daytimeH || 0
+        mNightH += d.nightH || 0
+        mOtH    += d.overtimeH || 0
       } else {
-        autoHoliday       += calcHoliday(d.holidayH || 0, emp.hourlyWage)
-        autoHolidayOtPay  += calcHolidayOt(d.holidayOtH || 0, emp.hourlyWage)
-        autoHolidayNightPay += calcHolidayNight(d.holidayNightH || 0, emp.hourlyWage)
+        mHolidayDayH   += d.holidayDaytimeH || 0
+        mHolidayNightH += d.holidayNightH || 0
+        mHolidayOtH    += d.holidayOtH || 0
       }
     })
-    const isStaffNoCalc = emp.empType === '직원' && !emp.useBasicCalc
-    const totalBasic         = isStaffNoCalc ? (emp.manualBasic || 0) : (emp.manualBasic || 0) + autoBasic
-    const totalOvertime      = (emp.manualOvertime || 0) + autoOvertime
-    const totalNight         = (emp.manualNight || 0) + autoNight
-    const totalHoliday       = (emp.manualHoliday || 0) + autoHoliday
-    const totalHolidayOtPay  = (emp.manualHolidayOt || 0) + autoHolidayOtPay
+    const hoursWork = hoursDay + hoursNight + hoursOvertime // 휴게 제외
+
+    const autoOvertime        = calcOvertime(mOtH, emp.hourlyWage)
+    const autoNight           = calcNight(mNightH, emp.hourlyWage)
+    const autoHoliday         = calcHoliday(mHolidayDayH, emp.hourlyWage)
+    const autoHolidayOtPay    = calcHolidayOt(mHolidayOtH, emp.hourlyWage)
+    const autoHolidayNightPay = calcHolidayNight(mHolidayNightH, emp.hourlyWage)
+
+    const isStaff = emp.empType === '직원'
+    const isStaffNoCalc = isStaff && !emp.useBasicCalc
+    // ── 기본수당: 직원 = 시급 × 209 고정 / 알바 = 실제 근무(주간+야간) × 시급 ──
+    const hoursBaseAlba = mDayH + mNightH
+    const totalBasic           = isStaff
+      ? Math.round(emp.hourlyWage * 209)
+      : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
+    const totalOvertime        = (emp.manualOvertime || 0) + autoOvertime
+    const totalNight           = (emp.manualNight || 0) + autoNight
+    const totalHoliday         = (emp.manualHoliday || 0) + autoHoliday   // 휴일 주간시간 × 시급 × 1.5 자동계산
+    const totalHolidayOtPay    = (emp.manualHolidayOt || 0) + autoHolidayOtPay
     const totalHolidayNightPay = (emp.manualHolidayNight || 0) + autoHolidayNightPay
-    const totalWeeklyFinal   = isStaffNoCalc ? (emp.manualWeeklyHoliday || 0) : (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
+    const totalWeeklyFinal     = isStaffNoCalc ? (emp.manualWeeklyHoliday || 0) : (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
     const grandTotal = totalBasic + totalWeeklyFinal + totalOvertime + totalNight + totalHoliday + totalHolidayOtPay + totalHolidayNightPay
 
-    // ── 총 시간 계산 ──
-    let hoursBasic = 0, hoursOvertime = 0, hoursNight = 0
-    let hoursHoliday = 0, hoursHolidayOt = 0, hoursHolidayNight = 0
-    Object.values(emp.workData).forEach(d => {
-      if (d.type !== '휴') {
-        hoursBasic    += d.basicH || 0
-        hoursOvertime += d.overtimeH || 0
-        hoursNight    += d.nightH || 0
-      } else {
-        hoursHoliday       += d.holidayH || 0
-        hoursHolidayOt     += d.holidayOtH || 0
-        hoursHolidayNight  += d.holidayNightH || 0
-      }
-    })
-    // 주휴시간 = 각 주 주휴수당 / 시급 * 40 / 8 역산 (또는 직접: 주휴수당합/시급)
     const hoursWeekly = emp.hourlyWage > 0 ? Math.round((totalWeeklyFinal / emp.hourlyWage) * 10) / 10 : 0
 
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
-      hoursBasic, hoursWeekly, hoursOvertime, hoursNight, hoursHoliday, hoursHolidayOt, hoursHolidayNight }
+      hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
+      hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH }
   }
 
   // ── 자동저장: 로컬스토리지에만 저장 (Supabase 호출 없음) ──
@@ -438,7 +571,7 @@ export default function Home() {
         body: JSON.stringify(payload)
       })
       if (res.ok) {
-        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status } : e))
+        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status, _dirty: false } : e))
       } else {
         const errData = await res.json()
         console.error('저장 API 오류:', errData)
@@ -537,10 +670,113 @@ export default function Home() {
   }
 
   // ── 수정 #8: 급여계산 페이지 엑셀 다운로드 ──
+  // ── 근무기록 엑셀 업로드 → 현재 지점 직원들의 캘린더 자동 입력 ──
+  async function handleExcelImport(file) {
+    if (!selectedBranch) return
+    setImporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { cellDates: true })
+
+      const imported = []          // { name, year, month, workData, empType }
+      const skippedBranches = new Set()
+      let skippedSheets = 0
+
+      wb.SheetNames.forEach(sheetName => {
+        const ws = wb.Sheets[sheetName]
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
+        const hIdx = rows.findIndex(r => Array.isArray(r) && r.includes('날짜'))
+        if (hIdx < 0) return
+        const header = rows[hIdx]
+        const ci = (label) => header.indexOf(label)
+        const cDate = ci('날짜'), cWs = ci('워크스페이스명'), cName = ci('이름')
+        const cIn = ci('출근'), cOut = ci('퇴근'), cRest = ci('휴게시간'), cWage = ci('시급/월급')
+
+        const dataRows = rows.slice(hIdx + 1).filter(r => parseExcelDate(r[cDate]))
+        if (dataRows.length === 0) return
+
+        const wsBranch = dataRows[0][cWs]
+        if (!branchMatches(selectedBranch.name, wsBranch)) {
+          skippedBranches.add(String(wsBranch || '알수없음').replace('더콤마라운지', '').trim())
+          skippedSheets++
+          return
+        }
+
+        const empName = String(dataRows[0][cName] || sheetName.split('_')[0] || '').trim()
+        const empType = String(dataRows[0][cWage] || '').includes('월급') ? '직원' : '알바'
+        const workData = {}
+        const monthCount = {}
+        dataRows.forEach(r => {
+          const d = parseExcelDate(r[cDate]); if (!d) return
+          const start = parseExcelTime(r[cIn]); const end = parseExcelTime(r[cOut])
+          if (!start || !end) return
+          const rest = parseExcelHours(r[cRest])
+          const ds = `${d.year}-${pad2(d.month)}-${pad2(d.day)}`
+          const split = netSplit(start, end, rest)
+          workData[ds] = {
+            type: '평', timeStart: start, timeEnd: end,
+            daytimeH: split ? split.day : 0, nightH: split ? split.night : 0,
+            restH: rest, overtimeH: 0,
+            holidayDaytimeH: 0, holidayNightH: 0, holidayRestH: 0, holidayOtH: 0,
+          }
+          const mk = `${d.year}-${d.month}`
+          monthCount[mk] = (monthCount[mk] || 0) + 1
+        })
+        if (Object.keys(workData).length === 0) return
+
+        const dom = Object.entries(monthCount).sort((a, b) => b[1] - a[1])[0]
+        const [yy, mm] = dom ? dom[0].split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1]
+        imported.push({ name: empName, year: yy, month: mm, workData, empType })
+      })
+
+      if (imported.length === 0) {
+        const msg = skippedBranches.size > 0
+          ? `현재 지점(${selectedBranch.name})에 해당하는 직원이 없습니다.\n파일에 있는 지점: ${[...skippedBranches].join(', ')}`
+          : '불러올 근무기록을 찾지 못했습니다. 파일 형식을 확인해주세요.'
+        alert(msg)
+        return
+      }
+
+      // 기존 직원과 이름으로 매칭: 있으면 근무데이터 갱신, 없으면 새로 추가
+      let firstId = null
+      setEmployees(prev => {
+        let next = [...prev]
+        imported.forEach((imp, idx) => {
+          const existIdx = next.findIndex(e => e.name && e.name.trim() === imp.name)
+          if (existIdx >= 0) {
+            next[existIdx] = { ...next[existIdx], workData: imp.workData, year: imp.year, month: imp.month, _dirty: true }
+            if (idx === 0) firstId = next[existIdx].id
+          } else {
+            const id = Date.now() + idx
+            next.push({ ...EMPTY_EMP, id, name: imp.name, empType: imp.empType, workData: imp.workData, year: imp.year, month: imp.month, _dirty: true })
+            if (idx === 0) firstId = id
+          }
+        })
+        // 빈 기본 직원(이름 미입력) 제거
+        next = next.filter(e => e.name && e.name.trim())
+        return next
+      })
+      if (firstId) setActiveEmpId(firstId)
+
+      let msg = `✅ ${imported.length}명의 근무기록을 불러왔습니다.\n${imported.map(e => `· ${e.name} (${e.month}월, ${Object.keys(e.workData).length}일)`).join('\n')}`
+      if (skippedBranches.size > 0) {
+        msg += `\n\n다른 지점 ${skippedSheets}명은 건너뛰었습니다: ${[...skippedBranches].join(', ')}`
+      }
+      msg += `\n\n※ 이 엑셀은 휴게시간이 0이라 출퇴근 시계상 시간 그대로 들어왔어요.\n휴게가 필요한 날은 '휴게' 칸에 숫자만 넣으면 자동으로 차감됩니다.`
+      alert(msg)
+    } catch (err) {
+      console.error('엑셀 불러오기 실패:', err)
+      alert('엑셀을 읽는 중 오류가 발생했습니다.\n' + (err?.message || ''))
+    } finally {
+      setImporting(false)
+    }
+  }
+
   function downloadExcelSingle() {
     if (!activeEmp) return
     const totals = calcTotal(activeEmp)
-    const headers = ['날짜', '유형', '시작', '종료', '기본', '휴게', '야간', '연장', '휴일근로', '휴일휴게', '휴일야간', '휴일연장']
+    const headers = ['날짜', '유형', '시작', '종료', '주간', '야간', '휴게', '연장', '휴일주간', '휴일야간', '휴일휴게', '휴일연장']
     const rows = []
     const weeks = getWeeksInMonth(activeEmp.year, activeEmp.month)
     weeks.forEach(week => {
@@ -552,12 +788,12 @@ export default function Home() {
         rows.push([
           ds, d.type || '평',
           d.timeStart || '', d.timeEnd || '',
-          d.basicH || 0, d.restH || 0, d.nightH || 0, d.overtimeH || 0,
-          d.holidayH || 0, d.holidayRestH || 0, d.holidayNightH || 0, d.holidayOtH || 0,
+          d.daytimeH || 0, d.nightH || 0, d.restH || 0, d.overtimeH || 0,
+          d.holidayDaytimeH || 0, d.holidayNightH || 0, d.holidayRestH || 0, d.holidayOtH || 0,
         ])
       })
     })
-    const summaryHeaders = ['', '기본수당', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '세전합계']
+    const summaryHeaders = ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '세전합계']
     const summaryRow = [
       '급여합계',
       Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday),
@@ -769,6 +1005,13 @@ export default function Home() {
     .day-date.holiday-type { background: #ffe0e0; color: #e05555; }
     .day-date.holiday-type:hover { background: #ffc0c0; }
     .day-date.off-type { background: #dcdcdc; color: #777; }
+    .day-date.annual-type { background: #dbeafe; color: #3b82c4; }
+    .day-date.annual-type:hover { background: #c3ddfb; }
+
+    .day-total {
+      margin-top: 6px; padding-top: 5px; border-top: 1px dashed #e6e3dd;
+      font-size: 10px; font-weight: 700; color: #b8954a; text-align: center; letter-spacing: 0.04em;
+    }
 
     .hour-label { font-size: 9px; color: #bbb; text-align: center; margin-bottom: 1px; letter-spacing: 0.06em; }
     .hour-input {
@@ -790,39 +1033,29 @@ export default function Home() {
     .week-summary-label { font-size: 11px; color: #999; }
     .week-summary-val { font-size: 11px; font-weight: 600; color: #b8954a; }
 
-    /* ── 수정 #5: 급여 내역 수동 입력 스타일 ── */
-    .summary-card { background: #1a1a1a; border-radius: 12px; padding: 28px; color: #fff; margin-bottom: 20px; }
-    .summary-title { font-size: 10px; letter-spacing: 0.2em; color: #888; margin-bottom: 20px; }
-    .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; margin-bottom: 20px; }
-    .summary-item-label { font-size: 10px; color: #666; letter-spacing: 0.1em; margin-bottom: 4px; }
-    .summary-item-val { font-size: 14px; font-weight: 600; color: #e8e0d0; }
-    .summary-manual-input {
-      width: 100%; background: transparent; border: none; border-bottom: 1px solid #333;
-      color: #b8954a; font-size: 11px; font-family: 'DM Sans', sans-serif;
-      padding: 2px 0; outline: none; margin-top: 4px; text-align: right;
+    /* ── 급여 내역 (읽기 전용, 자동계산) ── */
+    .summary-card { background: #1a1a1a; border-radius: 16px; padding: 28px; color: #fff; margin-bottom: 20px; }
+    .summary-title { font-size: 11px; letter-spacing: 0.15em; color: #999; margin-bottom: 18px; }
+    .summary-list { display: flex; flex-direction: column; }
+    .summary-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 0; border-bottom: 1px solid #2a2a2a;
     }
-    .summary-manual-input:focus { border-bottom-color: #b8954a; }
-    .summary-manual-input::placeholder { color: #888; }
-    .summary-manual-hint { font-size: 9px; color: #555; margin-top: 2px; letter-spacing: 0.05em; }
-    .summary-divider { border: none; border-top: 1px solid #2a2a2a; margin: 16px 0; }
-    .summary-total-label { font-size: 11px; color: #888; letter-spacing: 0.15em; }
-    .summary-total-val { font-family: 'Playfair Display', serif; font-size: 28px; color: #b8954a; font-weight: 600; }
+    .summary-row-left { display: flex; flex-direction: column; gap: 3px; }
+    .summary-row-label { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
+    .summary-row-desc { font-size: 11px; color: #888; letter-spacing: 0.02em; }
+    .summary-row-val { font-size: 17px; font-weight: 600; color: #e8e0d0; white-space: nowrap; }
+    .summary-row-val .won { font-size: 12px; color: #999; margin-left: 2px; font-weight: 400; }
+    .summary-total-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 20px; padding-top: 18px; border-top: 2px solid #b8954a;
+    }
+    .summary-total-label { font-size: 13px; color: #ccc; letter-spacing: 0.1em; font-weight: 500; }
+    .summary-total-val { font-family: 'Playfair Display', serif; font-size: 30px; color: #b8954a; font-weight: 600; }
+    .summary-total-val .won-big { font-size: 18px; margin-left: 3px; }
 
     .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
     .autosave-hint { font-size: 11px; color: #bbb; align-self: center; }
-    .summary-item-hours { font-size: 12px; color: #b8954a; font-weight: 600; margin-bottom: 4px; }
-    .summary-item-label { font-size: 10px; color: #666; letter-spacing: 0.1em; margin-bottom: 4px; cursor: pointer; text-decoration: underline dotted #555; position: relative; }
-    .summary-item-label:hover { color: #aaa; }
-    .formula-tooltip {
-      display: block;
-      background: #2a2a2a; border: 1px solid #3a3a3a;
-      border-radius: 8px; padding: 8px 12px;
-      font-size: 11px; color: #e8e0d0; line-height: 1.6;
-      white-space: normal; word-break: keep-all;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-      margin-top: 6px; margin-bottom: 6px;
-      grid-column: 1 / -1;
-    }
   `
 
   return (
@@ -911,6 +1144,27 @@ export default function Home() {
                 </div>
                 {/* ── 수정 #8: 지점변경 버튼 옆에 엑셀 다운로드 버튼 ── */}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    style={{ display: 'none' }}
+                    onChange={e => { const f = e.target.files[0]; if (f) handleExcelImport(f); e.target.value = '' }}
+                  />
+                  <button
+                    onClick={() => importInputRef.current?.click()}
+                    disabled={importing}
+                    style={{
+                      padding: '8px 16px',
+                      background: importing ? '#f0ede8' : '#b8954a',
+                      color: importing ? '#ccc' : '#fff',
+                      border: 'none', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600,
+                      cursor: importing ? 'wait' : 'pointer',
+                      letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >{importing ? '불러오는 중…' : '근무기록 불러오기 ↑'}</button>
                   <button
                     onClick={downloadExcelSingle}
                     disabled={!activeEmp?.name}
@@ -979,7 +1233,7 @@ export default function Home() {
                       onChange={e => updateEmp('useBasicCalc', e.target.checked)}
                       style={{ width: 14, height: 14, accentColor: '#b8954a' }}
                     />
-                    기본수당 및 주휴수당 계산기 켜기
+                    기본급 및 주휴수당 계산기 켜기
                   </label>
                 )}
               </div>
@@ -1083,7 +1337,7 @@ export default function Home() {
                 </div>
 
                 {weeks.map((week, wi) => {
-                  const { weekBasicH, weeklyHolidayPay } = calcWeekPay(week, activeEmp)
+                  const { weekDayH, weekNightH, weekWorkH, weeklyHolidayPay } = calcWeekPay(week, activeEmp)
                   return (
                     <div key={wi} className="week-block">
                       <div className="week-row">
@@ -1095,21 +1349,27 @@ export default function Home() {
                           const type = d.type || '평'
                           const isHolidayWork = type === '휴'
                           const isDayOff = type === '공'
+                          const isAnnual = type === '연'
+                          const noInput = isDayOff || isAnnual
+                          // ── 하루 총 근무시간 (휴게 제외): 주간+야간+연장 (휴일이면 휴일주간+휴일야간+휴일연장) ──
+                          const dayTotal = isHolidayWork
+                            ? (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
+                            : (d.daytimeH || 0) + (d.nightH || 0) + (d.overtimeH || 0)
 
                           // ── 수정 #2: 임시 입력 상태 우선 표시 ──
                           const tStart = timeInputs[ds]?.start !== undefined ? timeInputs[ds].start : (d.timeStart !== undefined ? d.timeStart : activeEmp.defaultTimeStart)
                           const tEnd   = timeInputs[ds]?.end   !== undefined ? timeInputs[ds].end   : (d.timeEnd   !== undefined ? d.timeEnd   : activeEmp.defaultTimeEnd)
 
                           return (
-                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${isDayOff ? 'is-off' : ''}`}>
+                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''}`}>
                               <div
-                                className={`day-date ${isHolidayWork ? 'holiday-type' : ''} ${isDayOff ? 'off-type' : ''}`}
+                                className={`day-date ${isHolidayWork ? 'holiday-type' : ''} ${isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
                                 onClick={() => toggleDayType(ds)}
-                                title="클릭: 평일/휴일근로/휴무 전환"
+                                title="클릭: 평일 → 휴일근로 → 휴무 → 연차 전환"
                               >{day}</div>
 
-                              {isDayOff ? (
-                                <div className="off-text">휴무</div>
+                              {noInput ? (
+                                <div className="off-text" style={isAnnual ? { color:'#3b82c4' } : undefined}>{isAnnual ? '연차' : '휴무'}</div>
                               ) : (
                                 <>
                                   {/* 시간 입력 행 */}
@@ -1135,31 +1395,29 @@ export default function Home() {
 
                                   {!isHolidayWork ? (
                                     <>
-                                      <div className="hour-label">기본</div>
-                                      {numInput(d.basicH, v => updateWorkDay(ds, 'basicH', v))}
                                       <div className="hour-label">주간</div>
                                       {numInput(d.daytimeH, v => updateWorkDay(ds, 'daytimeH', v))}
-                                      <div className="hour-label">휴게</div>
-                                      {numInput(d.restH, v => updateWorkDay(ds, 'restH', v))}
                                       <div className="hour-label">야간</div>
                                       {numInput(d.nightH, v => updateWorkDay(ds, 'nightH', v))}
+                                      <div className="hour-label">휴게</div>
+                                      {numInput(d.restH, v => handleRestChange(ds, v, false))}
                                       <div className="hour-label">연장</div>
                                       {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
                                     </>
                                   ) : (
                                     <>
-                                      <div className="hour-label" style={{color:'#e05555'}}>휴일근로</div>
-                                      {numInput(d.holidayH, v => updateWorkDay(ds, 'holidayH', v))}
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일주간</div>
                                       {numInput(d.holidayDaytimeH, v => updateWorkDay(ds, 'holidayDaytimeH', v))}
-                                      <div className="hour-label" style={{color:'#e05555'}}>휴일휴게</div>
-                                      {numInput(d.holidayRestH, v => updateWorkDay(ds, 'holidayRestH', v))}
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일야간</div>
                                       {numInput(d.holidayNightH, v => updateWorkDay(ds, 'holidayNightH', v))}
+                                      <div className="hour-label" style={{color:'#e05555'}}>휴일휴게</div>
+                                      {numInput(d.holidayRestH, v => handleRestChange(ds, v, true))}
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일연장</div>
                                       {numInput(d.holidayOtH, v => updateWorkDay(ds, 'holidayOtH', v))}
                                     </>
                                   )}
+                                  {/* 하루 총 근무시간 (휴게 제외) */}
+                                  <div className="day-total">일 {dayTotal}시간</div>
                                 </>
                               )}
                             </div>
@@ -1167,11 +1425,13 @@ export default function Home() {
                         })}
                       </div>
                       <div className="week-summary">
-                        <span className="week-summary-label">주 근무 {weekBasicH}시간 · 주휴수당</span>
+                        <span className="week-summary-label">
+                          근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간 · 주휴수당
+                        </span>
                         <span className="week-summary-val">
                           {activeEmp.empType === '직원' && !activeEmp.useBasicCalc
                             ? '직원 고정급 (계산 꺼짐)'
-                            : weekBasicH >= 15 ? fmt(weeklyHolidayPay) : '미적용 (15시간 미만)'}
+                            : weekDayH >= 15 ? fmt(weeklyHolidayPay) : '미적용 (15시간 미만)'}
                         </span>
                       </div>
                     </div>
@@ -1182,42 +1442,31 @@ export default function Home() {
               {/* ── 수정 #5: 급여 합계 (수동 입력 + 자동계산 합산) ── */}
               {totals && (
                 <div className="summary-card">
-                  <div className="summary-title">급여 내역 — 고정값 직접 입력 가능 (캘린더 자동계산액이 더해집니다)</div>
-                  <div className="summary-grid">
+                  <div className="summary-title">급여 내역 — 캘린더 입력값으로 자동 계산됩니다</div>
+                  <div className="summary-list">
                     {[
-                      { label: '기본수당',  total: totals.totalBasic,           manualKey: 'manualBasic',         hours: totals.hoursBasic,       formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBasic}시간 = ${fmt(totals.totalBasic)}` },
-                      { label: '주휴수당',  total: totals.totalWeeklyHoliday,   manualKey: 'manualWeeklyHoliday', hours: totals.hoursWeekly,      formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × (주근무시간/40) × 8 = ${fmt(totals.totalWeeklyHoliday)}` },
-                      { label: '연장수당',  total: totals.totalOvertime,        manualKey: 'manualOvertime',      hours: totals.hoursOvertime,    formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 1.5 × ${totals.hoursOvertime}시간 = ${fmt(totals.totalOvertime)}` },
-                      { label: '야간수당',  total: totals.totalNight,           manualKey: 'manualNight',         hours: totals.hoursNight,       formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 0.5 × ${totals.hoursNight}시간 = ${fmt(totals.totalNight)}` },
-                      { label: '휴일근로',  total: totals.totalHoliday,         manualKey: 'manualHoliday',       hours: totals.hoursHoliday,     formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 1.5 × ${totals.hoursHoliday}시간 = ${fmt(totals.totalHoliday)}` },
-                      { label: '휴일연장',  total: totals.totalHolidayOtPay,    manualKey: 'manualHolidayOt',     hours: totals.hoursHolidayOt,   formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 2.0 × ${totals.hoursHolidayOt}시간 = ${fmt(totals.totalHolidayOtPay)}` },
-                      { label: '휴일야간',  total: totals.totalHolidayNightPay, manualKey: 'manualHolidayNight',  hours: totals.hoursHolidayNight, formula: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 0.5 × ${totals.hoursHolidayNight}시간 = ${fmt(totals.totalHolidayNightPay)}` },
-                    ].map(({ label, total, manualKey, hours, formula }) => (
-                      <div key={label}>
-                        {hours > 0 && <div className="summary-item-hours">{hours}시간</div>}
-                        <div
-                          className="summary-item-label"
-                          onClick={() => setTooltipInfo(tooltipInfo && tooltipInfo.label === label ? null : { label, text: formula })}
-                        >{label} ⓘ</div>
-                        <div className="summary-item-val">{fmt(total)}</div>
-                        {tooltipInfo && tooltipInfo.label === label && (
-                          <div className="formula-tooltip">📐 {tooltipInfo.text}</div>
-                        )}
-                        <input
-                          type="number"
-                          className="summary-manual-input"
-                          value={activeEmp[manualKey] || ''}
-                          placeholder="고정값 입력"
-                          onChange={e => updateEmp(manualKey, parseFloat(e.target.value) || 0)}
-                        />
-                        <div className="summary-manual-hint">고정 + 자동계산</div>
+                      totals.isStaff
+                        ? { label: '기본급',  total: totals.totalBasic, hours: 209,                      desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정)` }
+                        : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간+야간)` },
+                      { label: '주휴수당',  total: totals.totalWeeklyHoliday,   hours: totals.hoursWeekly,        desc: `주간시간 ÷ 40 × 8 × 시급` },
+                      { label: '연장수당',  total: totals.totalOvertime,        hours: totals.hoursOvertimePay,   desc: `연장 ${totals.hoursOvertimePay}시간 × 시급 × 1.5배` },
+                      { label: '야간수당',  total: totals.totalNight,           hours: totals.hoursNightPay,      desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 0.5배` },
+                      { label: '휴일근로',  total: totals.totalHoliday,         hours: totals.hoursHolidayDay,    desc: `휴일주간 ${totals.hoursHolidayDay}시간 × 시급 × 1.5배` },
+                      { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 2.0배` },
+                      { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배` },
+                    ].filter(row => row.total > 0 || row.label === '기본급').map(({ label, total, hours, desc }) => (
+                      <div key={label} className="summary-row">
+                        <div className="summary-row-left">
+                          <div className="summary-row-label">{label}</div>
+                          <div className="summary-row-desc">{desc}</div>
+                        </div>
+                        <div className="summary-row-val">{fmt(total)}<span className="won">원</span></div>
                       </div>
                     ))}
                   </div>
-                  <hr className="summary-divider" />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="summary-total-row">
                     <div className="summary-total-label">세전 합계</div>
-                    <div className="summary-total-val">{fmt(totals.grandTotal)}</div>
+                    <div className="summary-total-val">{fmt(totals.grandTotal)}<span className="won-big">원</span></div>
                   </div>
                 </div>
               )}
