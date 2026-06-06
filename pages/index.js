@@ -1213,7 +1213,7 @@ export default function Home() {
       XLSX.utils.book_append_sheet(wb, ws, safeSheetName(emp.name))
     })
     const ym = `${activeEmp?.year || named[0].year}년${activeEmp?.month || named[0].month}월`
-    XLSX.writeFile(wb, `급여명세_${selectedBranch?.name || '지점'}_${ym}.xlsx`)
+    XLSX.writeFile(wb, `근무표_${selectedBranch?.name || '지점'}_${ym}.xlsx`)
   }
 
   // ── 급여명세서 인쇄/PDF (근로기준법 제48조 · 더콤마 표준 양식) ──
