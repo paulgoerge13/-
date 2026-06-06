@@ -760,7 +760,10 @@ export default function Home() {
 
     // 연장수당은 직원만. 알바는 연장수당 자체가 없음(전 지점 공통).
     const autoOvertime        = emp.empType === '직원' ? calcOvertime(mOtH, emp.hourlyWage) : 0
-    const autoNight           = calcNight(mNightH, emp.hourlyWage)
+    // 야간수당: 직원 = 야간시간 × 시급 × 0.5(가산). 알바 = 야간시간 × 시급 × 1.5(기본급에서 빠진 야간을 통째로 여기서 지급).
+    const autoNight           = emp.empType === '직원'
+      ? calcNight(mNightH, emp.hourlyWage)
+      : Math.round(mNightH * emp.hourlyWage * 1.5)
     // 휴일근로수당: 휴일 전체 근무시간(주간+야간) × 시급 × 1.5
     const autoHoliday         = calcHoliday(hoursHolidayWork, emp.hourlyWage)
     const autoHolidayOtPay    = calcHolidayOt(mHolidayOtH, emp.hourlyWage)
@@ -771,8 +774,8 @@ export default function Home() {
     const isStaffNoCalc = isStaff // 직원은 기본급(시급×209)에 주휴 포함
     // ── 중도 입·퇴사 일할계산 (직원만): 재직일수 / 그 달 총일수 ──
     const proration = calcProration(emp)
-    // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 실제 근무(주간+야간) × 시급 ──
-    const hoursBaseAlba = mDayH + mNightH
+    // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 주간 근무 × 시급 (야간은 '야간근로' 줄에서 1.5배 별도) ──
+    const hoursBaseAlba = mDayH
     const staffMonthlyBasic = Math.round(emp.hourlyWage * 209)
     // ── 결근 공제 (직원만): 결근 1일당 시급×8(하루치) + 결근이 든 주마다 시급×8(주휴) ──
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
@@ -1232,11 +1235,11 @@ export default function Home() {
 
     // 지급 항목: [라벨, 금액, 산출식]
     const payItems = [
-      ['기본급', t.totalBasic, t.isStaff ? '통상시급 × 월 209시간 (주휴 포함)' : `통상시급 × ${t.hoursBaseAlba}시간 (주간+야간)`],
+      ['기본급', t.totalBasic, t.isStaff ? '통상시급 × 월 209시간 (주휴 포함)' : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
       ['주휴수당', t.totalWeeklyHoliday, '주간근로시간 ÷ 40 × 8 × 통상시급'],
       ['식대', t.meal, '비과세 식대'],
       ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
-      ['야간근로수당', t.totalNight, `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 0.5배 가산`],
+      ['야간근로수당', t.totalNight, t.isStaff ? `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 0.5배 가산` : `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 1.5배`],
       ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근무시간(주간+야간 ${t.hoursHolidayWork}h) × 1.5배`],
       ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 2.0배`],
       ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
@@ -2184,14 +2187,16 @@ export default function Home() {
                             desc: totals.proration.partial
                               ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}`
                               : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}` }
-                        : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간+야간)` },
+                        : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
                             desc: `결근 ${totals.absentDays}일 × 8시간 + 주휴 ${totals.absentWeeks}주 × 8시간 = ${(totals.absentDays*8 + totals.absentWeeks*8)}시간 × 시급 (기본급에서 차감됨)` }]
                         : []),
                       { label: '주휴수당',  total: totals.totalWeeklyHoliday,   hours: totals.hoursWeekly,        desc: `주간시간 ÷ 40 × 8 × 시급` },
                       { label: '연장수당',  total: totals.totalOvertime,        hours: totals.hoursOvertimePay,   desc: `연장 ${totals.hoursOvertimePay}시간 × 시급 × 1.5배` },
-                      { label: '야간수당',  total: totals.totalNight,           hours: totals.hoursNightPay,      desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 0.5배` },
+                      totals.isStaff
+                        ? { label: '야간수당',  total: totals.totalNight, hours: totals.hoursNightPay, desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 0.5배` }
+                        : { label: '야간근로',  total: totals.totalNight, hours: totals.hoursNightPay, desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 1.5배` },
                       { label: '휴일근로',  total: totals.totalHoliday,         hours: totals.hoursHolidayWork,   desc: `휴일근무 ${totals.hoursHolidayWork}시간(주간+야간) × 시급 × 1.5배` },
                       { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 2.0배` },
                       { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배 (휴일근로에 추가 가산)` },
