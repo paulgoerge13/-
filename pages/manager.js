@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 
-const MASTER_PASSWORD = process.env.NEXT_PUBLIC_MANAGER_PASSWORD || 'comma1234'
+const MASTER_PASSWORD = 'ejzhaak0080'
 
 // 전 지점 통합 관리 (별도 주소 /manager). 메인 앱(index.js) 안에서도 동일 화면을 쓴다.
 export default function PayrollManager() {

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
-const MASTER_PASSWORD = process.env.NEXT_PUBLIC_MANAGER_PASSWORD || 'comma1234'
+const MASTER_PASSWORD = 'ejzhaak0080'
 
 // ── 수정 #7: 서울마리나점 → 하남점 ──
 const BRANCHES = [
