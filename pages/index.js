@@ -1286,6 +1286,14 @@ export default function Home() {
       totals.deductions.localTax, totals.totalDeduction,
     ]
     const infoRow = [`직원명: ${activeEmp.name}`, `지점: ${selectedBranch?.name}`, `${activeEmp.year}년 ${activeEmp.month}월`, `구분: ${activeEmp.empType || '알바'}`]
+    // 기본급 차감 내역(조퇴·지각 수동차감 / 결근공제)
+    const deductInfoLines = []
+    if (totals.manualDeduction > 0) {
+      deductInfoLines.push(`"기본급 차감(조퇴·지각)","-${Math.round(totals.manualDeduction)}","${totals.manualDeductHours}시간 × 시급 (기본급에 반영됨)"`)
+    }
+    if (totals.absentDeduction > 0) {
+      deductInfoLines.push(`"결근 공제","-${Math.round(totals.absentDeduction)}","결근 ${totals.absentDays}일 + 주휴 ${totals.absentWeeks}주 (기본급에 반영됨)"`)
+    }
     const BOM = '\uFEFF'
     const csv = BOM + [
       infoRow.map(v => `"${v}"`).join(','),
@@ -1295,6 +1303,7 @@ export default function Home() {
       '',
       summaryHeaders.map(v => `"${v}"`).join(','),
       summaryRow.map(v => `"${String(v)}"`).join(','),
+      ...(deductInfoLines.length > 0 ? ['', '"기본급 차감 내역","금액","비고"', ...deductInfoLines] : []),
       '',
       deductHeaders.map(v => `"${v}"`).join(','),
       deductRow.map(v => `"${String(v)}"`).join(','),
@@ -1326,6 +1335,14 @@ export default function Home() {
     }
     named.forEach(emp => {
       const totals = calcTotal(emp)
+      // 기본급에서 빠진 차감 내역(조퇴·지각 수동차감 / 결근공제)을 따로 표기
+      const deductInfoRows = []
+      if (totals.manualDeduction > 0) {
+        deductInfoRows.push(['기본급 차감(조퇴·지각)', `-${Math.round(totals.manualDeduction)}`, `${totals.manualDeductHours}시간 × 시급 (기본급에 반영됨)`])
+      }
+      if (totals.absentDeduction > 0) {
+        deductInfoRows.push(['결근 공제', `-${Math.round(totals.absentDeduction)}`, `결근 ${totals.absentDays}일 + 주휴 ${totals.absentWeeks}주 (기본급에 반영됨)`])
+      }
       const headers = ['날짜', '유형', '시작', '종료', '주간', '야간', '휴게', '연장', '휴일주간', '휴일야간', '휴일휴게', '휴일연장']
       const dayRows = []
       const weeks = getWeeksInMonth(emp.year, emp.month)
@@ -1357,6 +1374,7 @@ export default function Home() {
           Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
           Math.round(totals.totalHolidayNightPay), Math.round(totals.meal), Math.round(totals.grossPay),
         ],
+        ...(deductInfoRows.length > 0 ? [[], ['기본급 차감 내역', '금액', '비고'], ...deductInfoRows] : []),
         [],
         ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '사업소득세', '지방소득세', '공제합계'],
         [
