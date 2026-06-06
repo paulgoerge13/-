@@ -630,14 +630,13 @@ export default function Home() {
   function toggleDayType(dateStr) {
     const current = activeEmp.workData[dateStr]?.type || '평'
     const isStaffEmp = activeEmp.empType === '직원'
-    // 직원: 평일 → 휴일근로(휴) → 휴무(공) → 연차(연) → 결근(결) → 조퇴 → 평일
-    // 알바: 평일 → 휴무(공) → 연차(연) → 결근(결) → 평일  (알바는 휴일·조퇴 없음. 알바는 실근무시간만큼만 지급되므로 조퇴 공제 불필요)
+    // 직원: 평일 → 휴일근로(휴) → 휴무(공) → 연차(연) → 결근(결) → 평일
+    // 알바: 평일 → 휴무(공) → 연차(연) → 결근(결) → 평일  (알바는 휴일 자체가 없음 → '휴' 건너뜀)
     let nextType = '평'
     if (current === '평') nextType = isStaffEmp ? '휴' : '공'
     else if (current === '휴') nextType = '공'
     else if (current === '공') nextType = '연'
     else if (current === '연') nextType = '결'
-    else if (current === '결') nextType = isStaffEmp ? '조퇴' : '평'
     else nextType = '평'
 
     // ── 유형 전환 시 입력해 둔 시간을 그대로 유지 ──
@@ -740,7 +739,6 @@ export default function Home() {
     let hoursDay = 0, hoursNight = 0, hoursRest = 0, hoursOvertime = 0
     let mDayH = 0, mNightH = 0, mOtH = 0, mHolidayDayH = 0, mHolidayNightH = 0, mHolidayOtH = 0
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
-    let earlyLeaveDays = 0, earlyLeaveHours = 0  // 조퇴: 직원이 소정(8h)보다 일찍 퇴근해 부족한 시간(시급×209에서 차감)
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
       if (d.type === '결') {                          // 결근
@@ -779,12 +777,6 @@ export default function Home() {
         mDayH   += dDay
         mNightH += dNight
         mOtH    += dOt
-        // 조퇴(직원만): 실근무(주간+야간)가 소정 8h보다 적으면 부족분만큼 기본급에서 차감.
-        //   실근무 시간은 위에서 그대로 집계(야간·연장 가산은 정상 지급)하고, 부족분만 따로 모은다.
-        if (d.type === '조퇴' && emp.empType === '직원') {
-          earlyLeaveDays++
-          earlyLeaveHours += Math.max(0, 8 - (dDay + dNight))
-        }
       }
     })
     // 휴일근무 시간(주간+야간) — 휴일근로수당(×1.5) 산정 기준
@@ -816,10 +808,8 @@ export default function Home() {
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
     const absentHours = isStaff ? (absentDays * 8 + absentWeekSet.size * 8) : 0
     const absentDeduction = Math.round(absentHours * emp.hourlyWage)
-    // ── 조퇴 공제 (직원만): 조퇴한 날 소정 8h보다 부족한 시간 × 시급을 기본급에서 차감 ──
-    const earlyLeaveDeduction = isStaff ? Math.round(earlyLeaveHours * emp.hourlyWage) : 0
     const totalBasic           = isStaff
-      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - earlyLeaveDeduction)
+      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight
@@ -843,7 +833,6 @@ export default function Home() {
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
-      earlyLeaveDays, earlyLeaveHours, earlyLeaveDeduction,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -2106,9 +2095,6 @@ export default function Home() {
                     {totals.absentDays > 0 && (
                       <div className="month-stat"><span className="ms-val" style={{ color:'#e05555' }}>{totals.absentDays}<small>일</small></span><span className="ms-label">결근</span></div>
                     )}
-                    {totals.earlyLeaveDays > 0 && (
-                      <div className="month-stat"><span className="ms-val" style={{ color:'#e8821e' }}>{totals.earlyLeaveDays}<small>일</small></span><span className="ms-label">조퇴</span></div>
-                    )}
                   </div>
                 </div>
               )}
@@ -2139,8 +2125,6 @@ export default function Home() {
                           const isDayOff = type === '공'
                           const isAnnual = type === '연'
                           const isAbsent = type === '결'
-                          const isEarlyLeave = type === '조퇴'  // 조퇴: 시간은 입력하되 부족분을 기본급에서 차감
-                          const dayCycleHint = activeEmp.empType === '직원' ? '평일 → 휴일근로 → 휴무 → 연차 → 결근 → 조퇴' : '평일 → 휴무 → 연차 → 결근'
                           // ── 입사 전 / 퇴사 후: 재직 범위 밖이면 입력 차단 ──
                           const cellDate = parseYMD(ds)
                           const hireD = parseYMD(activeEmp.hireDate)
@@ -2189,12 +2173,10 @@ export default function Home() {
                               <div className="day-head">
                                 <div
                                   className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAbsent ? 'absent-type' : isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
-                                  style={isEarlyLeave ? { color:'#e8821e', fontWeight:700 } : undefined}
                                   onClick={() => { if (!outOfEmp) toggleDayType(ds) }}
-                                  title={outOfEmp ? (beforeHire ? '입사 전' : '퇴사 후') : (holidayName ? `${holidayName} · 클릭: ${dayCycleHint} 전환` : `클릭: ${dayCycleHint} 전환`)}
+                                  title={outOfEmp ? (beforeHire ? '입사 전' : '퇴사 후') : (holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환')}
                                 >{day}</div>
                                 {holidayName && <div className="gov-holiday-name">{holidayName}</div>}
-                                {isEarlyLeave && <div style={{ fontSize:'10px', color:'#e8821e', fontWeight:700, textAlign:'center', lineHeight:1.1, marginTop:'1px' }}>조퇴</div>}
                               </div>
                               <div className="day-sep" />
 
@@ -2331,16 +2313,12 @@ export default function Home() {
                       totals.isStaff
                         ? { label: '기본급',  total: totals.totalBasic, hours: 209,
                             desc: totals.proration.partial
-                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyLeaveDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyLeaveDeduction.toLocaleString()}원` : ''}`
-                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyLeaveDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyLeaveDeduction.toLocaleString()}원` : ''}` }
+                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}`
+                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
                             desc: `결근 ${totals.absentDays}일 × 8시간 + 주휴 ${totals.absentWeeks}주 × 8시간 = ${(totals.absentDays*8 + totals.absentWeeks*8)}시간 × 시급 (기본급에서 차감됨)` }]
-                        : []),
-                      ...(totals.isStaff && totals.earlyLeaveDeduction > 0
-                        ? [{ label: '└ 조퇴 공제', total: 0, hours: null, neg: -totals.earlyLeaveDeduction,
-                            desc: `조퇴 ${totals.earlyLeaveDays}일 부족 ${totals.earlyLeaveHours}시간 × 시급 (소정 8시간 미달분, 기본급에서 차감됨)` }]
                         : []),
                       { label: '주휴수당',  total: totals.totalWeeklyHoliday,   hours: totals.hoursWeekly,        desc: `주간시간 ÷ 40 × 8 × 시급` },
                       { label: '연장수당',  total: totals.totalOvertime,        hours: totals.hoursOvertimePay,   desc: `연장 ${totals.hoursOvertimePay}시간 × 시급 × 1.5배` },
