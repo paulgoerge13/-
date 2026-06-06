@@ -671,6 +671,20 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 기본급 차감(시간) 직접 입력: workData._deduct = {hours} 에 저장 (DB 컬럼 추가 없이 work_data로 동기화) ──
+  function setDeductHours(val) {
+    const hours = Math.max(0, parseFloat(val) || 0)
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (hours > 0) wd._deduct = { hours }
+      else delete wd._deduct
+      return { ...e, workData: wd }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   function addEmployee(empType = '알바') {
     const newEmp = {
       ...EMPTY_EMP, id: Date.now(),
@@ -741,6 +755,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
+      if (ds === '_deduct') return                    // 수동 차감 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -808,8 +823,11 @@ export default function Home() {
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
     const absentHours = isStaff ? (absentDays * 8 + absentWeekSet.size * 8) : 0
     const absentDeduction = Math.round(absentHours * emp.hourlyWage)
+    // ── 기본급 수동 차감 (직원만): 조퇴·지각 등 차감 시간(시간) × 시급을 기본급에서 차감 ──
+    const manualDeductHours = isStaff ? (emp.workData?._deduct?.hours || 0) : 0
+    const manualDeduction = Math.round(manualDeductHours * emp.hourlyWage)
     const totalBasic           = isStaff
-      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction)
+      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight
@@ -833,6 +851,7 @@ export default function Home() {
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
+      manualDeductHours, manualDeduction,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -2051,6 +2070,26 @@ export default function Home() {
                       ※ 입사일·퇴사일을 입력하면 해당 월 기본급이 <b style={{ color: '#b8954a' }}>일할계산</b>(시급×209 ÷ 그달 총일수 × 재직일수)으로 자동 적용됩니다. 비워두면 한 달 전체 근무로 계산됩니다.
                     </div>
                   </div>
+                  <div className="info-card" style={{ gridColumn: 'span 2' }}>
+                    <div className="info-card-label">기본급 차감 (시간) — 조퇴·지각 등</div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      inputMode="decimal"
+                      value={activeEmp.workData?._deduct?.hours || ''}
+                      onChange={e => setDeductHours(e.target.value)}
+                      placeholder="예) 4"
+                    />
+                    <div style={{ fontSize: 11, color: '#8a8170', marginTop: 6, lineHeight: 1.5 }}>
+                      입력한 시간 × 시급만큼 기본급에서 자동 차감됩니다. (예: 4 입력 → 4시간×시급 차감)
+                      {activeEmp.workData?._deduct?.hours > 0 && totals && (
+                        <b style={{ color: '#c0392b', display: 'block', marginTop: 2 }}>
+                          현재 차감액: −{totals.manualDeduction.toLocaleString()}원
+                        </b>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2313,12 +2352,16 @@ export default function Home() {
                       totals.isStaff
                         ? { label: '기본급',  total: totals.totalBasic, hours: 209,
                             desc: totals.proration.partial
-                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}`
-                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}` }
+                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
+                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
                             desc: `결근 ${totals.absentDays}일 × 8시간 + 주휴 ${totals.absentWeeks}주 × 8시간 = ${(totals.absentDays*8 + totals.absentWeeks*8)}시간 × 시급 (기본급에서 차감됨)` }]
+                        : []),
+                      ...(totals.isStaff && totals.manualDeduction > 0
+                        ? [{ label: '└ 기본급 차감', total: 0, hours: null, neg: -totals.manualDeduction,
+                            desc: `${totals.manualDeductHours}시간 × 시급 (조퇴·지각 등 수동 차감)` }]
                         : []),
                       { label: '주휴수당',  total: totals.totalWeeklyHoliday,   hours: totals.hoursWeekly,        desc: `주간시간 ÷ 40 × 8 × 시급` },
                       { label: '연장수당',  total: totals.totalOvertime,        hours: totals.hoursOvertimePay,   desc: `연장 ${totals.hoursOvertimePay}시간 × 시급 × 1.5배` },
