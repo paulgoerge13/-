@@ -145,15 +145,17 @@ function fixRestDeduction(d) {
     return { ...d, [dayKey]: day2, [nightKey]: night2 }
   }
 
-  // ★ 매니저가 입력한 값은 (휴게 정정 외에는) 절대 건드리지 않는다.
-  //   주간·야간 중 하나라도 0이 아니면 = 사람이 직접 넣은 값 → 그대로 둠.
-  if (sDay !== 0 || sNight !== 0) return d
-
-  // 주간·야간이 "완전히 비어있는(0/0)" 날만, 입력된 시간 기준으로 채움.
-  //   (시간은 있는데 분리값이 누락된 경우. 안 채우면 0시간=0원으로 보임.)
+  // ★ 누락(0)된 쪽만 시간 기준으로 채워 복구한다. 매니저가 넣은 0 아닌 값은 보존.
+  //   - 둘 다 0: 둘 다 시간 기준으로 채움 (예: 휴일 09:30~15:30인데 0/0 → 주간6/야간0)
+  //   - 한쪽만 0: 0인 쪽만 채움 (예: 주안점 김진아 5/5 휴주0/휴야3.5 → 휴주4.5/휴야3.5,
+  //     누락된 주간 4.5h 복구). 0 아닌 야간3.5는 그대로 둔다.
+  //   - 둘 다 0 아니면(예: 김민경 7/2) 그대로 둠 = 매니저 분할 존중. 멱등.
   const net = netSplit(d.timeStart, d.timeEnd, rest)
   if (!net) return d
-  return { ...d, [dayKey]: net.day, [nightKey]: net.night }
+  const newDay   = sDay   === 0 ? net.day   : sDay
+  const newNight = sNight === 0 ? net.night : sNight
+  if (newDay === sDay && newNight === sNight) return d
+  return { ...d, [dayKey]: newDay, [nightKey]: newNight }
 }
 
 // ── 구버전 데이터 마이그레이션 ──
