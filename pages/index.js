@@ -1553,10 +1553,8 @@ export default function Home() {
       background: #fff; border-bottom: 1px solid #ebe9e4;
       padding: 18px 40px; display: flex; justify-content: space-between; align-items: center;
     }
-    .logo-the { font-size: 9px; letter-spacing: 0.3em; color: #b8954a; font-weight: 500; }
-    .logo-main { font-family: 'Playfair Display', serif; font-size: 24px; color: #1a1a1a; }
-    .logo-main span { font-style: italic; color: #b8954a; }
-    .logo-sub { font-size: 9px; letter-spacing: 0.25em; color: #999; margin-top: 1px; }
+    .logo-img { height: 52px; width: auto; display: block; }
+    @media (max-width: 600px) { .logo-img { height: 42px; } }
     .header-tag { font-size: 10px; letter-spacing: 0.2em; color: #999; }
 
     .main { flex: 1; padding: 48px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
@@ -1942,11 +1940,7 @@ export default function Home() {
 
       <div className="wrap">
         <header className="header">
-          <div>
-            <div className="logo-the">THE</div>
-            <div className="logo-main">COMMA<span>'</span></div>
-            <div className="logo-sub">LOUNGE</div>
-          </div>
+          <img src="/logo.png" alt="THE COMMA' LOUNGE" className="logo-img" />
           <span className="header-tag">CREW PAYROLL</span>
         </header>
 

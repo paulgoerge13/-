@@ -61,6 +61,24 @@ export default function PayrollManager() {
       + (r.holiday_pay || 0) + (r.holiday_overtime_pay || 0) + (r.holiday_night_pay || 0)
   }
 
+  // ── 공제 계산 (2026 요율, 근로자 부담분) — 메인 앱과 동일 ──
+  // 직원=4대보험, 알바=3.3% 원천징수 강제 적용. 과세표준은 세전 인건비(식대 비과세 제외).
+  function recDeduction(r) {
+    const taxable = fixGrand(r)
+    if (r.emp_type === '직원') {
+      const pension    = Math.floor(taxable * 0.0475 / 10) * 10
+      const health     = Math.floor(taxable * 0.03595 / 10) * 10
+      const care       = Math.floor(health * 0.1314 / 10) * 10
+      const employment = Math.floor(taxable * 0.009 / 10) * 10
+      const incomeTax  = r.income_tax || 0
+      const localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
+      return pension + health + care + employment + incomeTax + localTax
+    }
+    return Math.round(taxable * 0.03) + Math.round(taxable * 0.003)  // 3.3%
+  }
+  // 실지급 = 지급액(세전+식대 비과세) − 공제
+  function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
+
   // ── 전 지점 집계 ──
   const byBranch = BRANCHES.map(b => {
     const rs = records.filter(r => r.branch === b)
@@ -72,12 +90,17 @@ export default function PayrollManager() {
       total: rs.reduce((s, r) => s + fixGrand(r), 0),
       staffTotal: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0),
       albaTotal: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0),
+      staffNet: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + recNet(r), 0),
+      albaNet: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + recNet(r), 0),
       finalCount: rs.filter(r => r.status === 'final').length,
     }
   })
   const grandAll = byBranch.reduce((s, x) => s + x.total, 0)
   const staffAll = byBranch.reduce((s, x) => s + x.staffTotal, 0)
   const albaAll = byBranch.reduce((s, x) => s + x.albaTotal, 0)
+  const staffNetAll = byBranch.reduce((s, x) => s + x.staffNet, 0)
+  const albaNetAll = byBranch.reduce((s, x) => s + x.albaNet, 0)
+  const netAll = staffNetAll + albaNetAll
   const totalPeople = byBranch.reduce((s, x) => s + x.count, 0)
   const totalFinal = byBranch.reduce((s, x) => s + x.finalCount, 0)
 
@@ -87,19 +110,21 @@ export default function PayrollManager() {
   const curAlba = records.filter(r => r.emp_type !== '직원').length
   const curStaffTotal = records.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0)
   const curAlbaTotal = records.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0)
+  const curStaffNet = records.filter(r => r.emp_type === '직원').reduce((s, r) => s + recNet(r), 0)
+  const curAlbaNet = records.filter(r => r.emp_type !== '직원').reduce((s, r) => s + recNet(r), 0)
   const curFinal = records.filter(r => r.status === 'final').length
 
   // ── 전 지점 요약 엑셀(CSV) 내보내기 — 보고용 ──
   function downloadSummary() {
     const BOM = '﻿'
-    const head = ['지점', '총인원', '직원수', '알바수', '직원인건비', '알바인건비', '세전인건비', '마감완료', '전체대비']
+    const head = ['지점', '총인원', '직원수', '알바수', '직원지급액', '직원실지급', '알바지급액', '알바실지급', '세전인건비', '실지급합계', '마감완료', '전체대비']
     const lines = byBranch.map(x =>
-      [x.branch, x.count, x.staff, x.alba, x.staffTotal, x.albaTotal, x.total, `${x.finalCount}/${x.count}`,
+      [x.branch, x.count, x.staff, x.alba, x.staffTotal, x.staffNet, x.albaTotal, x.albaNet, x.total, x.staffNet + x.albaNet, `${x.finalCount}/${x.count}`,
        x.count > 0 ? `${Math.round(x.finalCount / x.count * 100)}%` : '-']
         .map(v => `"${v}"`).join(','))
     const totalLine = ['전체 합계', totalPeople,
       byBranch.reduce((s, x) => s + x.staff, 0), byBranch.reduce((s, x) => s + x.alba, 0),
-      staffAll, albaAll, grandAll, `${totalFinal}/${totalPeople}`,
+      staffAll, staffNetAll, albaAll, albaNetAll, grandAll, netAll, `${totalFinal}/${totalPeople}`,
       totalPeople > 0 ? `${Math.round(totalFinal / totalPeople * 100)}%` : '-']
       .map(v => `"${v}"`).join(',')
     const csv = BOM + [
@@ -157,9 +182,11 @@ export default function PayrollManager() {
     .kpi-card.hero .kpi-val { color: #fff; }
     .kpi-val small { font-size: 12px; font-weight: 500; color: #999; margin-left: 2px; }
     .kpi-card.hero .kpi-val small { color: #c9b78c; }
-    .kpi-split { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
-    .kpi-split span { font-size: 11.5px; color: #d9cba6; display: flex; align-items: center; }
-    .kpi-split .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; display: inline-block; }
+    .kpi-netline { font-size: 12px; color: #e6d6ab; margin-top: 8px; font-weight: 600; }
+    .kpi-netnote { font-size: 10px; color: #9c8e6a; font-weight: 400; }
+    .kpi-split { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(201,183,140,0.18); }
+    .kpi-split span { font-size: 11px; color: #cfc09a; display: flex; align-items: center; }
+    .kpi-split .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; display: inline-block; flex: none; }
     .kpi-split .dot.staff { background: #e7c98a; }
     .kpi-split .dot.alba { background: #8a8a8a; }
     @media (max-width: 620px) {
@@ -212,8 +239,10 @@ export default function PayrollManager() {
     .split-tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 3px 9px; border-radius: 20px; margin-bottom: 8px; }
     .split-tag.staff { background: #e3dfd5; color: #6b6253; }
     .split-tag.alba { background: #ece0c9; color: #9c7f44; }
-    .split-amt { font-size: 18px; font-weight: 700; color: #1a1a1a; }
-    .split-amt small { font-size: 11px; color: #aaa; font-weight: 500; margin-left: 2px; }
+    .split-line { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; }
+    .split-k { font-size: 11px; color: #999; letter-spacing: 0.04em; }
+    .split-v { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+    .split-v.gold { color: #b8954a; }
 
     .back-btn {
       background: none; border: none; color: #888; font-size: 13px; cursor: pointer;
@@ -248,6 +277,7 @@ export default function PayrollManager() {
     .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f8f7f4; padding: 20px; }
     .login-box { background: #fff; border: 1px solid #ebe9e4; border-radius: 16px; padding: 36px 28px; width: 100%; max-width: 320px; text-align: center; }
     .login-brand { font-size: 10px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 4px; }
+    .login-logo { height: 56px; width: auto; margin: 0 auto 18px; display: block; }
     .login-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 19px; margin-bottom: 24px; }
     .login-input { width: 100%; background: #f8f7f4; border: 1.5px solid #d0ccc5; border-radius: 8px; padding: 12px 14px; font-size: 14px; color: #1a1a1a; font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none; margin-bottom: 10px; }
     .login-input:focus { border-color: #b8954a; background: #fff; }
@@ -264,7 +294,7 @@ export default function PayrollManager() {
       <style dangerouslySetInnerHTML={{ __html: css }} />
       <div className="login-wrap">
         <div className="login-box">
-          <div className="login-brand">THE COMMA' LOUNGE</div>
+          <img src="/logo.png" alt="THE COMMA' LOUNGE" className="login-logo" />
           <h2 className="login-title">매니저 통합 관리</h2>
           <input
             type="password" className="login-input" placeholder="마스터 비밀번호"
@@ -315,9 +345,10 @@ export default function PayrollManager() {
               <div className="kpi-card hero">
                 <div className="kpi-label">전 지점 세전 인건비</div>
                 <div className="kpi-val">{fmt(grandAll)}<small>원</small></div>
+                <div className="kpi-netline">실지급 합계 {fmt(netAll)}원 <span className="kpi-netnote">(직원 4대보험·알바 3.3% 공제)</span></div>
                 <div className="kpi-split">
-                  <span><b className="dot staff" />직원 {fmt(staffAll)}원</span>
-                  <span><b className="dot alba" />알바 {fmt(albaAll)}원</span>
+                  <span><b className="dot staff" />직원 지급 {fmt(staffAll)} · 실지급 {fmt(staffNetAll)}</span>
+                  <span><b className="dot alba" />알바 지급 {fmt(albaAll)} · 실지급 {fmt(albaNetAll)}</span>
                 </div>
               </div>
               <div className="kpi-card">
@@ -386,11 +417,13 @@ export default function PayrollManager() {
               <div className="split-row">
                 <div className="split-card">
                   <div className="split-tag staff">직원 {curStaff}명</div>
-                  <div className="split-amt">{fmt(curStaffTotal)}<small>원</small></div>
+                  <div className="split-line"><span className="split-k">지급액</span><span className="split-v">{fmt(curStaffTotal)}원</span></div>
+                  <div className="split-line"><span className="split-k">실지급</span><span className="split-v gold">{fmt(curStaffNet)}원</span></div>
                 </div>
                 <div className="split-card">
                   <div className="split-tag alba">알바 {curAlba}명</div>
-                  <div className="split-amt">{fmt(curAlbaTotal)}<small>원</small></div>
+                  <div className="split-line"><span className="split-k">지급액</span><span className="split-v">{fmt(curAlbaTotal)}원</span></div>
+                  <div className="split-line"><span className="split-k">실지급</span><span className="split-v gold">{fmt(curAlbaNet)}원</span></div>
                 </div>
               </div>
             )}
