@@ -315,12 +315,12 @@ function calcProration(emp) {
   return { ratio: isFull ? 1 : activeDays / monthDays, activeDays, monthDays, partial: !isFull }
 }
 
-// ── 4대보험 요율 (2025년 기준 · 근로자 부담분) ──
+// ── 4대보험 요율 (2026년 기준 · 근로자 부담분) ──
 // 매년 변동될 수 있어, 필요 시 이 숫자만 수정하면 전체에 반영됩니다.
-const RATE_PENSION    = 0.045    // 국민연금 4.5%
-const RATE_HEALTH     = 0.03545  // 건강보험 3.545%
-const RATE_CARE       = 0.1295   // 장기요양 (건강보험료의 12.95%)
-const RATE_EMPLOYMENT = 0.009    // 고용보험 0.9%
+const RATE_PENSION    = 0.0475   // 국민연금 4.75% (2026: 9.5%의 절반)
+const RATE_HEALTH     = 0.03595  // 건강보험 3.595% (2026: 7.19%의 절반)
+const RATE_CARE       = 0.1314   // 장기요양 (건강보험료의 약 13.14% = 0.9448% ÷ 7.19%)
+const RATE_EMPLOYMENT = 0.009    // 고용보험 0.9% (2026 동결)
 
 // ── 공제 계산: 세전 총액(gross) 기준으로 항목별 공제액 산출 ──
 function calcDeductions(gross, emp) {
@@ -2261,9 +2261,9 @@ export default function Home() {
                       <div className="deduct-title">공제 내역</div>
                       <div className="summary-list">
                         {[
-                          { label: '국민연금',   total: totals.deductions.pension,    desc: '과세급여 × 4.5%' },
-                          { label: '건강보험',   total: totals.deductions.health,     desc: '과세급여 × 3.545%' },
-                          { label: '장기요양',   total: totals.deductions.care,       desc: '건강보험료 × 12.95%' },
+                          { label: '국민연금',   total: totals.deductions.pension,    desc: '과세급여 × 4.75%' },
+                          { label: '건강보험',   total: totals.deductions.health,     desc: '과세급여 × 3.595%' },
+                          { label: '장기요양',   total: totals.deductions.care,       desc: '건강보험료 × 13.14%' },
                           { label: '고용보험',   total: totals.deductions.employment, desc: '과세급여 × 0.9%' },
                           { label: '소득세',     total: totals.deductions.incomeTax,  desc: '세무사 안내 금액' },
                           { label: '사업소득세', total: totals.deductions.bizTax,     desc: '과세급여 × 3%' },
