@@ -451,6 +451,7 @@ export default function Home() {
           const keepIf = (dbVal, cur) => (dbVal !== undefined && dbVal !== null && dbVal !== '') ? dbVal : cur
           const merged = {
             ...e,
+            _dbName: r.emp_name || e._dbName || e.name,
             workData: migrateWorkData(r.work_data || {}),
             specialNote: r.special_note || '',
             hourlyWage: r.hourly_wage || 10320,
@@ -868,7 +869,34 @@ export default function Home() {
 
   // ── Supabase 저장: 임시저장/최종마감 버튼 클릭 시에만 호출 ──
   async function doSaveEmp(emp, status = 'saved') {
-    if (!emp || !emp.name || !selectedBranch) return
+    if (!emp || !emp.name || !selectedBranch) return false
+    // ── 이름이 바뀐 직원이면, 먼저 옛 이름 레코드를 새 이름으로 정리(전월 포함) → 중복 생성 방지 ──
+    const newName = emp.name.trim()
+    if (emp._dbName && emp._dbName.trim() && emp._dbName.trim() !== newName) {
+      try {
+        const rr = await fetch('/api/rename', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ branch: selectedBranch.name, oldName: emp._dbName.trim(), newName })
+        })
+        if (!rr.ok) {
+          const ej = await rr.json().catch(() => ({}))
+          alert(`'${emp._dbName.trim()}' → '${newName}' 이름 변경 실패: ${ej.error || '오류'}`)
+          return false
+        }
+        // 로컬 설정(입·퇴사일·식대 등) 키도 새 이름으로 이동
+        try {
+          const all = loadAllEmpSettings(selectedBranch.name)
+          if (all[emp._dbName.trim()]) {
+            all[newName] = all[emp._dbName.trim()]
+            delete all[emp._dbName.trim()]
+            localStorage.setItem(empSettingsKey(selectedBranch.name), JSON.stringify(all))
+          }
+        } catch (e) {}
+      } catch (e) {
+        alert('이름 변경 중 네트워크 오류가 발생했습니다.')
+        return false
+      }
+    }
     const totals = calcTotal(emp)
     const payload = {
       branch: selectedBranch.name,
@@ -909,7 +937,7 @@ export default function Home() {
         body: JSON.stringify(payload)
       })
       if (res.ok) {
-        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status, _dirty: false } : e))
+        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status, _dbName: emp.name.trim(), _dirty: false } : e))
         return true
       } else {
         const errData = await res.json()
@@ -942,6 +970,7 @@ export default function Home() {
         ...EMPTY_EMP,
         id: Date.now() + Math.random(),
         name: r.emp_name || '',
+        _dbName: r.emp_name || '',   // DB에 저장된 원래 이름 (이름 변경 감지용)
         residentId: r.resident_id || '',
         phone: r.phone || '',
         email: r.email || '',
@@ -1999,6 +2028,11 @@ export default function Home() {
                 <div className="info-card">
                   <div className="info-card-label">직원 이름</div>
                   <input value={activeEmp.name} onChange={e => updateEmp('name', e.target.value)} placeholder="이름 입력" />
+                  {activeEmp._dbName && activeEmp._dbName.trim() && activeEmp._dbName.trim() !== (activeEmp.name || '').trim() && (
+                    <div style={{ fontSize: 11, color: '#b8954a', marginTop: 5, lineHeight: 1.4 }}>
+                      ✏️ 저장하면 <b>{activeEmp._dbName.trim()}</b> → <b>{(activeEmp.name || '').trim() || '(빈칸)'}</b> 으로 변경됩니다 (전월 기록 포함).
+                    </div>
+                  )}
                 </div>
                 <div className="info-card">
                   <div className="info-card-label">주민등록번호</div>
