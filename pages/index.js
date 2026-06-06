@@ -1751,7 +1751,16 @@ export default function Home() {
     /* ── 수정 #3: 칸이 4개로 늘어 min-height 증가 ── */
     .day-cell { padding: 10px 7px; border-left: 1.5px solid #e6e3dd; min-height: 200px; position: relative; transition: background 0.2s; }
     .day-cell.has-warn { box-shadow: inset 0 0 0 2px #e05555; background: #fff6f6; }
-    .day-warn { position: absolute; top: 4px; right: 5px; font-size: 13px; cursor: help; z-index: 2; line-height: 1; }
+    .day-warn { position: absolute; top: 4px; right: 5px; font-size: 15px; cursor: pointer; z-index: 2; line-height: 1; padding: 3px; margin: -3px; -webkit-tap-highlight-color: transparent; }
+    .day-warn:active { transform: scale(1.25); }
+    .warn-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .warn-box { background: #fff; border-radius: 16px; max-width: 340px; width: 100%; padding: 26px 22px 20px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.25); animation: warnPop 0.15s ease-out; }
+    @keyframes warnPop { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .warn-box-icon { font-size: 34px; line-height: 1; }
+    .warn-box-date { margin-top: 8px; font-size: 13px; font-weight: 700; color: #e05555; letter-spacing: 0.3px; }
+    .warn-box-text { margin-top: 10px; font-size: 14.5px; line-height: 1.55; color: #333; word-break: keep-all; }
+    .warn-box-btn { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 10px; background: #e05555; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .warn-box-btn:active { background: #c94444; }
     .day-cell:first-child { border-left: none; }
     .day-cell.empty { background: #fafaf9; }
     .day-cell.is-holiday { background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); }
@@ -1887,8 +1896,17 @@ export default function Home() {
         </div>
       )}
 
-      {/* 수식 툴팁 */}
-
+      {/* ⚠️ 경고 아이콘 탭 시 사유 표시 (모바일에서도 즉시 뜨도록 네이티브 title 대신 커스텀) */}
+      {tooltipInfo && (
+        <div className="warn-overlay" onClick={() => setTooltipInfo(null)}>
+          <div className="warn-box" onClick={e => e.stopPropagation()}>
+            <div className="warn-box-icon">⚠️</div>
+            <div className="warn-box-date">{tooltipInfo.date}</div>
+            <div className="warn-box-text">{tooltipInfo.text}</div>
+            <button className="warn-box-btn" onClick={() => setTooltipInfo(null)}>확인</button>
+          </div>
+        </div>
+      )}
 
       <div className="wrap">
         <header className="header">
@@ -2289,7 +2307,7 @@ export default function Home() {
 
                           return (
                             <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''} ${outOfEmp ? 'out-of-emp' : ''} ${inputWarn ? 'has-warn' : ''}`}>
-                              {inputWarn && <div className="day-warn" title={inputWarn}>⚠️</div>}
+                              {inputWarn && <div className="day-warn" title={inputWarn} onClick={(e) => { e.stopPropagation(); setTooltipInfo({ date: ds, text: inputWarn }) }}>⚠️</div>}
                               <div className="day-head">
                                 <div
                                   className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAbsent ? 'absent-type' : isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
