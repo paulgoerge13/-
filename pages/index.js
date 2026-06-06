@@ -2165,7 +2165,7 @@ export default function Home() {
                         </span>
                         {activeEmp.empType !== '직원' && (
                           <span className="week-summary-val">
-                            {weekDayH >= 15 ? <>{fmt(weeklyHolidayPay)}<span className="won">원</span></> : '미적용 (15시간 미만)'}
+                            {(weekDayH + weekNightH) >= 15 ? <>{fmt(weeklyHolidayPay)}<span className="won">원</span></> : '미적용 (15시간 미만)'}
                           </span>
                         )}
                       </div>
