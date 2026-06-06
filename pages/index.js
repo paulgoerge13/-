@@ -724,6 +724,21 @@ export default function Home() {
     setActiveEmpId(newEmp.id)
   }
 
+  // ── 수정 이력 기록 (실패해도 본 기능에 영향 없게 fire-and-forget) ──
+  function logChange({ action, emp_name, year, month, grand_total, detail }) {
+    try {
+      fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch: selectedBranch?.name || '',
+          actor: selectedBranch?.name || '관리자',
+          emp_name, year, month, action, grand_total, detail,
+        }),
+      }).catch(() => {})
+    } catch (e) {}
+  }
+
   function confirmDelete(id) { setDeleteConfirm(id) }
 
   async function doDelete() {
@@ -745,6 +760,7 @@ export default function Home() {
           setDeleteConfirm(null)
           return
         }
+        logChange({ action: '삭제', emp_name: dbName, year: target.year, month: target.month, detail: `${target.year}년 ${target.month}월 레코드 삭제` })
       } catch (e) {
         alert(`'${dbName}' 삭제 중 네트워크 오류가 발생했습니다.`)
         setDeleteConfirm(null)
@@ -935,6 +951,7 @@ export default function Home() {
           alert(`'${emp._dbName.trim()}' → '${newName}' 이름 변경 실패: ${ej.error || '오류'}`)
           return false
         }
+        logChange({ action: '이름변경', emp_name: newName, year: emp.year, month: emp.month, detail: `${emp._dbName.trim()} → ${newName}` })
         // 로컬 설정(입·퇴사일·식대 등) 키도 새 이름으로 이동
         try {
           const all = loadAllEmpSettings(selectedBranch.name)
@@ -990,6 +1007,7 @@ export default function Home() {
       })
       if (res.ok) {
         setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status, _dbName: emp.name.trim(), _dirty: false } : e))
+        logChange({ action: status === 'final' ? '마감' : '저장', emp_name: emp.name.trim(), year: emp.year, month: emp.month, grand_total: totals.grandTotal })
         return true
       } else {
         const errData = await res.json()

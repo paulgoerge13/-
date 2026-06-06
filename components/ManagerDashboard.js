@@ -14,6 +14,10 @@ export default function ManagerDashboard() {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
+  const [view, setView] = useState('dashboard')   // 'dashboard' | 'logs'
+  const [logs, setLogs] = useState([])
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [logsUnavailable, setLogsUnavailable] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -34,11 +38,48 @@ export default function ManagerDashboard() {
 
   useEffect(() => { load() }, [branch, year, month])
 
+  // ── 수정 이력 조회 ──
+  async function loadLogs() {
+    setLogsLoading(true)
+    try {
+      const url = `/api/log?limit=200${branch !== ALL ? `&branch=${encodeURIComponent(branch)}` : ''}`
+      const res = await fetch(url)
+      const j = await res.json()
+      setLogs(j.logs || [])
+      setLogsUnavailable(!!j.unavailable)
+    } catch (e) {
+      setLogs([])
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+  useEffect(() => { if (view === 'logs') loadLogs() }, [view, branch])
+
   async function deleteRecord(id, name) {
     if (confirm(`${name} 님의 기록을 삭제하시겠습니까?`)) {
+      const target = records.find(r => r.id === id)
       const { error } = await supabase.from('payroll').delete().eq('id', id)
-      if (error) alert('삭제 실패'); else load()
+      if (error) { alert('삭제 실패'); return }
+      // 수정 이력 기록 (실패해도 무시)
+      try {
+        fetch('/api/log', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            branch: target?.branch || branch, actor: '관리자', emp_name: name,
+            year: target?.year, month: target?.month, action: '삭제',
+            detail: `관리자 페이지에서 ${target?.year}년 ${target?.month}월 레코드 삭제`,
+          }),
+        }).catch(() => {})
+      } catch (e) {}
+      load()
     }
+  }
+
+  function fmtLogTime(ts) {
+    if (!ts) return ''
+    const d = new Date(ts)
+    const p = n => String(n).padStart(2, '0')
+    return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
   }
 
   function fmt(n) { return Math.round(n || 0).toLocaleString('ko-KR') }
@@ -262,7 +303,32 @@ export default function ManagerDashboard() {
 
     .md-empty { text-align: center; color: #bbb; padding: 40px 0; font-size: 13px; letter-spacing: 0.05em; }
     .md-loading { text-align: center; color: #bbb; padding: 40px 0; font-size: 12px; letter-spacing: 0.1em; }
+
+    /* 탭 (대시보드 / 수정 이력) */
+    .md-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+    .md-tab { flex: 1; text-align: center; padding: 10px; border-radius: 8px; border: 1px solid #d0ccc5; background: #fff; color: #888; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .md-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+
+    /* 수정 이력 */
+    .md-log { background: #fff; border: 1px solid #ebe9e4; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+    .md-log-time { font-size: 11px; color: #aaa; white-space: nowrap; width: 100px; flex: none; }
+    .md-log-act { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; flex: none; }
+    .md-log-act.save { background: #eef4ec; color: #3a8a4f; }
+    .md-log-act.final { background: #e8f0fb; color: #2f6bd6; }
+    .md-log-act.rename { background: #f3eede; color: #9c7f44; }
+    .md-log-act.delete { background: #fbecec; color: #d6453f; }
+    .md-log-main { flex: 1; min-width: 0; }
+    .md-log-name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+    .md-log-meta { font-size: 11px; color: #999; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .md-log-amt { font-size: 13px; font-weight: 700; color: #b8954a; white-space: nowrap; flex: none; }
+    .md-setup { background: #fff; border: 1px dashed #d0ccc5; border-radius: 12px; padding: 22px; text-align: center; color: #888; font-size: 13px; line-height: 1.7; }
+    .md-setup b { color: #b8954a; }
+    @media (max-width: 560px) {
+      .md-log-time { width: 78px; font-size: 10px; white-space: normal; }
+    }
   `
+
+  const ACT = { '저장': ['save', '저장'], '마감': ['final', '마감'], '이름변경': ['rename', '이름변경'], '삭제': ['delete', '삭제'] }
 
   const isAll = branch === ALL
 
@@ -277,22 +343,62 @@ export default function ManagerDashboard() {
           <h1 className="md-title">{isAll ? '전 지점' : branch} <span>급여 관리 현황</span></h1>
         </div>
 
+        {/* 탭 */}
+        <div className="md-tabs">
+          <div className={`md-tab ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>대시보드</div>
+          <div className={`md-tab ${view === 'logs' ? 'active' : ''}`} onClick={() => setView('logs')}>수정 이력</div>
+        </div>
+
         {/* 필터 */}
         <div className="md-filter">
           <select className="md-select" value={branch} onChange={e => setBranch(e.target.value)}>
             <option value={ALL}>{ALL}</option>
             {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
-          <select className="md-select" value={year} onChange={e => setYear(Number(e.target.value))}>
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
-          </select>
-          <select className="md-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
-          </select>
-          <button className="md-refresh" onClick={load}>🔄</button>
+          {view === 'dashboard' && (
+            <>
+              <select className="md-select" value={year} onChange={e => setYear(Number(e.target.value))}>
+                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
+              </select>
+              <select className="md-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
+              </select>
+            </>
+          )}
+          <button className="md-refresh" onClick={() => view === 'logs' ? loadLogs() : load()}>🔄</button>
         </div>
 
-        {loading ? (
+        {view === 'logs' ? (
+          /* ───────── 수정 이력 ───────── */
+          logsLoading ? (
+            <p className="md-loading">LOADING...</p>
+          ) : logsUnavailable ? (
+            <div className="md-setup">
+              아직 <b>수정 이력 기능이 켜지지 않았어요.</b><br />
+              Supabase에 로그 테이블을 1회만 만들면 자동으로 기록이 쌓입니다.<br />
+              (만드는 방법은 개발자에게 받은 SQL을 Supabase SQL 편집기에 붙여넣고 실행하시면 됩니다.)
+            </div>
+          ) : logs.length === 0 ? (
+            <p className="md-empty">아직 기록된 수정 이력이 없습니다.</p>
+          ) : (
+            logs.map(g => {
+              const [cls, label] = ACT[g.action] || ['save', g.action || '기록']
+              return (
+                <div key={g.id} className="md-log">
+                  <div className="md-log-time">{fmtLogTime(g.created_at)}</div>
+                  <div className={`md-log-act ${cls}`}>{label}</div>
+                  <div className="md-log-main">
+                    <div className="md-log-name">{g.emp_name || '-'}</div>
+                    <div className="md-log-meta">
+                      {g.branch || '-'}{g.year ? ` · ${g.year}년 ${g.month}월` : ''}{g.actor ? ` · ${g.actor}` : ''}{g.detail ? ` · ${g.detail}` : ''}
+                    </div>
+                  </div>
+                  {g.grand_total > 0 && <div className="md-log-amt">{fmt(g.grand_total)}원</div>}
+                </div>
+              )
+            })
+          )
+        ) : loading ? (
           <p className="md-loading">LOADING...</p>
         ) : isAll ? (
           /* ───────── 전 지점 통합 대시보드 ───────── */
