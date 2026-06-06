@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import ManagerDashboard from '../components/ManagerDashboard'
+
+// ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
+const MASTER_PASSWORD = process.env.NEXT_PUBLIC_MANAGER_PASSWORD || 'comma1234'
 
 // ── 수정 #7: 서울마리나점 → 하남점 ──
 const BRANCHES = [
@@ -1582,6 +1586,21 @@ export default function Home() {
     .branch-num { font-size: 12px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 16px; font-weight: 500; }
     .branch-name { font-size: 21px; font-weight: 600; color: #1a1a1a; }
 
+    /* 6개 지점 아래 — 전 지점 통합 관리자 진입 */
+    .admin-entry {
+      max-width: 900px; margin: 20px auto 0; cursor: pointer;
+      display: flex; align-items: center; gap: 16px;
+      background: linear-gradient(135deg, #1a1a1a, #2c2c2c);
+      border-radius: 16px; padding: 20px 24px;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .admin-entry:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,0.18); }
+    .admin-entry-icon { font-size: 24px; line-height: 1; }
+    .admin-entry-texts { flex: 1; min-width: 0; }
+    .admin-entry-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 3px; }
+    .admin-entry-sub { font-size: 12px; color: #c9b78c; }
+    .admin-entry-chev { font-size: 22px; color: #8a8a8a; }
+
     .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 60vh; }
     .login-box {
       background: #fff; border: 1px solid #ebe9e4; border-radius: 16px;
@@ -1965,6 +1984,45 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+
+              {/* 6개 지점 아래 — 전 지점 통합 관리자 진입 (마스터 비밀번호 필요) */}
+              <div className="admin-entry" onClick={() => { setStep('adminLogin'); setPw(''); setPwError(false) }}>
+                <div className="admin-entry-icon">📊</div>
+                <div className="admin-entry-texts">
+                  <div className="admin-entry-title">전 지점 통합 관리</div>
+                  <div className="admin-entry-sub">모든 지점 인건비를 한눈에 (관리자 전용)</div>
+                </div>
+                <div className="admin-entry-chev">›</div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 1-A: 관리자(통합 관리) 로그인 */}
+          {step === 'adminLogin' && (
+            <div className="login-wrap">
+              <div className="login-box">
+                <div className="login-branch">전 지점 통합 관리</div>
+                <h2 className="login-title">관리자 로그인</h2>
+                <p className="field-label">마스터 비밀번호</p>
+                <input type="password" className="text-input" placeholder="마스터 비밀번호 입력"
+                  value={pw} onChange={e => setPw(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { if (pw === MASTER_PASSWORD) { setStep('admin'); setPwError(false) } else setPwError(true) }
+                  }}
+                />
+                {pwError && <p className="error-msg">비밀번호가 틀렸습니다.</p>}
+                <button className="btn full" onClick={() => { if (pw === MASTER_PASSWORD) { setStep('admin'); setPwError(false) } else setPwError(true) }}>입장</button>
+                <br /><br />
+                <button className="btn outline full" onClick={() => setStep('branch')}>← 지점 선택으로</button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 1-B: 관리자 통합 대시보드 (메인 앱 내 표시) */}
+          {step === 'admin' && (
+            <div>
+              <button className="btn outline" style={{ marginBottom: 4 }} onClick={() => setStep('branch')}>← 지점 선택으로</button>
+              <ManagerDashboard />
             </div>
           )}
 
