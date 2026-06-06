@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점', '인천주안점', '서울마리나점']
+const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점', '인천주안점', '하남점']
 const MASTER_PASSWORD = process.env.NEXT_PUBLIC_MANAGER_PASSWORD || 'comma1234'
 
 export default function PayrollManager() {
@@ -45,7 +45,28 @@ export default function PayrollManager() {
 
   function fmt(n) { return Math.round(n || 0).toLocaleString('ko-KR') }
 
-  const totalGrand = records.reduce((s, r) => s + (r.grand_total || 0), 0)
+  // ── 옛 스냅샷 보정(표시용) ──
+  // 직원 기본급은 통상시급 × 209(주휴 포함)인데, ×209 도입 이전에 저장된 일부 직원 레코드는
+  // basic_pay가 0으로 굳어 있다(예: 인계점 김민주·김수혜·조윤솔). 사이트는 매번 다시 계산해
+  // 209로 보여주지만, 이 관리자 페이지는 저장 스냅샷을 그대로 읽어 0으로 보였다.
+  // → 직원인데 기본급이 0인 "명백히 오래된" 레코드만 시급×209로 표시 보정한다.
+  //   (정상 저장됐거나 일할계산된 직원 레코드는 basic_pay가 0이 아니므로 손대지 않음.) DB는 안 건드림.
+  function fixBasic(r) {
+    if (r.emp_type === '직원' && !(r.basic_pay > 0) && r.hourly_wage > 0) {
+      return Math.round(r.hourly_wage * 209)
+    }
+    return r.basic_pay || 0
+  }
+  function fixGrand(r) {
+    const b = fixBasic(r)
+    if (b === (r.basic_pay || 0)) return r.grand_total || 0
+    // 기본급만 교체하고 나머지 항목 스냅샷은 그대로 합산
+    return b
+      + (r.weekly_holiday_pay || 0) + (r.overtime_pay || 0) + (r.night_pay || 0)
+      + (r.holiday_pay || 0) + (r.holiday_overtime_pay || 0) + (r.holiday_night_pay || 0)
+  }
+
+  const totalGrand = records.reduce((s, r) => s + fixGrand(r), 0)
 
   const css = `
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
@@ -238,7 +259,7 @@ export default function PayrollManager() {
 
               <div className="pay-grid">
                 {[
-                  ['기본급', r.basic_pay],
+                  ['기본급', fixBasic(r)],
                   ['주휴수당', r.weekly_holiday_pay],
                   ['연장수당', r.overtime_pay],
                   ['야간수당', r.night_pay],
@@ -254,7 +275,7 @@ export default function PayrollManager() {
 
               <div className="emp-card-footer">
                 <div className="total-label">세전 합계</div>
-                <div className="total-val">{fmt(r.grand_total)}원</div>
+                <div className="total-val">{fmt(fixGrand(r))}원</div>
               </div>
             </div>
           ))
