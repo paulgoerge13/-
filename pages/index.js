@@ -1738,6 +1738,18 @@ export default function Home() {
     .bc-val { font-family: 'Pretendard', sans-serif; font-size: 26px; font-weight: 700; color: #fff; line-height: 1; }
     .bc-val.net { color: #e7c98a; }
     .bc-val .won { font-size: 14px; font-weight: 500; margin-left: 2px; color: #c9c0b0; }
+    /* ── 직원/알바 분리 ── */
+    .branch-cost-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 600px) { .branch-cost-split { grid-template-columns: 1fr; } }
+    .bc-split-item { background: rgba(255,255,255,0.03); border: 1px solid rgba(231,201,138,0.12); border-radius: 10px; padding: 12px 16px; }
+    .bc-split-head { margin-bottom: 8px; }
+    .bc-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 3px 9px; border-radius: 20px; }
+    .bc-tag.staff { background: rgba(231,201,138,0.16); color: #e7c98a; }
+    .bc-tag.alba  { background: rgba(255,255,255,0.08); color: #cfc6b6; }
+    .bc-split-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
+    .bc-split-label { font-size: 11px; color: #9b9384; letter-spacing: 0.04em; }
+    .bc-split-val { font-family: 'Pretendard', sans-serif; font-size: 16px; font-weight: 700; color: #fff; }
+    .bc-split-val.gold { color: #e7c98a; }
 
     /* ── 월 합계 요약 박스 ── */
     .month-stat-box { background: #fff; border: 1px solid #e6e3dd; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
@@ -2610,6 +2622,17 @@ export default function Home() {
                 }, 0)
                 const staffCount  = employees.filter(e => e.empType === '직원').length
                 const albaCount   = employees.length - staffCount
+                // 직원/알바 지급액(식대 포함) 분리
+                const staffGross = employees.reduce((s, e, i) => e.empType === '직원' ? s + (totalsList[i].grossPay || 0) : s, 0)
+                const albaGross  = branchGross - staffGross
+                // 직원/알바 실지급(직원 4대보험·알바 3.3% 강제 공제) 분리
+                const staffNet = employees.reduce((s, e, i) => {
+                  if (e.empType !== '직원') return s
+                  const t = totalsList[i]
+                  const ded = calcDeductions(t.grandTotal, { ...e, deductionType: '4대' })
+                  return s + (t.grossPay - ded.total)
+                }, 0)
+                const albaNet = branchNet - staffNet
                 return (
                   <div className="branch-cost-card" style={{ marginTop: 28, marginBottom: 0 }}>
                     <div className="branch-cost-head">
@@ -2624,6 +2647,19 @@ export default function Home() {
                       <div className="branch-cost-item">
                         <div className="bc-label">실지급 합계 (직원 4대보험·알바 3.3% 공제)</div>
                         <div className="bc-val net">{fmt(branchNet)}<span className="won">원</span></div>
+                      </div>
+                    </div>
+                    {/* ── 직원 / 알바 분리 ── */}
+                    <div className="branch-cost-split">
+                      <div className="bc-split-item">
+                        <div className="bc-split-head"><span className="bc-tag staff">직원 {staffCount}명</span></div>
+                        <div className="bc-split-row"><span className="bc-split-label">지급액</span><span className="bc-split-val">{fmt(staffGross)}원</span></div>
+                        <div className="bc-split-row"><span className="bc-split-label">실지급</span><span className="bc-split-val gold">{fmt(staffNet)}원</span></div>
+                      </div>
+                      <div className="bc-split-item">
+                        <div className="bc-split-head"><span className="bc-tag alba">알바 {albaCount}명</span></div>
+                        <div className="bc-split-row"><span className="bc-split-label">지급액</span><span className="bc-split-val">{fmt(albaGross)}원</span></div>
+                        <div className="bc-split-row"><span className="bc-split-label">실지급</span><span className="bc-split-val gold">{fmt(albaNet)}원</span></div>
                       </div>
                     </div>
                   </div>
