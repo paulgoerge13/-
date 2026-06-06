@@ -2161,11 +2161,12 @@ export default function Home() {
                       <div className="week-summary">
                         <span className="week-summary-label">
                           근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간{weekHolidayH > 0 && ` · 휴일 ${weekHolidayH}시간`}
-                          {activeEmp.empType !== '직원' && ' · 주휴수당'}
                         </span>
                         {activeEmp.empType !== '직원' && (
                           <span className="week-summary-val">
-                            {(weekDayH + weekNightH) >= 15 ? <>{fmt(weeklyHolidayPay)}<span className="won">원</span></> : '미적용 (15시간 미만)'}
+                            {weekWorkH >= 15
+                              ? <>주휴수당 {fmt(weeklyHolidayPay)}<span className="won">원</span> <span style={{ color: '#aaa', fontWeight: 400 }}>(총 {weekWorkH}시간 기준)</span></>
+                              : <>주휴수당 미적용 <span style={{ color: '#aaa', fontWeight: 400 }}>(총 {weekWorkH}시간 · 15시간 미만)</span></>}
                           </span>
                         )}
                       </div>
