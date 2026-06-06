@@ -417,6 +417,7 @@ export default function Home() {
   // ── 수정 #2: 시간 입력 임시 상태 (셀별) ──
   const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
   const [importing, setImporting] = useState(false)
+  const [saving, setSaving] = useState(null)   // null | {done, total} 전원 저장 진행상황
   const importInputRef = useRef(null)
   const saveTimer = useRef(null)
 
@@ -909,12 +910,15 @@ export default function Home() {
       })
       if (res.ok) {
         setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status, _dirty: false } : e))
+        return true
       } else {
         const errData = await res.json()
         console.error('저장 API 오류:', errData)
+        return false
       }
     } catch (e) {
       console.error('저장 실패:', e)
+      return false
     }
   }
 
@@ -1043,9 +1047,30 @@ export default function Home() {
   }
 
   async function handleManualSave(targetStatus) {
-    if (!activeEmp.name) { alert('직원 이름을 입력해주세요.'); return }
-    await doSave(activeEmp, targetStatus)
-    alert(targetStatus === 'final' ? '✅ 최종 마감이 완료되었습니다!' : '💾 임시 저장되었습니다!')
+    if (saving) return  // 중복 클릭 방지
+    // ── 이름이 있는 모든 직원을 한 번에 DB 저장 (예전엔 '선택된 한 명'만 저장돼 나머지가 사라졌음) ──
+    const targets = employees.filter(e => e.name && e.name.trim())
+    if (targets.length === 0) { alert('직원 이름을 입력해주세요.'); return }
+
+    setSaving({ done: 0, total: targets.length })
+    const failed = []
+    for (let i = 0; i < targets.length; i++) {
+      const emp = targets[i]
+      // 임시저장은 이미 '최종마감'된 직원을 굳이 되돌리지 않음 / 최종마감은 전원 final
+      const st = targetStatus === 'final' ? 'final' : (emp.status === 'final' ? 'final' : 'saved')
+      const success = await doSaveEmp(emp, st)
+      if (!success) failed.push(emp.name)
+      setSaving({ done: i + 1, total: targets.length })
+    }
+    setSaving(null)
+
+    if (failed.length > 0) {
+      alert(`⚠️ ${targets.length}명 중 ${failed.length}명 저장 실패: ${failed.join(', ')}\n인터넷 연결을 확인하고 다시 시도해주세요.`)
+    } else {
+      alert(targetStatus === 'final'
+        ? `✅ 전체 ${targets.length}명 최종 마감 완료!`
+        : `💾 전체 ${targets.length}명 임시 저장 완료!`)
+    }
   }
 
   function handleTabSwitch(id) {
@@ -2070,26 +2095,6 @@ export default function Home() {
                       ※ 입사일·퇴사일을 입력하면 해당 월 기본급이 <b style={{ color: '#b8954a' }}>일할계산</b>(시급×209 ÷ 그달 총일수 × 재직일수)으로 자동 적용됩니다. 비워두면 한 달 전체 근무로 계산됩니다.
                     </div>
                   </div>
-                  <div className="info-card" style={{ gridColumn: 'span 2' }}>
-                    <div className="info-card-label">기본급 차감 (시간) — 조퇴·지각 등</div>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      inputMode="decimal"
-                      value={activeEmp.workData?._deduct?.hours || ''}
-                      onChange={e => setDeductHours(e.target.value)}
-                      placeholder="예) 4"
-                    />
-                    <div style={{ fontSize: 11, color: '#8a8170', marginTop: 6, lineHeight: 1.5 }}>
-                      입력한 시간 × 시급만큼 기본급에서 자동 차감됩니다. (예: 4 입력 → 4시간×시급 차감)
-                      {activeEmp.workData?._deduct?.hours > 0 && totals && (
-                        <b style={{ color: '#c0392b', display: 'block', marginTop: 2 }}>
-                          현재 차감액: −{totals.manualDeduction.toLocaleString()}원
-                        </b>
-                      )}
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -2300,6 +2305,30 @@ export default function Home() {
                 })}
               </div>
 
+              {/* ── 기본급 차감 (시간): 달력 아래, 직원만 ── */}
+              {activeEmp.empType === '직원' && (
+                <div className="info-card" style={{ marginBottom: 16 }}>
+                  <div className="info-card-label">기본급 차감 (시간) — 조퇴·지각 등</div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    inputMode="decimal"
+                    value={activeEmp.workData?._deduct?.hours || ''}
+                    onChange={e => setDeductHours(e.target.value)}
+                    placeholder="예) 4"
+                  />
+                  <div style={{ fontSize: 11, color: '#8a8170', marginTop: 6, lineHeight: 1.5 }}>
+                    입력한 시간 × 시급만큼 기본급에서 자동 차감됩니다. (예: 4 입력 → 4시간×시급 차감)
+                    {activeEmp.workData?._deduct?.hours > 0 && totals && (
+                      <b style={{ color: '#c0392b', display: 'block', marginTop: 2 }}>
+                        현재 차감액: −{totals.manualDeduction.toLocaleString()}원
+                      </b>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* 공제 방식 (급여 내역 바로 위) */}
               <div style={{ marginBottom: 16 }}>
                 <div className="field-label" style={{ marginBottom: 6 }}>공제 방식 (세금·4대보험)</div>
@@ -2427,21 +2456,23 @@ export default function Home() {
                 <button
                   className="btn outline"
                   onClick={() => handleManualSave('saved')}
-                  style={{ flex: 1, padding: '18px', fontSize: '14px', cursor: 'pointer' }}
+                  disabled={!!saving}
+                  style={{ flex: 1, padding: '18px', fontSize: '14px', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.6 : 1 }}
                 >
-                  💾 임시 저장하기
+                  {saving ? `저장 중… (${saving.done}/${saving.total})` : '💾 임시 저장하기'}
                 </button>
                 <button
                   className="btn accent"
                   onClick={() => handleManualSave('final')}
-                  style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a', color: '#fff', cursor: 'pointer' }}
+                  disabled={!!saving}
+                  style={{ flex: 1, padding: '18px', fontSize: '14px', background: '#1a1a1a', color: '#fff', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.6 : 1 }}
                 >
-                  ✅ 최종 마감하기
+                  {saving ? `마감 중… (${saving.done}/${saving.total})` : '✅ 최종 마감하기'}
                 </button>
               </div>
 
               <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                <span className="autosave-hint">※ 입력 시 자동 저장은 '진행 중' 상태로 저장됩니다.</span>
+                <span className="autosave-hint">※ 저장·마감 버튼은 <b>탭에 있는 전체 직원</b>을 한 번에 저장합니다. (입력 중 자동저장은 이 기기에만 임시 보관)</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
