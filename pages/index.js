@@ -1493,33 +1493,35 @@ export default function Home() {
     .note-input:focus { border-color: #b8954a; }
     .note-input::placeholder { color: #bbb; }
 
-    /* ── 오른쪽에 떠다니는 메모(스크롤 따라다님) ── */
+    /* ── 본문 오른쪽 빈 공간을 채우는 메모(스크롤 따라다님) ── */
     .float-note {
-      position: fixed; top: 130px; right: 28px; width: 256px; z-index: 60;
+      position: fixed; top: 120px; z-index: 60;
+      /* 본문(max-width 1200, 가운데 정렬)의 오른쪽 끝 바로 옆부터 화면 오른쪽까지 채움 */
+      left: calc(50% + 612px); right: 24px;
       background: linear-gradient(160deg, #fffdf3 0%, #fff6d2 100%);
       border: 1px solid #ecd98a; border-radius: 12px;
-      box-shadow: 0 10px 28px rgba(150, 120, 20, 0.20);
-      padding: 14px 15px 16px; transform: rotate(-1.2deg);
+      box-shadow: 0 10px 28px rgba(150, 120, 20, 0.18);
+      padding: 16px 18px 18px;
       display: none;
     }
     .float-note::before {
-      content: ''; position: absolute; top: -9px; left: 50%; transform: translateX(-50%) rotate(2deg);
-      width: 64px; height: 18px; background: rgba(220, 190, 90, 0.45);
+      content: ''; position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+      width: 70px; height: 18px; background: rgba(220, 190, 90, 0.45);
       border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.08);
     }
     .float-note-title {
       font-size: 13px; font-weight: 800; color: #8a6a23;
-      margin: 2px 0 9px; display: flex; align-items: center; gap: 6px;
+      margin: 2px 0 10px; display: flex; align-items: center; gap: 6px;
     }
     .float-note textarea {
-      width: 100%; min-height: 168px; resize: vertical; box-sizing: border-box;
+      width: 100%; min-height: 180px; resize: vertical; box-sizing: border-box;
       border: none; outline: none; background: transparent;
       font-size: 13.5px; line-height: 1.65; color: #4a3c12;
       font-family: 'Pretendard', 'DM Sans', sans-serif;
     }
     .float-note textarea::placeholder { color: #c9b66f; }
-    /* 넓은 화면: 떠다니는 메모 표시, 본문 안쪽 메모 숨김 */
-    @media (min-width: 1500px) {
+    /* 본문 오른쪽에 메모가 들어갈 여유가 있을 때만 표시(좁으면 본문 안쪽 입력칸 사용) */
+    @media (min-width: 1600px) {
       .float-note { display: block; }
       .note-row { display: none; }
     }
