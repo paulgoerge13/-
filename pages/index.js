@@ -1145,7 +1145,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `급여명세_${activeEmp.year}년${activeEmp.month}월_${activeEmp.name}.csv`
+    a.download = `근무표_${activeEmp.year}년${activeEmp.month}월_${activeEmp.name}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
