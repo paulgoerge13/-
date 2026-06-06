@@ -92,16 +92,36 @@ function calcDayNightHours(startStr, endStr) {
   return { day: r(total - night), night: nightR, total: r(total) }
 }
 
-// ── 휴게시간을 야간에서 먼저 차감, 모자라면 주간에서 차감 ──
-// 예: 20:00~05:00(주간2/야간7) + 휴게1 → 주간2 / 야간6
+// ── 휴게시간은 "실제 쉬는 시각"이 속한 시간대에서 차감 ──
+// 직원은 보통 근무 시작 약 5시간 뒤에 1시간을 쉰다. 그 시각이
+//   · 주간대(06:00~22:00)면 → 주간에서 먼저 차감
+//   · 야간대(22:00~06:00)면 → 야간에서 먼저 차감
+// 예) 14:00 시작 → 휴게 ≈19:00(주간) → 주간에서 차감 (주간8/야간2 + 휴게1 → 주간7/야간2)
+// 예) 17:00 시작 → 휴게 ≈22:00(야간) → 야간에서 차감
+// 예) 20:00~05:00 시작 → 휴게 ≈01:00(야간) → 야간에서 차감 (주간2/야간7 + 휴게1 → 주간2/야간6)
+function restTakenFromNight(startStr) {
+  const [h, m] = String(startStr || '').split(':').map(Number)
+  if (isNaN(h)) return false
+  const breakHour = (((h + (m || 0) / 60) + 5) % 24 + 24) % 24 // 시작 5시간 후 ≈ 휴게 시각
+  return breakHour >= 22 || breakHour < 6
+}
+// day/night 에서 rest 를 위 규칙대로 빼고, 한쪽이 모자라면 다른 쪽에서 마저 뺀다.
+function applyRest(day, night, rest, startStr) {
+  const restH = Number(rest) || 0
+  if (restH <= 0) return { day: Math.max(0, day), night: Math.max(0, night) }
+  if (restTakenFromNight(startStr)) {
+    const n = Math.max(0, night - restH)
+    const leftover = Math.max(0, restH - night)
+    return { day: Math.max(0, day - leftover), night: n }
+  }
+  const d = Math.max(0, day - restH)
+  const leftover = Math.max(0, restH - day)
+  return { day: d, night: Math.max(0, night - leftover) }
+}
 function netSplit(startStr, endStr, rest) {
   const split = calcDayNightHours(startStr, endStr)
   if (!split) return null
-  const restH = Number(rest) || 0
-  const night = Math.max(0, split.night - restH)
-  const leftover = Math.max(0, restH - split.night)
-  const day = Math.max(0, split.day - leftover)
-  return { day, night }
+  return applyRest(split.day, split.night, rest, startStr)
 }
 
 // ── 주간/야간 보정 (보수적: 수동 입력값은 절대 안 건드림) ──
@@ -139,10 +159,8 @@ function fixRestDeduction(d) {
   //   (예: 09:30~18:30(9시간) 휴게1인데 주간9로 저장된 날 → 주간8. 야간에서 먼저 빼고 모자라면 주간.)
   //   매니저가 시간과 다르게 직접 늘리거나 줄인 값(합 ≠ 시계시간)은 건드리지 않는다. 멱등.
   if (rest > 0 && Math.abs((sDay + sNight) - gross.total) < 0.001) {
-    const night2 = Math.max(0, sNight - rest)
-    const leftover = Math.max(0, rest - sNight)
-    const day2 = Math.max(0, sDay - leftover)
-    return { ...d, [dayKey]: day2, [nightKey]: night2 }
+    const r = applyRest(sDay, sNight, rest, d.timeStart) // 휴게 발생 시각대(주간/야간)에서 차감
+    return { ...d, [dayKey]: r.day, [nightKey]: r.night }
   }
 
   // ★ 누락(0)된 쪽만 시간 기준으로 채워 복구한다. 매니저가 넣은 0 아닌 값은 보존.
