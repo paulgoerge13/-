@@ -1610,6 +1610,8 @@ export default function Home() {
 
     /* ── 수정 #3: 칸이 4개로 늘어 min-height 증가 ── */
     .day-cell { padding: 10px 7px; border-left: 1.5px solid #e6e3dd; min-height: 200px; position: relative; transition: background 0.2s; }
+    .day-cell.has-warn { box-shadow: inset 0 0 0 2px #e05555; background: #fff6f6; }
+    .day-warn { position: absolute; top: 4px; right: 5px; font-size: 13px; cursor: help; z-index: 2; line-height: 1; }
     .day-cell:first-child { border-left: none; }
     .day-cell.empty { background: #fafaf9; }
     .day-cell.is-holiday { background: linear-gradient(160deg, #fff5f5 0%, #fff0e8 100%); }
@@ -2118,8 +2120,30 @@ export default function Home() {
                           // ── 근무가 전혀 없는 날(0시간) 구분: 휴무/연차가 아닌데 총 근무 0이면 흐리게 표시 ──
                           const isEmptyWork = !noInput && dayTotal === 0
 
+                          // ── 입력 오류 자동 경고: 시계시간(시작~종료)과 입력한 주간/야간이 안 맞으면 ⚠️ ──
+                          let inputWarn = ''
+                          if (!noInput && !isEmptyWork && tStart && tEnd && tStart !== tEnd) {
+                            const g = calcDayNightHours(tStart, tEnd)
+                            if (g && g.total > 0) {
+                              const rest   = isHolidayWork ? (d.holidayRestH || 0)     : (d.restH || 0)
+                              const dDay   = isHolidayWork ? (d.holidayDaytimeH || 0)  : (d.daytimeH || 0)
+                              const dNight = isHolidayWork ? (d.holidayNightH || 0)    : (d.nightH || 0)
+                              const expectTotal = Math.round((g.total - rest) * 2) / 2
+                              const got = dDay + dNight
+                              if (Math.abs(got - expectTotal) > 0.01) {
+                                inputWarn = `시계시간 ${g.total}h − 휴게 ${rest}h = ${expectTotal}h 인데, 입력한 주간+야간 합은 ${got}h 입니다. 확인해 주세요.`
+                              } else {
+                                const ns = netSplit(tStart, tEnd, rest)
+                                if (ns && (Math.abs(ns.day - dDay) > 0.01 || Math.abs(ns.night - dNight) > 0.01)) {
+                                  inputWarn = `주간/야간 나눔이 시계시간과 다릅니다. 시계 기준 예상: 주간 ${ns.day}h / 야간 ${ns.night}h.`
+                                }
+                              }
+                            }
+                          }
+
                           return (
-                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''} ${outOfEmp ? 'out-of-emp' : ''}`}>
+                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''} ${outOfEmp ? 'out-of-emp' : ''} ${inputWarn ? 'has-warn' : ''}`}>
+                              {inputWarn && <div className="day-warn" title={inputWarn}>⚠️</div>}
                               <div className="day-head">
                                 <div
                                   className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAbsent ? 'absent-type' : isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
