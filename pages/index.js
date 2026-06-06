@@ -533,7 +533,7 @@ export default function Home() {
   function updateEmp(field, value) {
     setEmployees(prev => prev.map(e => {
       if (e.id !== activeEmpId) return e
-      const next = { ...e, [field]: value }
+      const next = { ...e, [field]: value, _dirty: true } // 미저장 수정 표시 → 직원 전환 시 DB값으로 안 덮어쓰게
       // 입사일/퇴사일을 바꾸면 그 범위 밖의 근무표 칸을 즉시 정리(퇴사자 정리)
       if (field === 'hireDate' || field === 'resignDate') {
         next.workData = pruneWorkDataToEmployment(next.workData, next.hireDate, next.resignDate)
@@ -564,6 +564,7 @@ export default function Home() {
       if (e.id !== activeEmpId) return e
       return {
         ...e,
+        _dirty: true, // 미저장 수정 표시 → 직원 전환 시 DB값으로 안 덮어쓰게
         workData: {
           ...e.workData,
           [dateStr]: {
@@ -675,6 +676,7 @@ export default function Home() {
       }
       return {
         ...e,
+        _dirty: true, // 미저장 수정 표시 → 직원 전환 시 DB값으로 안 덮어쓰게
         workData: {
           ...e.workData,
           [dateStr]: {
@@ -699,7 +701,7 @@ export default function Home() {
       const wd = { ...e.workData }
       if (hours > 0) wd._deduct = { hours }
       else delete wd._deduct
-      return { ...e, workData: wd }
+      return { ...e, workData: wd, _dirty: true } // 미저장 수정 표시
     }))
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
