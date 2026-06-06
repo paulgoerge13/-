@@ -702,8 +702,31 @@ export default function Home() {
 
   function confirmDelete(id) { setDeleteConfirm(id) }
 
-  function doDelete() {
+  async function doDelete() {
     if (!deleteConfirm || employees.length === 1) { setDeleteConfirm(null); return }
+    const target = employees.find(e => e.id === deleteConfirm)
+    // DB에 저장된 적이 있는 직원이면(이 달 레코드 존재) DB에서도 그 달 레코드를 삭제
+    // → 안 그러면 재로그인 시 DB에서 다시 불러와 되살아남
+    const dbName = (target?._dbName || target?.name || '').trim()
+    if (target && dbName && selectedBranch) {
+      try {
+        const r = await fetch('/api/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ branch: selectedBranch.name, empName: dbName, year: target.year, month: target.month }),
+        })
+        if (!r.ok) {
+          const ej = await r.json().catch(() => ({}))
+          alert(`'${dbName}' 삭제 실패: ${ej.error || '서버 오류'}`)
+          setDeleteConfirm(null)
+          return
+        }
+      } catch (e) {
+        alert(`'${dbName}' 삭제 중 네트워크 오류가 발생했습니다.`)
+        setDeleteConfirm(null)
+        return
+      }
+    }
     const remaining = employees.filter(e => e.id !== deleteConfirm)
     setEmployees(remaining)
     if (activeEmpId === deleteConfirm) setActiveEmpId(remaining[0].id)
@@ -1834,7 +1857,8 @@ export default function Home() {
               <span className="modal-emp-name">
                 {employees.find(e => e.id === deleteConfirm)?.name || '이름 미입력'}
               </span>
-              의 데이터를 삭제하시겠습니까?<br />
+              님의 <b>{employees.find(e => e.id === deleteConfirm)?.year}년 {employees.find(e => e.id === deleteConfirm)?.month}월</b> 데이터를 삭제하시겠습니까?<br />
+              이 달 기록만 지워지며 <b>다른 달 기록은 그대로 남습니다.</b><br />
               삭제된 데이터는 복구할 수 없습니다.
             </div>
             <div className="modal-btns">
