@@ -1758,7 +1758,7 @@ export default function Home() {
     /* ── 월 합계 요약 박스 ── */
     .month-stat-box { background: #fff; border: 1px solid #e6e3dd; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
     .month-stat-title { font-size: 13px; letter-spacing: 0.08em; color: #b8954a; font-weight: 700; margin-bottom: 14px; }
-    .month-stat-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+    .month-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
     @media (max-width: 720px) { .month-stat-grid { grid-template-columns: repeat(4, 1fr); gap: 14px 6px; } }
     .month-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; border-right: 1px solid #f0ede8; }
     .month-stat:last-child { border-right: none; }
