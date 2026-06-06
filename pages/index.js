@@ -1498,28 +1498,23 @@ export default function Home() {
       position: fixed; top: 120px; z-index: 60;
       /* 본문(max-width 1200, 가운데 정렬)의 오른쪽 끝 바로 옆부터 화면 오른쪽까지 채움 */
       left: calc(50% + 612px); right: 24px;
-      background: linear-gradient(160deg, #fffdf3 0%, #fff6d2 100%);
-      border: 1px solid #ecd98a; border-radius: 12px;
-      box-shadow: 0 10px 28px rgba(150, 120, 20, 0.18);
-      padding: 16px 18px 18px;
+      background: #fff;
+      border: 1px solid #e2ded7; border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+      padding: 18px 20px 20px;
       display: none;
     }
-    .float-note::before {
-      content: ''; position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
-      width: 70px; height: 18px; background: rgba(220, 190, 90, 0.45);
-      border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    }
     .float-note-title {
-      font-size: 13px; font-weight: 800; color: #8a6a23;
-      margin: 2px 0 10px; display: flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 700; color: #555;
+      margin: 0 0 12px; display: flex; align-items: center; gap: 6px;
     }
     .float-note textarea {
-      width: 100%; min-height: 180px; resize: vertical; box-sizing: border-box;
+      width: 100%; min-height: 340px; resize: vertical; box-sizing: border-box;
       border: none; outline: none; background: transparent;
-      font-size: 13.5px; line-height: 1.65; color: #4a3c12;
+      font-size: 14px; line-height: 1.7; color: #1a1a1a;
       font-family: 'Pretendard', 'DM Sans', sans-serif;
     }
-    .float-note textarea::placeholder { color: #c9b66f; }
+    .float-note textarea::placeholder { color: #bbb; }
     /* 본문 오른쪽에 메모가 들어갈 여유가 있을 때만 표시(좁으면 본문 안쪽 입력칸 사용) */
     @media (min-width: 1600px) {
       .float-note { display: block; }
