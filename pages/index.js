@@ -756,7 +756,8 @@ export default function Home() {
   function calcWeekPay(week, emp) {
     // ── 주간/야간/휴게/연장 시간을 주별로 합산 (기본·휴일근로 칸 폐지) ──
     let weekDayH = 0, weekNightH = 0, weekRestH = 0, weekOtH = 0, weekRegH = 0
-    let weekHolidayH = 0 // 휴일근무(주간+야간) — 일반 야간과 분리
+    // 휴일근무를 주간/야간/연장으로 분리해 집계 (연장은 주간/야간에 포함된 가산분이라 합계엔 안 더함)
+    let weekHolidayDayH = 0, weekHolidayNightH = 0, weekHolidayOtH = 0
     week.forEach(day => {
       if (!day) return
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
@@ -764,8 +765,10 @@ export default function Home() {
       if (d.type === '공' || d.type === '연') return // 휴무·연차 제외
       if (d.type === '휴' && emp.empType === '직원') {
         // 직원 휴일근로는 일반 주간/야간에 섞지 않고 휴일근무로만 집계 (중복 방지)
-        weekHolidayH += (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
-        weekRestH    += d.holidayRestH || 0
+        weekHolidayDayH   += d.holidayDaytimeH || 0
+        weekHolidayNightH += d.holidayNightH || 0
+        weekHolidayOtH    += d.holidayOtH || 0   // 휴일 8시간 초과분(가산) — 위 시간에 포함됨
+        weekRestH         += d.holidayRestH || 0
       } else {
         // 평일. (알바의 '휴'는 휴일 가산 없이 평일처럼 처리 → 휴일칸 값을 일반 근무로 합산)
         const albaHol = d.type === '휴'  // 여기 도달 = 알바인데 휴일
@@ -779,11 +782,13 @@ export default function Home() {
         weekRegH   += dDay + dNight // 주휴 산정용 소정근로(주간+야간)
       }
     })
+    const weekHolidayH = weekHolidayDayH + weekHolidayNightH  // 휴일근무 총합(연장은 포함분이라 제외)
     const weekWorkH = weekDayH + weekNightH + weekHolidayH // 휴게·연장 제외(연장은 주간/야간 안에 포함됨), 휴일 포함
     const isStaffNoCalc = emp.empType === '직원' // 직원은 기본급(시급×209)에 주휴 포함 → 주휴 별도계산 안 함
     // 주휴수당: 소정근로(주간+야간) 시간 기준으로 계산
     return {
       weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH, weekHolidayH,
+      weekHolidayDayH, weekHolidayNightH, weekHolidayOtH,
       weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekRegH, emp.hourlyWage)
     }
   }
@@ -1726,28 +1731,29 @@ export default function Home() {
     .branch-cost-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; }
     .branch-cost-title { font-size: 14px; font-weight: 700; color: #e7c98a; letter-spacing: 0.04em; }
     .branch-cost-sub { font-size: 12px; color: #a39c90; letter-spacing: 0.02em; }
-    .branch-cost-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    @media (max-width: 600px) { .branch-cost-grid { grid-template-columns: 1fr; } }
-    .branch-cost-item {
-      background: rgba(255,255,255,0.05); border: 1px solid rgba(231,201,138,0.18);
-      border-radius: 10px; padding: 14px 18px;
+    /* ── 인건비 표(테이블) ── */
+    .bc-table { width: 100%; border-collapse: collapse; }
+    .bc-table th, .bc-table td {
+      padding: 12px 10px; text-align: right; font-size: 15px;
+      font-family: 'Pretendard', sans-serif;
     }
-    .bc-label { font-size: 11px; color: #b3aa9b; letter-spacing: 0.06em; margin-bottom: 6px; }
-    .bc-val { font-family: 'Pretendard', sans-serif; font-size: 26px; font-weight: 700; color: #fff; line-height: 1; }
-    .bc-val.net { color: #e7c98a; }
-    .bc-val .won { font-size: 14px; font-weight: 500; margin-left: 2px; color: #c9c0b0; }
-    /* ── 직원/알바 분리 ── */
-    .branch-cost-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-    @media (max-width: 600px) { .branch-cost-split { grid-template-columns: 1fr; } }
-    .bc-split-item { background: rgba(255,255,255,0.03); border: 1px solid rgba(231,201,138,0.12); border-radius: 10px; padding: 12px 16px; }
-    .bc-split-head { margin-bottom: 8px; }
-    .bc-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 3px 9px; border-radius: 20px; }
-    .bc-tag.staff { background: rgba(231,201,138,0.16); color: #e7c98a; }
-    .bc-tag.alba  { background: rgba(255,255,255,0.08); color: #cfc6b6; }
-    .bc-split-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; }
-    .bc-split-label { font-size: 11px; color: #9b9384; letter-spacing: 0.04em; }
-    .bc-split-val { font-family: 'Pretendard', sans-serif; font-size: 16px; font-weight: 700; color: #fff; }
-    .bc-split-val.gold { color: #e7c98a; }
+    .bc-table th {
+      font-size: 11px; font-weight: 600; color: #a39c90; letter-spacing: 0.04em;
+      border-bottom: 1px solid rgba(231,201,138,0.2); padding-bottom: 9px;
+    }
+    .bc-th-sub { font-size: 9.5px; color: #7d766a; font-weight: 400; }
+    .bc-th-l, .bc-td-l { text-align: left !important; }
+    .bc-table td { color: #fff; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .bc-table .bc-td-l { color: #cfc6b6; font-weight: 500; font-size: 13px; }
+    .bc-table .bc-td-l b { color: #fff; font-weight: 700; }
+    .bc-td-net { color: #e7c98a !important; }
+    .bc-tr-total td { border-bottom: none; border-top: 1.5px solid rgba(231,201,138,0.35); font-size: 18px; font-weight: 700; padding-top: 14px; }
+    .bc-tr-total .bc-td-l { color: #e7c98a; font-size: 14px; }
+    .bc-foot { margin-top: 12px; font-size: 10.5px; color: #8a8276; letter-spacing: 0.02em; }
+    @media (max-width: 600px) {
+      .bc-table th, .bc-table td { padding: 10px 6px; font-size: 13px; }
+      .bc-tr-total td { font-size: 15px; }
+    }
 
     /* ── 월 합계 요약 박스 ── */
     .month-stat-box { background: #fff; border: 1px solid #e6e3dd; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
@@ -2266,7 +2272,7 @@ export default function Home() {
               {/* 달력 */}
               <div className="cal-wrap">
                 {weeks.map((week, wi) => {
-                  const { weekDayH, weekNightH, weekWorkH, weekHolidayH, weeklyHolidayPay } = calcWeekPay(week, activeEmp)
+                  const { weekDayH, weekNightH, weekWorkH, weekHolidayH, weekHolidayDayH, weekHolidayNightH, weekHolidayOtH, weekOtH, weeklyHolidayPay } = calcWeekPay(week, activeEmp)
                   return (
                     <div key={wi} className="week-block">
                       <div className="week-dow-row">
@@ -2410,7 +2416,17 @@ export default function Home() {
                       </div>
                       <div className="week-summary">
                         <span className="week-summary-label">
-                          근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간{weekHolidayH > 0 && ` · 휴일 ${weekHolidayH}시간`}
+                          근무 총 {weekWorkH}시간 · 주간 {weekDayH}시간 · 야간 {weekNightH}시간
+                          {weekHolidayDayH > 0 && ` · 휴일 ${weekHolidayDayH}시간`}
+                          {weekHolidayNightH > 0 && ` · 휴일야간 ${weekHolidayNightH}시간`}
+                          {(weekOtH > 0 || weekHolidayOtH > 0) && (
+                            <span style={{ color: '#aaa', fontWeight: 400 }}>
+                              {' '}(이 중 {[
+                                weekOtH > 0 && `연장 ${weekOtH}시간`,
+                                weekHolidayOtH > 0 && `휴일연장 ${weekHolidayOtH}시간`,
+                              ].filter(Boolean).join(' · ')})
+                            </span>
+                          )}
                         </span>
                         {activeEmp.empType !== '직원' && (
                           <span className="week-summary-val">
@@ -2633,29 +2649,33 @@ export default function Home() {
                       <span className="branch-cost-title">{selectedBranch?.name} · {activeEmp.year}년 {activeEmp.month}월 인건비 총금액</span>
                       <span className="branch-cost-sub">직원 {staffCount}명 · 알바 {albaCount}명 (총 {employees.length}명)</span>
                     </div>
-                    <div className="branch-cost-grid">
-                      <div className="branch-cost-item">
-                        <div className="bc-label">지급액 합계 (식대 포함)</div>
-                        <div className="bc-val">{fmt(branchGross)}<span className="won">원</span></div>
-                      </div>
-                      <div className="branch-cost-item">
-                        <div className="bc-label">실지급 합계 (직원 4대보험·알바 3.3% 공제)</div>
-                        <div className="bc-val net">{fmt(branchNet)}<span className="won">원</span></div>
-                      </div>
-                    </div>
-                    {/* ── 직원 / 알바 분리 ── */}
-                    <div className="branch-cost-split">
-                      <div className="bc-split-item">
-                        <div className="bc-split-head"><span className="bc-tag staff">직원 {staffCount}명</span></div>
-                        <div className="bc-split-row"><span className="bc-split-label">지급액</span><span className="bc-split-val">{fmt(staffGross)}원</span></div>
-                        <div className="bc-split-row"><span className="bc-split-label">실지급</span><span className="bc-split-val gold">{fmt(staffNet)}원</span></div>
-                      </div>
-                      <div className="bc-split-item">
-                        <div className="bc-split-head"><span className="bc-tag alba">알바 {albaCount}명</span></div>
-                        <div className="bc-split-row"><span className="bc-split-label">지급액</span><span className="bc-split-val">{fmt(albaGross)}원</span></div>
-                        <div className="bc-split-row"><span className="bc-split-label">실지급</span><span className="bc-split-val gold">{fmt(albaNet)}원</span></div>
-                      </div>
-                    </div>
+                    <table className="bc-table">
+                      <thead>
+                        <tr>
+                          <th className="bc-th-l">구분</th>
+                          <th>지급액 <span className="bc-th-sub">(식대 포함)</span></th>
+                          <th>실지급 <span className="bc-th-sub">(공제 후)</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="bc-td-l">직원 <b>{staffCount}</b>명</td>
+                          <td>{fmt(staffGross)}원</td>
+                          <td className="bc-td-net">{fmt(staffNet)}원</td>
+                        </tr>
+                        <tr>
+                          <td className="bc-td-l">알바 <b>{albaCount}</b>명</td>
+                          <td>{fmt(albaGross)}원</td>
+                          <td className="bc-td-net">{fmt(albaNet)}원</td>
+                        </tr>
+                        <tr className="bc-tr-total">
+                          <td className="bc-td-l">합계</td>
+                          <td>{fmt(branchGross)}원</td>
+                          <td className="bc-td-net">{fmt(branchNet)}원</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div className="bc-foot">실지급 = 직원 4대보험 · 알바 3.3% 원천징수 공제 기준</div>
                   </div>
                 )
               })()}
