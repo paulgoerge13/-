@@ -70,10 +70,14 @@ export default function PayrollManager() {
       staff: rs.filter(r => r.emp_type === '직원').length,
       alba: rs.filter(r => r.emp_type !== '직원').length,
       total: rs.reduce((s, r) => s + fixGrand(r), 0),
+      staffTotal: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0),
+      albaTotal: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0),
       finalCount: rs.filter(r => r.status === 'final').length,
     }
   })
   const grandAll = byBranch.reduce((s, x) => s + x.total, 0)
+  const staffAll = byBranch.reduce((s, x) => s + x.staffTotal, 0)
+  const albaAll = byBranch.reduce((s, x) => s + x.albaTotal, 0)
   const totalPeople = byBranch.reduce((s, x) => s + x.count, 0)
   const totalFinal = byBranch.reduce((s, x) => s + x.finalCount, 0)
 
@@ -81,19 +85,21 @@ export default function PayrollManager() {
   const totalGrand = records.reduce((s, r) => s + fixGrand(r), 0)
   const curStaff = records.filter(r => r.emp_type === '직원').length
   const curAlba = records.filter(r => r.emp_type !== '직원').length
+  const curStaffTotal = records.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0)
+  const curAlbaTotal = records.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0)
   const curFinal = records.filter(r => r.status === 'final').length
 
   // ── 전 지점 요약 엑셀(CSV) 내보내기 — 보고용 ──
   function downloadSummary() {
     const BOM = '﻿'
-    const head = ['지점', '총인원', '직원', '알바', '세전인건비', '마감완료', '전체대비']
+    const head = ['지점', '총인원', '직원수', '알바수', '직원인건비', '알바인건비', '세전인건비', '마감완료', '전체대비']
     const lines = byBranch.map(x =>
-      [x.branch, x.count, x.staff, x.alba, x.total, `${x.finalCount}/${x.count}`,
+      [x.branch, x.count, x.staff, x.alba, x.staffTotal, x.albaTotal, x.total, `${x.finalCount}/${x.count}`,
        x.count > 0 ? `${Math.round(x.finalCount / x.count * 100)}%` : '-']
         .map(v => `"${v}"`).join(','))
     const totalLine = ['전체 합계', totalPeople,
       byBranch.reduce((s, x) => s + x.staff, 0), byBranch.reduce((s, x) => s + x.alba, 0),
-      grandAll, `${totalFinal}/${totalPeople}`,
+      staffAll, albaAll, grandAll, `${totalFinal}/${totalPeople}`,
       totalPeople > 0 ? `${Math.round(totalFinal / totalPeople * 100)}%` : '-']
       .map(v => `"${v}"`).join(',')
     const csv = BOM + [
@@ -151,6 +157,11 @@ export default function PayrollManager() {
     .kpi-card.hero .kpi-val { color: #fff; }
     .kpi-val small { font-size: 12px; font-weight: 500; color: #999; margin-left: 2px; }
     .kpi-card.hero .kpi-val small { color: #c9b78c; }
+    .kpi-split { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+    .kpi-split span { font-size: 11.5px; color: #d9cba6; display: flex; align-items: center; }
+    .kpi-split .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; display: inline-block; }
+    .kpi-split .dot.staff { background: #e7c98a; }
+    .kpi-split .dot.alba { background: #8a8a8a; }
     @media (max-width: 620px) {
       .kpi-row { grid-template-columns: 1fr 1fr; }
       .kpi-card.hero { grid-column: 1 / -1; }
@@ -180,6 +191,7 @@ export default function PayrollManager() {
     .br-right { text-align: right; }
     .br-amt { font-size: 16px; font-weight: 700; color: #b8954a; letter-spacing: -0.01em; }
     .br-amt small { font-size: 11px; color: #bbb; font-weight: 500; }
+    .br-split { font-size: 10.5px; color: #aaa; margin-top: 3px; }
     .br-prog { margin-top: 5px; display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
     .br-prog-bar { width: 60px; height: 5px; border-radius: 3px; background: #eee; overflow: hidden; }
     .br-prog-fill { height: 100%; background: #2ecc71; border-radius: 3px; }
@@ -193,6 +205,15 @@ export default function PayrollManager() {
     .summary-card-val { font-size: 18px; font-weight: 700; color: #1a1a1a; }
     .summary-card-val.gold { color: #b8954a; }
     .summary-card-val small { font-size: 11px; color: #aaa; font-weight: 500; }
+
+    /* 직원/알바 금액 분리 (단일 지점) */
+    .split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .split-card { background: #fff; border: 1px solid #ebe9e4; border-radius: 10px; padding: 14px 16px; }
+    .split-tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 3px 9px; border-radius: 20px; margin-bottom: 8px; }
+    .split-tag.staff { background: #e3dfd5; color: #6b6253; }
+    .split-tag.alba { background: #ece0c9; color: #9c7f44; }
+    .split-amt { font-size: 18px; font-weight: 700; color: #1a1a1a; }
+    .split-amt small { font-size: 11px; color: #aaa; font-weight: 500; margin-left: 2px; }
 
     .back-btn {
       background: none; border: none; color: #888; font-size: 13px; cursor: pointer;
@@ -294,6 +315,10 @@ export default function PayrollManager() {
               <div className="kpi-card hero">
                 <div className="kpi-label">전 지점 세전 인건비</div>
                 <div className="kpi-val">{fmt(grandAll)}<small>원</small></div>
+                <div className="kpi-split">
+                  <span><b className="dot staff" />직원 {fmt(staffAll)}원</span>
+                  <span><b className="dot alba" />알바 {fmt(albaAll)}원</span>
+                </div>
               </div>
               <div className="kpi-card">
                 <div className="kpi-label">총 인원</div>
@@ -322,12 +347,15 @@ export default function PayrollManager() {
                 <div className="br-right">
                   <div className="br-amt">{fmt(x.total)}<small> 원</small></div>
                   {x.count > 0 && (
-                    <div className="br-prog">
-                      <div className="br-prog-bar">
-                        <div className="br-prog-fill" style={{ width: `${Math.round(x.finalCount / x.count * 100)}%` }} />
+                    <>
+                      <div className="br-split">직원 {fmt(x.staffTotal)} · 알바 {fmt(x.albaTotal)}</div>
+                      <div className="br-prog">
+                        <div className="br-prog-bar">
+                          <div className="br-prog-fill" style={{ width: `${Math.round(x.finalCount / x.count * 100)}%` }} />
+                        </div>
+                        <span className="br-prog-txt">마감 {x.finalCount}/{x.count}</span>
                       </div>
-                      <span className="br-prog-txt">마감 {x.finalCount}/{x.count}</span>
-                    </div>
+                    </>
                   )}
                 </div>
                 <div className="br-chev">›</div>
@@ -353,6 +381,19 @@ export default function PayrollManager() {
                 <div className="summary-card-val gold">{fmt(totalGrand)}<small>원</small></div>
               </div>
             </div>
+
+            {records.length > 0 && (
+              <div className="split-row">
+                <div className="split-card">
+                  <div className="split-tag staff">직원 {curStaff}명</div>
+                  <div className="split-amt">{fmt(curStaffTotal)}<small>원</small></div>
+                </div>
+                <div className="split-card">
+                  <div className="split-tag alba">알바 {curAlba}명</div>
+                  <div className="split-amt">{fmt(curAlbaTotal)}<small>원</small></div>
+                </div>
+              </div>
+            )}
 
             {records.length === 0 ? (
               <p className="empty-msg">해당 월의 데이터가 없습니다.</p>

@@ -372,7 +372,7 @@ function calcDeductions(gross, emp) {
 }
 
 // ── 개인정보 마스킹: 평소엔 가리고, 입력칸을 클릭하면 전체가 보이게 ──
-//   주민번호: 생년월일 6자리 + 성별 1자리만 보이고 뒤 6자리는 ●
+//   주민번호: 생년월일 6자리 + 성별 1자리만 보이고 뒤 6자리는 *
 function maskResident(v) {
   const s = String(v || '')
   if (!s) return ''
@@ -380,9 +380,9 @@ function maskResident(v) {
   if (digits.length <= 7) return s   // 아직 입력 중이면 그대로
   const front = digits.slice(0, 6)
   const gender = digits.slice(6, 7)
-  return `${front}-${gender}●●●●●●`
+  return `${front}-${gender}******`
 }
-//   계좌번호: 은행명 등 글자는 두고, 숫자는 마지막 3자리만 남기고 ● 처리
+//   계좌번호: 은행명 등 글자는 두고, 숫자는 마지막 3자리만 남기고 * 처리
 function maskAccount(v) {
   const s = String(v || '')
   if (!s) return ''
@@ -390,7 +390,7 @@ function maskAccount(v) {
   if (digitCount <= 3) return s
   let seen = 0
   const totalToMask = digitCount - 3
-  return s.replace(/[0-9]/g, d => (seen++ < totalToMask ? '●' : d))
+  return s.replace(/[0-9]/g, d => (seen++ < totalToMask ? '*' : d))
 }
 
 // 평소엔 마스킹 표시, 포커스(클릭) 시 실제 값으로 바뀌어 수정 가능한 입력칸
