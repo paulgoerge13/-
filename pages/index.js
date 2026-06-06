@@ -1493,6 +1493,37 @@ export default function Home() {
     .note-input:focus { border-color: #b8954a; }
     .note-input::placeholder { color: #bbb; }
 
+    /* ── 오른쪽에 떠다니는 메모(스크롤 따라다님) ── */
+    .float-note {
+      position: fixed; top: 130px; right: 28px; width: 256px; z-index: 60;
+      background: linear-gradient(160deg, #fffdf3 0%, #fff6d2 100%);
+      border: 1px solid #ecd98a; border-radius: 12px;
+      box-shadow: 0 10px 28px rgba(150, 120, 20, 0.20);
+      padding: 14px 15px 16px; transform: rotate(-1.2deg);
+      display: none;
+    }
+    .float-note::before {
+      content: ''; position: absolute; top: -9px; left: 50%; transform: translateX(-50%) rotate(2deg);
+      width: 64px; height: 18px; background: rgba(220, 190, 90, 0.45);
+      border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+    .float-note-title {
+      font-size: 13px; font-weight: 800; color: #8a6a23;
+      margin: 2px 0 9px; display: flex; align-items: center; gap: 6px;
+    }
+    .float-note textarea {
+      width: 100%; min-height: 168px; resize: vertical; box-sizing: border-box;
+      border: none; outline: none; background: transparent;
+      font-size: 13.5px; line-height: 1.65; color: #4a3c12;
+      font-family: 'Pretendard', 'DM Sans', sans-serif;
+    }
+    .float-note textarea::placeholder { color: #c9b66f; }
+    /* 넓은 화면: 떠다니는 메모 표시, 본문 안쪽 메모 숨김 */
+    @media (min-width: 1500px) {
+      .float-note { display: block; }
+      .note-row { display: none; }
+    }
+
     /* ── 지점별 인건비 총금액 카드 ── */
     .branch-cost-card {
       background: linear-gradient(135deg, #1f1d1a 0%, #2e2a24 100%);
@@ -1959,7 +1990,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 특이사항 */}
+              {/* 특이사항 (좁은 화면: 본문 안쪽) */}
               <div className="note-row">
                 <p className="field-label" style={{ marginBottom: 8 }}>이달의 특이사항</p>
                 <input
@@ -1967,6 +1998,16 @@ export default function Home() {
                   value={activeEmp.specialNote}
                   onChange={e => updateEmp('specialNote', e.target.value)}
                   placeholder="예) 11월 야간 추가 5시간"
+                />
+              </div>
+
+              {/* 특이사항 (넓은 화면: 오른쪽에 떠다니는 메모 — 스크롤 따라다님) */}
+              <div className="float-note">
+                <p className="float-note-title">📝 이달의 특이사항</p>
+                <textarea
+                  value={activeEmp.specialNote}
+                  onChange={e => updateEmp('specialNote', e.target.value)}
+                  placeholder="예) 3일 조퇴 / 19 대타, 21일 매니저 대타"
                 />
               </div>
 
