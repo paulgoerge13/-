@@ -14,7 +14,7 @@ function calcBasic(h, w)        { return Math.round(h * w) }
 function calcOvertime(h, w)     { return Math.round(h * w * 1.5) }
 function calcNight(h, w)        { return Math.round(h * w * 0.5) }
 function calcHoliday(h, w)      { return Math.round(h * w * 1.5) }
-function calcHolidayOt(h, w)    { return Math.round(h * w * 2.0) }
+function calcHolidayOt(h, w)    { return Math.round(h * w * 0.5) } // 휴일근로(1.5배)에 이미 포함 → 8h 초과분 추가 가산 0.5배(합 2.0배)
 function calcHolidayNight(h, w) { return Math.round(h * w * 0.5) }
 function calcWeeklyHoliday(weekH, w) {
   if (weekH < 15) return 0
@@ -124,11 +124,12 @@ function fixRestDeduction(d) {
   const sNight = d[nightKey] || 0
   const rest   = d[restKey]  || 0
 
-  // ★ 물리적 불가능 정정: 주간+야간 합이 시계 총시간을 "초과"하면
-  //   = 과거 저장 버그(주간 칸에 전체 시계시간이 통째로 들어간 경우 등)로 부풀려진 값.
-  //   정상/수동 입력은 항상 (주간+야간) = 시계 − 휴게 ≤ 시계 이므로, 초과한 날만 시간 기준 재계산한다.
-  //   (예: 장태걸 5/1 21:30~06:30 휴게1, 저장 주간9/야간7=16h(불가) → 주간1/야간7) 멱등.
-  if ((sDay + sNight) > gross.total + 0.01) {
+  // ★ 과거 저장 버그 정정(딱 한 가지 시그니처만): 주간 칸에 "전체 시계시간"이 통째로
+  //   들어가고(주간 = 시계 총합) 야간도 따로 채워져, 주간+야간이 물리적으로 불가능해진 날.
+  //   (예: 장태걸 5/1 21:30~06:30 → 시계 9h인데 저장 주간9/야간7 = 주간에 9가 통째로 들어감)
+  //   이 경우만 시간 기준으로 다시 나눈다. 매니저가 0.5h 단위로 살짝 조정한 정상 입력
+  //   (예: 이유리 4h 근무에 주간2.5/야간2)은 주간 ≠ 시계총합이라 건드리지 않는다. 멱등.
+  if (Math.abs(sDay - gross.total) < 0.01 && sNight > 0.01) {
     const net2 = netSplit(d.timeStart, d.timeEnd, rest)
     if (net2) return { ...d, [dayKey]: net2.day, [nightKey]: net2.night }
   }
@@ -525,38 +526,15 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
-  // ── 월 변경 시 로컬스토리지 저장 후 새 월 로드 (Supabase 호출 없음) ──
+  // ── 월/연도 변경: 직원마다 따로가 아니라 "전체 직원"에 한 번에 적용 ──
   async function handleMonthChange(newMonth) {
     const emp = employees.find(e => e.id === activeEmpId) || employees[0]
-    // 1. 현재 데이터 로컬스토리지에 저장
-    if (selectedBranch) {
-      const storageKey = `payroll_backup_${selectedBranch.name}`
-      localStorage.setItem(storageKey, JSON.stringify(employees))
-    }
-    // 2. 월 변경 + workData 초기화
-    const newId = emp?.id
-    setEmployees(prev => prev.map(e =>
-      e.id === newId ? { ...e, month: newMonth, workData: {} } : e
-    ))
-    // 3. 새 월 데이터 Supabase에서 로드
-    if (selectedBranch && emp?.name) {
-      setTimeout(() => loadData(selectedBranch.name, emp.name, emp.year, newMonth, newId), 150)
-    }
+    await changeAllPeriod(emp?.year || new Date().getFullYear(), newMonth)
   }
 
   async function handleYearChange(newYear) {
     const emp = employees.find(e => e.id === activeEmpId) || employees[0]
-    if (selectedBranch) {
-      const storageKey = `payroll_backup_${selectedBranch.name}`
-      localStorage.setItem(storageKey, JSON.stringify(employees))
-    }
-    const newId = emp?.id
-    setEmployees(prev => prev.map(e =>
-      e.id === newId ? { ...e, year: newYear, workData: {} } : e
-    ))
-    if (selectedBranch && emp?.name) {
-      setTimeout(() => loadData(selectedBranch.name, emp.name, newYear, emp.month, newId), 150)
-    }
+    await changeAllPeriod(newYear, emp?.month || (new Date().getMonth() + 1))
   }
 
   function updateWorkDay(dateStr, field, value) {
@@ -924,12 +902,8 @@ export default function Home() {
   }
 
 
-  // ── DB에서 해당 지점 이번달 전체 직원 데이터 불러오기 ──
-  async function loadAllEmployees(branchName) {
-    const now = new Date()
-    const yr = now.getFullYear()
-    const mo = now.getMonth() + 1
-
+  // ── DB 레코드 → 화면용 직원 객체 변환 (초기 로드·기간 변경 공용) ──
+  function parseEmployeesFromDB(data, branchName, fallbackYr, fallbackMo) {
     const settingsMap = loadAllEmpSettings(branchName)
     // DB 값 우선, 비어있으면 브라우저 저장값(보조)으로 채움
     const pick = (dbVal, lsVal, dflt) => {
@@ -937,40 +911,81 @@ export default function Home() {
       if (lsVal !== undefined && lsVal !== null && lsVal !== '') return lsVal
       return dflt
     }
-    function parseEmployees(data, fallbackYr, fallbackMo) {
-      return data.map(r => {
-        const s = settingsMap[r.emp_name] || {}
-        const emp = {
-          ...EMPTY_EMP,
-          id: Date.now() + Math.random(),
-          name: r.emp_name || '',
-          residentId: r.resident_id || '',
-          phone: r.phone || '',
-          email: r.email || '',
-          accountNumber: r.account_number || '',
-          empType: r.emp_type || '알바',
-          hourlyWage: r.hourly_wage || 10320,
-          scheduledHours: r.scheduled_hours || 8,
-          defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
-          defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
-          workData: migrateWorkData(r.work_data || {}),
-          specialNote: r.special_note || '',
-          status: r.status || 'saved',
-          year: r.year || fallbackYr,
-          month: r.month || fallbackMo,
-          // ── 고정 설정: DB 우선 + 브라우저 저장값 보조 ──
-          hireDate:        pick(r.hire_date, s.hireDate, ''),
-          resignDate:      pick(r.resign_date, s.resignDate, ''),
-          birthDate:       pick(r.birth_date, s.birthDate, ''),
-          deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
-          manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
-          mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
-        }
-        // 퇴사일이 있으면 그 범위 밖 근무표도 정리
-        emp.workData = pruneWorkDataToEmployment(emp.workData, emp.hireDate, emp.resignDate)
-        return emp
-      })
+    return data.map(r => {
+      const s = settingsMap[r.emp_name] || {}
+      const emp = {
+        ...EMPTY_EMP,
+        id: Date.now() + Math.random(),
+        name: r.emp_name || '',
+        residentId: r.resident_id || '',
+        phone: r.phone || '',
+        email: r.email || '',
+        accountNumber: r.account_number || '',
+        empType: r.emp_type || '알바',
+        hourlyWage: r.hourly_wage || 10320,
+        scheduledHours: r.scheduled_hours || 8,
+        defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
+        defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
+        workData: migrateWorkData(r.work_data || {}),
+        specialNote: r.special_note || '',
+        status: r.status || 'saved',
+        year: r.year || fallbackYr,
+        month: r.month || fallbackMo,
+        // ── 고정 설정: DB 우선 + 브라우저 저장값 보조 ──
+        hireDate:        pick(r.hire_date, s.hireDate, ''),
+        resignDate:      pick(r.resign_date, s.resignDate, ''),
+        birthDate:       pick(r.birth_date, s.birthDate, ''),
+        deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
+        manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
+        mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
+      }
+      // 퇴사일이 있으면 그 범위 밖 근무표도 정리
+      emp.workData = pruneWorkDataToEmployment(emp.workData, emp.hireDate, emp.resignDate)
+      return emp
+    })
+  }
+
+  // ── 연도/월을 전체 직원에 한 번에 적용하고 그 기간 데이터를 모두 불러오기 ──
+  //   (직원마다 따로 바꾸지 않고, 한 번 바꾸면 같은 지점 전 직원이 같은 기간으로 이동)
+  async function changeAllPeriod(newYear, newMonth) {
+    if (!selectedBranch) {
+      setEmployees(prev => prev.map(e => ({ ...e, year: newYear, month: newMonth, workData: {} })))
+      return
     }
+    const storageKey = `payroll_backup_${selectedBranch.name}`
+    localStorage.setItem(storageKey, JSON.stringify(employees))
+    const keepActiveName = (employees.find(e => e.id === activeEmpId) || employees[0])?.name
+    try {
+      const res = await fetch(`/api/load-all?branch=${encodeURIComponent(selectedBranch.name)}&year=${newYear}&month=${newMonth}`)
+      const result = await res.json()
+      const dbData = (result && result.success && Array.isArray(result.data)) ? result.data : []
+      const parsed = parseEmployeesFromDB(dbData, selectedBranch.name, newYear, newMonth)
+      const byName = {}
+      parsed.forEach(p => { byName[p.name] = p })
+      // 현재 로스터 유지 + DB값 병합 (DB에 없는 직원은 근무표만 비우고 기간만 바꿈)
+      const merged = employees.map(e => {
+        const hit = byName[e.name]
+        if (hit) { delete byName[e.name]; return { ...hit, id: e.id } }
+        return { ...e, year: newYear, month: newMonth, workData: {} }
+      })
+      // 현재 로스터에 없던 DB 직원은 새로 추가
+      Object.keys(byName).forEach(n => merged.push(byName[n]))
+      setEmployees(merged)
+      const act = merged.find(e => e.name === keepActiveName) || merged[0]
+      if (act) setActiveEmpId(act.id)
+      try { localStorage.setItem(storageKey, JSON.stringify(merged)) } catch (e) {}
+    } catch (e) {
+      console.error('기간 변경 로드 실패:', e)
+      setEmployees(prev => prev.map(emp => ({ ...emp, year: newYear, month: newMonth, workData: {} })))
+    }
+  }
+
+  // ── DB에서 해당 지점 이번달 전체 직원 데이터 불러오기 ──
+  async function loadAllEmployees(branchName) {
+    const now = new Date()
+    const yr = now.getFullYear()
+    const mo = now.getMonth() + 1
+    const parseEmployees = (data, fy, fm) => parseEmployeesFromDB(data, branchName, fy, fm)
 
     // DB에서 받은 데이터를 화면에 반영하고, 그 지점의 옛 임시저장값(localStorage)도
     // DB값으로 덮어써서 "옛날 잘못된 값이 화면을 가리는" 문제를 차단한다.
@@ -1288,7 +1303,7 @@ export default function Home() {
       ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
       ['야간근로수당', t.totalNight, t.isStaff ? `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 0.5배 가산` : `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 1.5배`],
       ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근무시간(주간+야간 ${t.hoursHolidayWork}h) × 1.5배`],
-      ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 2.0배`],
+      ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 0.5배 가산 (휴일근로 1.5배 + 0.5배 = 2.0배)`],
       ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
     ].filter(([l, v]) => v > 0 || l === '기본급')
 
@@ -1988,10 +2003,10 @@ export default function Home() {
                   <div className="info-card-label">이메일</div>
                   <input value={activeEmp.email} onChange={e => updateEmp('email', e.target.value)} placeholder="example@email.com" />
                 </div>
-                {/* ── 월/연도 변경 ── */}
+                {/* ── 월/연도 변경 (전체 직원 공통 적용) ── */}
                 <div className="info-card" style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}>
-                    <div className="info-card-label">연도</div>
+                    <div className="info-card-label">연도 <span style={{ color:'#aaa', fontWeight:400, fontSize:11 }}>(전체 직원 적용)</span></div>
                     <input
                       type="number"
                       value={activeEmp.year}
@@ -2309,7 +2324,7 @@ export default function Home() {
                         ? { label: '야간수당',  total: totals.totalNight, hours: totals.hoursNightPay, desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 0.5배` }
                         : { label: '야간근로',  total: totals.totalNight, hours: totals.hoursNightPay, desc: `야간 ${totals.hoursNightPay}시간 × 시급 × 1.5배` },
                       { label: '휴일근로',  total: totals.totalHoliday,         hours: totals.hoursHolidayWork,   desc: `휴일근무 ${totals.hoursHolidayWork}시간(주간+야간) × 시급 × 1.5배` },
-                      { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 2.0배` },
+                      { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 0.5배 (휴일근로 1.5배에 추가 가산 → 합 2.0배)` },
                       { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배 (휴일근로에 추가 가산)` },
                       { label: '식대',      total: totals.meal,                 hours: null,                      desc: `비과세 (4대보험·소득세 제외)` },
                     ].filter(row => row.total > 0 || row.label === '기본급' || row.neg).map(({ label, total, hours, desc, neg }) => (
