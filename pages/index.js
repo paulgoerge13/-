@@ -341,6 +341,44 @@ function calcDeductions(gross, emp) {
   return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, total, net: gross - total }
 }
 
+// ── 개인정보 마스킹: 평소엔 가리고, 입력칸을 클릭하면 전체가 보이게 ──
+//   주민번호: 생년월일 6자리 + 성별 1자리만 보이고 뒤 6자리는 ●
+function maskResident(v) {
+  const s = String(v || '')
+  if (!s) return ''
+  const digits = s.replace(/[^0-9]/g, '')
+  if (digits.length <= 7) return s   // 아직 입력 중이면 그대로
+  const front = digits.slice(0, 6)
+  const gender = digits.slice(6, 7)
+  return `${front}-${gender}●●●●●●`
+}
+//   계좌번호: 은행명 등 글자는 두고, 숫자는 마지막 3자리만 남기고 ● 처리
+function maskAccount(v) {
+  const s = String(v || '')
+  if (!s) return ''
+  const digitCount = (s.match(/[0-9]/g) || []).length
+  if (digitCount <= 3) return s
+  let seen = 0
+  const totalToMask = digitCount - 3
+  return s.replace(/[0-9]/g, d => (seen++ < totalToMask ? '●' : d))
+}
+
+// 평소엔 마스킹 표시, 포커스(클릭) 시 실제 값으로 바뀌어 수정 가능한 입력칸
+function MaskedInput({ value, onChange, maskFn, placeholder }) {
+  const [focused, setFocused] = useState(false)
+  return (
+    <input
+      type="text"
+      value={focused ? (value || '') : maskFn(value)}
+      onChange={e => onChange(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      placeholder={placeholder}
+      autoComplete="off"
+    />
+  )
+}
+
 // ── 법정공휴일 (참고용 시각 표시 · 급여 계산에는 영향 없음) ──
 // 휴일근로 수당은 달력에서 직접 '휴' 유형으로 지정해야 적용됩니다.
 const HOLIDAYS = {
@@ -1892,7 +1930,7 @@ export default function Home() {
                 </div>
                 <div className="info-card">
                   <div className="info-card-label">주민등록번호</div>
-                  <input value={activeEmp.residentId} onChange={e => updateEmp('residentId', e.target.value)} placeholder="000000-0000000" />
+                  <MaskedInput value={activeEmp.residentId} onChange={v => updateEmp('residentId', v)} maskFn={maskResident} placeholder="000000-0000000" />
                 </div>
                 <div className="info-card">
                   <div className="info-card-label">시급 (원)</div>
@@ -1924,9 +1962,10 @@ export default function Home() {
                 {/* ── 수정 A: 2행 1번째 → 계좌번호 (기본 근무 시간과 위치 교환) ── */}
                 <div className="info-card">
                   <div className="info-card-label">계좌번호</div>
-                  <input
+                  <MaskedInput
                     value={activeEmp.accountNumber || ''}
-                    onChange={e => updateEmp('accountNumber', e.target.value)}
+                    onChange={v => updateEmp('accountNumber', v)}
+                    maskFn={maskAccount}
                     placeholder="은행 및 계좌번호 입력"
                   />
                 </div>
