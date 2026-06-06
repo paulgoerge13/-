@@ -5,19 +5,15 @@ const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점
 const ALL = '전체 지점'
 
 // ── 전 지점 통합 관리 대시보드 (재사용 컴포넌트) ──
-// manager.js(별도 페이지)와 index.js(메인 앱의 관리자 화면) 양쪽에서 공통으로 사용.
-// 로그인/인증은 부모가 처리하고, 이 컴포넌트는 인증 이후의 대시보드만 그린다.
-export default function ManagerDashboard() {
+// manager.js(별도 페이지)와 index.js(메인 앱의 관리자 화면) 양쪽에서 공통 사용.
+// 로그인/인증은 부모가 처리. onBack(선택): 상단 뒤로가기 버튼 표시.
+export default function ManagerDashboard({ onBack }) {
   const [branch, setBranch] = useState(ALL)   // 기본은 전 지점 통합 대시보드
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
-  const [view, setView] = useState('dashboard')   // 'dashboard' | 'logs'
-  const [logs, setLogs] = useState([])
-  const [logsLoading, setLogsLoading] = useState(false)
-  const [logsUnavailable, setLogsUnavailable] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -38,29 +34,12 @@ export default function ManagerDashboard() {
 
   useEffect(() => { load() }, [branch, year, month])
 
-  // ── 수정 이력 조회 ──
-  async function loadLogs() {
-    setLogsLoading(true)
-    try {
-      const url = `/api/log?limit=200${branch !== ALL ? `&branch=${encodeURIComponent(branch)}` : ''}`
-      const res = await fetch(url)
-      const j = await res.json()
-      setLogs(j.logs || [])
-      setLogsUnavailable(!!j.unavailable)
-    } catch (e) {
-      setLogs([])
-    } finally {
-      setLogsLoading(false)
-    }
-  }
-  useEffect(() => { if (view === 'logs') loadLogs() }, [view, branch])
-
   async function deleteRecord(id, name) {
     if (confirm(`${name} 님의 기록을 삭제하시겠습니까?`)) {
       const target = records.find(r => r.id === id)
       const { error } = await supabase.from('payroll').delete().eq('id', id)
       if (error) { alert('삭제 실패'); return }
-      // 수정 이력 기록 (실패해도 무시)
+      // 수정 이력 기록 (실패해도 무시 — 조회는 각 지점 페이지에서)
       try {
         fetch('/api/log', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -73,13 +52,6 @@ export default function ManagerDashboard() {
       } catch (e) {}
       load()
     }
-  }
-
-  function fmtLogTime(ts) {
-    if (!ts) return ''
-    const d = new Date(ts)
-    const p = n => String(n).padStart(2, '0')
-    return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
   }
 
   function fmt(n) { return Math.round(n || 0).toLocaleString('ko-KR') }
@@ -99,20 +71,26 @@ export default function ManagerDashboard() {
       + (r.holiday_pay || 0) + (r.holiday_overtime_pay || 0) + (r.holiday_night_pay || 0)
   }
 
-  // ── 공제 계산 (2026 요율, 근로자 부담분) — 메인 앱과 동일 ──
-  function recDeduction(r) {
+  // ── 공제: 4대보험 / 원천세 분리 (2026 요율, 근로자 부담분) — 메인 앱과 동일 ──
+  function recMajorIns(r) {   // 4대보험 (직원만)
+    if (r.emp_type !== '직원') return 0
+    const taxable = fixGrand(r)
+    const pension    = Math.floor(taxable * 0.0475 / 10) * 10
+    const health     = Math.floor(taxable * 0.03595 / 10) * 10
+    const care       = Math.floor(health * 0.1314 / 10) * 10
+    const employment = Math.floor(taxable * 0.009 / 10) * 10
+    return pension + health + care + employment
+  }
+  function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%)
     const taxable = fixGrand(r)
     if (r.emp_type === '직원') {
-      const pension    = Math.floor(taxable * 0.0475 / 10) * 10
-      const health     = Math.floor(taxable * 0.03595 / 10) * 10
-      const care       = Math.floor(health * 0.1314 / 10) * 10
-      const employment = Math.floor(taxable * 0.009 / 10) * 10
-      const incomeTax  = r.income_tax || 0
-      const localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
-      return pension + health + care + employment + incomeTax + localTax
+      const incomeTax = r.income_tax || 0
+      const localTax  = Math.floor((incomeTax * 0.1) / 10) * 10
+      return incomeTax + localTax
     }
     return Math.round(taxable * 0.03) + Math.round(taxable * 0.003)  // 3.3%
   }
+  function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
   function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
 
   // ── 전 지점 집계 ──
@@ -137,6 +115,8 @@ export default function ManagerDashboard() {
   const staffNetAll = byBranch.reduce((s, x) => s + x.staffNet, 0)
   const albaNetAll = byBranch.reduce((s, x) => s + x.albaNet, 0)
   const netAll = staffNetAll + albaNetAll
+  const majorAll = records.reduce((s, r) => s + recMajorIns(r), 0)     // 4대보험 공제 합계
+  const withholdAll = records.reduce((s, r) => s + recWithholding(r), 0) // 원천세 공제 합계
   const totalPeople = byBranch.reduce((s, x) => s + x.count, 0)
   const totalFinal = byBranch.reduce((s, x) => s + x.finalCount, 0)
 
@@ -148,6 +128,8 @@ export default function ManagerDashboard() {
   const curAlbaTotal = records.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0)
   const curStaffNet = records.filter(r => r.emp_type === '직원').reduce((s, r) => s + recNet(r), 0)
   const curAlbaNet = records.filter(r => r.emp_type !== '직원').reduce((s, r) => s + recNet(r), 0)
+  const curMajor = records.reduce((s, r) => s + recMajorIns(r), 0)
+  const curWithhold = records.reduce((s, r) => s + recWithholding(r), 0)
   const curFinal = records.filter(r => r.status === 'final').length
 
   // ── 전 지점 요약 엑셀(CSV) 내보내기 — 보고용 ──
@@ -165,6 +147,7 @@ export default function ManagerDashboard() {
       .map(v => `"${v}"`).join(',')
     const csv = BOM + [
       `"${year}년 ${month}월 전 지점 인건비 요약"`, '',
+      `"세전 인건비(월급)","${grandAll}","4대보험 공제","${majorAll}","원천세 공제","${withholdAll}","실지급 합계","${netAll}"`, '',
       head.map(v => `"${v}"`).join(','),
       ...lines, totalLine,
     ].join('\n')
@@ -178,12 +161,15 @@ export default function ManagerDashboard() {
   }
 
   const css = `
-    .md-wrap { max-width: 900px; margin: 0 auto; padding: 28px 16px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
+    .md-wrap { max-width: 760px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
+
+    .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
+    .md-back:hover { border-color: #1a1a1a; color: #1a1a1a; }
 
     /* 헤더 */
-    .md-header { margin-bottom: 20px; }
+    .md-header { margin-bottom: 18px; }
     .md-brand { font-size: 10px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 4px; }
-    .md-title { font-weight: 700; font-size: 19px; color: #1a1a1a; }
+    .md-title { font-weight: 700; font-size: 20px; color: #1a1a1a; }
     .md-title span { color: #b8954a; }
 
     /* 필터 */
@@ -203,27 +189,31 @@ export default function ManagerDashboard() {
     }
     .md-refresh:hover { border-color: #1a1a1a; color: #1a1a1a; }
 
-    /* KPI 카드 */
-    .md-kpi-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; margin-bottom: 18px; }
-    .md-kpi { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 16px; }
-    .md-kpi.hero { background: linear-gradient(135deg, #1a1a1a, #2c2c2c); border: none; }
-    .md-kpi-label { font-size: 10px; letter-spacing: 0.13em; color: #999; margin-bottom: 7px; }
-    .md-kpi.hero .md-kpi-label { color: #c9b78c; }
-    .md-kpi-val { font-size: 21px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
-    .md-kpi.hero .md-kpi-val { color: #fff; }
+    /* 히어로(월급/공제 요약) */
+    .md-hero { background: linear-gradient(135deg, #1a1a1a, #2c2c2c); border-radius: 14px; padding: 20px; margin-bottom: 12px; }
+    .md-hero-label { font-size: 11px; letter-spacing: 0.13em; color: #c9b78c; margin-bottom: 6px; }
+    .md-hero-val { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+    .md-hero-val small { font-size: 13px; font-weight: 500; color: #c9b78c; margin-left: 3px; }
+    /* 공제 구분 (월급/4대보험/원천세/실지급) */
+    .md-breakdown { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 16px; background: rgba(201,183,140,0.18); border-radius: 10px; overflow: hidden; }
+    .md-bd-item { background: #232323; padding: 11px 12px; }
+    .md-bd-k { font-size: 10.5px; color: #9c8e6a; margin-bottom: 3px; }
+    .md-bd-v { font-size: 15px; font-weight: 700; color: #e6d6ab; }
+    .md-net { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(201,183,140,0.18); }
+    .md-net-k { font-size: 12px; color: #c9b78c; }
+    .md-net-v { font-size: 19px; font-weight: 700; color: #fff; }
+    .md-split { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
+    .md-split span { font-size: 11.5px; color: #cfc09a; display: flex; align-items: center; }
+    .md-split .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; display: inline-block; flex: none; }
+    .md-split .dot.staff { background: #e7c98a; }
+    .md-split .dot.alba { background: #8a8a8a; }
+
+    /* 보조 KPI 2개 */
+    .md-kpi-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .md-kpi { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 15px 16px; }
+    .md-kpi-label { font-size: 10.5px; letter-spacing: 0.1em; color: #999; margin-bottom: 6px; }
+    .md-kpi-val { font-size: 20px; font-weight: 700; color: #1a1a1a; }
     .md-kpi-val small { font-size: 12px; font-weight: 500; color: #999; margin-left: 2px; }
-    .md-kpi.hero .md-kpi-val small { color: #c9b78c; }
-    .md-netline { font-size: 12px; color: #e6d6ab; margin-top: 8px; font-weight: 600; }
-    .md-netnote { font-size: 10px; color: #9c8e6a; font-weight: 400; }
-    .md-kpi-split { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(201,183,140,0.18); }
-    .md-kpi-split span { font-size: 11px; color: #cfc09a; display: flex; align-items: center; }
-    .md-kpi-split .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; display: inline-block; flex: none; }
-    .md-kpi-split .dot.staff { background: #e7c98a; }
-    .md-kpi-split .dot.alba { background: #8a8a8a; }
-    @media (max-width: 620px) {
-      .md-kpi-row { grid-template-columns: 1fr 1fr; }
-      .md-kpi.hero { grid-column: 1 / -1; }
-    }
 
     /* 섹션 제목 + 내보내기 */
     .md-sec-head { display: flex; justify-content: space-between; align-items: center; margin: 4px 2px 10px; }
@@ -257,12 +247,18 @@ export default function ManagerDashboard() {
     .md-br-chev { color: #ccc; font-size: 18px; }
 
     /* 합계 카드 (단일 지점) */
-    .md-summary-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .md-summary-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
     .md-summary-card { background: #fff; border: 1px solid #ebe9e4; border-radius: 10px; padding: 14px 16px; }
-    .md-summary-label { font-size: 10px; letter-spacing: 0.13em; color: #999; margin-bottom: 6px; }
+    .md-summary-label { font-size: 10px; letter-spacing: 0.1em; color: #999; margin-bottom: 6px; }
     .md-summary-val { font-size: 18px; font-weight: 700; color: #1a1a1a; }
     .md-summary-val.gold { color: #b8954a; }
     .md-summary-val small { font-size: 11px; color: #aaa; font-weight: 500; }
+
+    /* 단일 지점 공제 구분 */
+    .md-cur-bd { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    .md-cur-card { background: #fff; border: 1px solid #ebe9e4; border-radius: 10px; padding: 12px 14px; text-align: center; }
+    .md-cur-k { font-size: 10.5px; color: #999; margin-bottom: 4px; }
+    .md-cur-v { font-size: 15px; font-weight: 700; color: #1a1a1a; }
 
     /* 직원/알바 금액 분리 (단일 지점) */
     .md-split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
@@ -275,8 +271,8 @@ export default function ManagerDashboard() {
     .md-split-v { font-size: 16px; font-weight: 700; color: #1a1a1a; }
     .md-split-v.gold { color: #b8954a; }
 
-    .md-back { background: none; border: none; color: #888; font-size: 13px; cursor: pointer; padding: 4px 0; margin-bottom: 10px; font-family: 'Pretendard', sans-serif; font-weight: 500; }
-    .md-back:hover { color: #1a1a1a; }
+    .md-back-inline { background: none; border: none; color: #888; font-size: 13px; cursor: pointer; padding: 4px 0; margin-bottom: 10px; font-family: 'Pretendard', sans-serif; font-weight: 500; }
+    .md-back-inline:hover { color: #1a1a1a; }
 
     /* 직원 카드 */
     .md-emp { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 16px; margin-bottom: 10px; position: relative; }
@@ -304,31 +300,12 @@ export default function ManagerDashboard() {
     .md-empty { text-align: center; color: #bbb; padding: 40px 0; font-size: 13px; letter-spacing: 0.05em; }
     .md-loading { text-align: center; color: #bbb; padding: 40px 0; font-size: 12px; letter-spacing: 0.1em; }
 
-    /* 탭 (대시보드 / 수정 이력) */
-    .md-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
-    .md-tab { flex: 1; text-align: center; padding: 10px; border-radius: 8px; border: 1px solid #d0ccc5; background: #fff; color: #888; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
-    .md-tab.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
-
-    /* 수정 이력 */
-    .md-log { background: #fff; border: 1px solid #ebe9e4; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
-    .md-log-time { font-size: 11px; color: #aaa; white-space: nowrap; width: 100px; flex: none; }
-    .md-log-act { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; flex: none; }
-    .md-log-act.save { background: #eef4ec; color: #3a8a4f; }
-    .md-log-act.final { background: #e8f0fb; color: #2f6bd6; }
-    .md-log-act.rename { background: #f3eede; color: #9c7f44; }
-    .md-log-act.delete { background: #fbecec; color: #d6453f; }
-    .md-log-main { flex: 1; min-width: 0; }
-    .md-log-name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
-    .md-log-meta { font-size: 11px; color: #999; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .md-log-amt { font-size: 13px; font-weight: 700; color: #b8954a; white-space: nowrap; flex: none; }
-    .md-setup { background: #fff; border: 1px dashed #d0ccc5; border-radius: 12px; padding: 22px; text-align: center; color: #888; font-size: 13px; line-height: 1.7; }
-    .md-setup b { color: #b8954a; }
     @media (max-width: 560px) {
-      .md-log-time { width: 78px; font-size: 10px; white-space: normal; }
+      .md-breakdown { grid-template-columns: 1fr; }
+      .md-summary-row { grid-template-columns: 1fr; }
+      .md-cur-bd { grid-template-columns: 1fr; }
     }
   `
-
-  const ACT = { '저장': ['save', '저장'], '마감': ['final', '마감'], '이름변경': ['rename', '이름변경'], '삭제': ['delete', '삭제'] }
 
   const isAll = branch === ALL
 
@@ -337,16 +314,12 @@ export default function ManagerDashboard() {
       <style dangerouslySetInnerHTML={{ __html: css }} />
       <div className="md-wrap">
 
+        {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
+
         {/* 헤더 */}
         <div className="md-header">
           <div className="md-brand">THE COMMA' LOUNGE</div>
           <h1 className="md-title">{isAll ? '전 지점' : branch} <span>급여 관리 현황</span></h1>
-        </div>
-
-        {/* 탭 */}
-        <div className="md-tabs">
-          <div className={`md-tab ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>대시보드</div>
-          <div className={`md-tab ${view === 'logs' ? 'active' : ''}`} onClick={() => setView('logs')}>수정 이력</div>
         </div>
 
         {/* 필터 */}
@@ -355,64 +328,53 @@ export default function ManagerDashboard() {
             <option value={ALL}>{ALL}</option>
             {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
-          {view === 'dashboard' && (
-            <>
-              <select className="md-select" value={year} onChange={e => setYear(Number(e.target.value))}>
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
-              </select>
-              <select className="md-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
-              </select>
-            </>
-          )}
-          <button className="md-refresh" onClick={() => view === 'logs' ? loadLogs() : load()}>🔄</button>
+          <select className="md-select" value={year} onChange={e => setYear(Number(e.target.value))}>
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
+          </select>
+          <select className="md-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
+          </select>
+          <button className="md-refresh" onClick={load}>🔄</button>
         </div>
 
-        {view === 'logs' ? (
-          /* ───────── 수정 이력 ───────── */
-          logsLoading ? (
-            <p className="md-loading">LOADING...</p>
-          ) : logsUnavailable ? (
-            <div className="md-setup">
-              아직 <b>수정 이력 기능이 켜지지 않았어요.</b><br />
-              Supabase에 로그 테이블을 1회만 만들면 자동으로 기록이 쌓입니다.<br />
-              (만드는 방법은 개발자에게 받은 SQL을 Supabase SQL 편집기에 붙여넣고 실행하시면 됩니다.)
-            </div>
-          ) : logs.length === 0 ? (
-            <p className="md-empty">아직 기록된 수정 이력이 없습니다.</p>
-          ) : (
-            logs.map(g => {
-              const [cls, label] = ACT[g.action] || ['save', g.action || '기록']
-              return (
-                <div key={g.id} className="md-log">
-                  <div className="md-log-time">{fmtLogTime(g.created_at)}</div>
-                  <div className={`md-log-act ${cls}`}>{label}</div>
-                  <div className="md-log-main">
-                    <div className="md-log-name">{g.emp_name || '-'}</div>
-                    <div className="md-log-meta">
-                      {g.branch || '-'}{g.year ? ` · ${g.year}년 ${g.month}월` : ''}{g.actor ? ` · ${g.actor}` : ''}{g.detail ? ` · ${g.detail}` : ''}
-                    </div>
-                  </div>
-                  {g.grand_total > 0 && <div className="md-log-amt">{fmt(g.grand_total)}원</div>}
-                </div>
-              )
-            })
-          )
-        ) : loading ? (
+        {loading ? (
           <p className="md-loading">LOADING...</p>
         ) : isAll ? (
           /* ───────── 전 지점 통합 대시보드 ───────── */
           <>
-            <div className="md-kpi-row">
-              <div className="md-kpi hero">
-                <div className="md-kpi-label">전 지점 세전 인건비</div>
-                <div className="md-kpi-val">{fmt(grandAll)}<small>원</small></div>
-                <div className="md-netline">실지급 합계 {fmt(netAll)}원 <span className="md-netnote">(직원 4대보험·알바 3.3% 공제)</span></div>
-                <div className="md-kpi-split">
-                  <span><b className="dot staff" />직원 지급 {fmt(staffAll)} · 실지급 {fmt(staffNetAll)}</span>
-                  <span><b className="dot alba" />알바 지급 {fmt(albaAll)} · 실지급 {fmt(albaNetAll)}</span>
+            {/* 히어로: 월급 / 4대보험 / 원천세 / 실지급 구분 */}
+            <div className="md-hero">
+              <div className="md-hero-label">전 지점 세전 인건비 (월급·지급액)</div>
+              <div className="md-hero-val">{fmt(grandAll)}<small>원</small></div>
+
+              <div className="md-breakdown">
+                <div className="md-bd-item">
+                  <div className="md-bd-k">월급 (세전 지급액)</div>
+                  <div className="md-bd-v">{fmt(grandAll)}원</div>
+                </div>
+                <div className="md-bd-item">
+                  <div className="md-bd-k">4대보험 공제</div>
+                  <div className="md-bd-v">{fmt(majorAll)}원</div>
+                </div>
+                <div className="md-bd-item">
+                  <div className="md-bd-k">원천세 공제</div>
+                  <div className="md-bd-v">{fmt(withholdAll)}원</div>
                 </div>
               </div>
+
+              <div className="md-net">
+                <span className="md-net-k">실지급 합계 (월급 − 공제)</span>
+                <span className="md-net-v">{fmt(netAll)}원</span>
+              </div>
+
+              <div className="md-split">
+                <span><b className="dot staff" />직원 지급 {fmt(staffAll)} · 실지급 {fmt(staffNetAll)}</span>
+                <span><b className="dot alba" />알바 지급 {fmt(albaAll)} · 실지급 {fmt(albaNetAll)}</span>
+              </div>
+            </div>
+
+            {/* 보조 KPI */}
+            <div className="md-kpi-mini">
               <div className="md-kpi">
                 <div className="md-kpi-label">총 인원</div>
                 <div className="md-kpi-val">{totalPeople}<small>명</small></div>
@@ -458,7 +420,7 @@ export default function ManagerDashboard() {
         ) : (
           /* ───────── 단일 지점 상세 ───────── */
           <>
-            <button className="md-back" onClick={() => setBranch(ALL)}>← 전 지점으로</button>
+            <button className="md-back-inline" onClick={() => setBranch(ALL)}>← 전 지점으로</button>
 
             <div className="md-summary-row">
               <div className="md-summary-card">
@@ -470,24 +432,41 @@ export default function ManagerDashboard() {
                 <div className="md-summary-val">{curFinal}<small>/{records.length}명</small></div>
               </div>
               <div className="md-summary-card">
-                <div className="md-summary-label">세전 인건비</div>
+                <div className="md-summary-label">세전 인건비(월급)</div>
                 <div className="md-summary-val gold">{fmt(totalGrand)}<small>원</small></div>
               </div>
             </div>
 
             {records.length > 0 && (
-              <div className="md-split-row">
-                <div className="md-split-card">
-                  <div className="md-split-tag staff">직원 {curStaff}명</div>
-                  <div className="md-split-line"><span className="md-split-k">지급액</span><span className="md-split-v">{fmt(curStaffTotal)}원</span></div>
-                  <div className="md-split-line"><span className="md-split-k">실지급</span><span className="md-split-v gold">{fmt(curStaffNet)}원</span></div>
+              <>
+                <div className="md-cur-bd">
+                  <div className="md-cur-card">
+                    <div className="md-cur-k">월급 (세전)</div>
+                    <div className="md-cur-v">{fmt(totalGrand)}원</div>
+                  </div>
+                  <div className="md-cur-card">
+                    <div className="md-cur-k">4대보험 공제</div>
+                    <div className="md-cur-v">{fmt(curMajor)}원</div>
+                  </div>
+                  <div className="md-cur-card">
+                    <div className="md-cur-k">원천세 공제</div>
+                    <div className="md-cur-v">{fmt(curWithhold)}원</div>
+                  </div>
                 </div>
-                <div className="md-split-card">
-                  <div className="md-split-tag alba">알바 {curAlba}명</div>
-                  <div className="md-split-line"><span className="md-split-k">지급액</span><span className="md-split-v">{fmt(curAlbaTotal)}원</span></div>
-                  <div className="md-split-line"><span className="md-split-k">실지급</span><span className="md-split-v gold">{fmt(curAlbaNet)}원</span></div>
+
+                <div className="md-split-row">
+                  <div className="md-split-card">
+                    <div className="md-split-tag staff">직원 {curStaff}명</div>
+                    <div className="md-split-line"><span className="md-split-k">지급액</span><span className="md-split-v">{fmt(curStaffTotal)}원</span></div>
+                    <div className="md-split-line"><span className="md-split-k">실지급</span><span className="md-split-v gold">{fmt(curStaffNet)}원</span></div>
+                  </div>
+                  <div className="md-split-card">
+                    <div className="md-split-tag alba">알바 {curAlba}명</div>
+                    <div className="md-split-line"><span className="md-split-k">지급액</span><span className="md-split-v">{fmt(curAlbaTotal)}원</span></div>
+                    <div className="md-split-line"><span className="md-split-k">실지급</span><span className="md-split-v gold">{fmt(curAlbaNet)}원</span></div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             {records.length === 0 ? (

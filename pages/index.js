@@ -440,8 +440,35 @@ export default function Home() {
   const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
   const [importing, setImporting] = useState(false)
   const [saving, setSaving] = useState(null)   // null | {done, total} 전원 저장 진행상황
+  const [branchLogs, setBranchLogs] = useState([])      // 이 지점 수정 이력
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [showLogs, setShowLogs] = useState(false)       // 이력 패널 펼침/접힘
   const importInputRef = useRef(null)
   const saveTimer = useRef(null)
+
+  // ── 이 지점 수정 이력 불러오기 (실패해도 화면 안 깨지게) ──
+  async function loadBranchLogs(branchName) {
+    if (!branchName) return
+    setLogsLoading(true)
+    try {
+      const res = await fetch(`/api/log?branch=${encodeURIComponent(branchName)}&limit=50`)
+      const result = await res.json()
+      setBranchLogs(result.logs || [])
+    } catch (e) {
+      setBranchLogs([])
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  const fmtLogTime = (iso) => {
+    if (!iso) return ''
+    try {
+      const d = new Date(iso)
+      const p = n => String(n).padStart(2, '0')
+      return `${d.getFullYear().toString().slice(2)}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+    } catch (e) { return '' }
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem('payroll_backup')
@@ -499,6 +526,11 @@ export default function Home() {
       loadData(selectedBranch.name, activeEmp.name, activeEmp.year, activeEmp.month, activeEmpId)
     }
   }, [activeEmpId, activeEmp?.month, activeEmp?.year])
+
+  // 지점 메인 화면 진입 시 그 지점의 수정 이력 로드
+  useEffect(() => {
+    if (step === 'main' && selectedBranch) loadBranchLogs(selectedBranch.name)
+  }, [step, selectedBranch])
 
   useEffect(() => {
     if (selectedBranch) {
@@ -735,6 +767,9 @@ export default function Home() {
           actor: selectedBranch?.name || '관리자',
           emp_name, year, month, action, grand_total, detail,
         }),
+      }).then(() => {
+        // 기록 후 이 지점 이력 새로고침 (살짝 지연: insert 반영 대기)
+        if (selectedBranch) setTimeout(() => loadBranchLogs(selectedBranch.name), 600)
       }).catch(() => {})
     } catch (e) {}
   }
@@ -1792,6 +1827,35 @@ export default function Home() {
       .bc-tr-total td { font-size: 15px; }
     }
 
+    /* ── 지점 수정 이력 카드 ── */
+    .log-card { margin-top: 22px; background: #fff; border: 1px solid #e6e3dd; border-radius: 14px; overflow: hidden; }
+    .log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; cursor: pointer; }
+    .log-head:hover { background: #faf9f6; }
+    .log-title { font-size: 15px; font-weight: 700; color: #1a1a1a; }
+    .log-sub { display: block; margin-top: 3px; font-size: 11.5px; color: #9a9286; letter-spacing: 0.02em; }
+    .log-toggle { font-size: 12px; color: #b8954a; font-weight: 600; white-space: nowrap; }
+    .log-body { border-top: 1px solid #efece6; padding: 6px 8px 12px; overflow-x: auto; }
+    .log-empty { padding: 28px 12px; text-align: center; font-size: 13px; color: #a89e90; }
+    .log-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .log-table th { text-align: left; padding: 9px 10px; font-size: 11px; font-weight: 600; color: #9a9286; border-bottom: 1px solid #efece6; white-space: nowrap; }
+    .log-table th.log-th-r { text-align: right; }
+    .log-table td { padding: 9px 10px; border-bottom: 1px solid #f4f1ec; color: #3a362f; vertical-align: middle; }
+    .log-table tr:last-child td { border-bottom: none; }
+    .log-time { color: #8a8276; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .log-target { color: #8a8276; white-space: nowrap; }
+    .log-amt { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .log-detail { color: #6a6258; font-size: 11.5px; }
+    .log-act { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; background: #f0ede8; color: #6a6258; }
+    .log-act-저장 { background: #eaf3ec; color: #3f8a57; }
+    .log-act-마감 { background: #e8eef7; color: #3a6ea5; }
+    .log-act-이름변경 { background: #fbf2e0; color: #b8954a; }
+    .log-act-삭제 { background: #fbe9e7; color: #c0564a; }
+    @media (max-width: 600px) {
+      .bc-table th, .bc-table td { padding: 10px 6px; font-size: 13px; }
+      .bc-tr-total td { font-size: 15px; }
+      .log-detail { max-width: 120px; }
+    }
+
     /* ── 월 합계 요약 박스 ── */
     .month-stat-box { background: #fff; border: 1px solid #e6e3dd; border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
     .month-stat-title { font-size: 13px; letter-spacing: 0.08em; color: #b8954a; font-weight: 700; margin-bottom: 14px; }
@@ -2038,10 +2102,7 @@ export default function Home() {
 
           {/* STEP 1-B: 관리자 통합 대시보드 (메인 앱 내 표시) */}
           {step === 'admin' && (
-            <div>
-              <button className="btn outline" style={{ marginBottom: 4 }} onClick={() => setStep('branch')}>← 지점 선택으로</button>
-              <ManagerDashboard />
-            </div>
+            <ManagerDashboard onBack={() => setStep('branch')} />
           )}
 
           {/* STEP 2: 로그인 */}
@@ -2755,6 +2816,58 @@ export default function Home() {
                   </div>
                 )
               })()}
+
+              {/* ── 이 지점 수정 이력 ── */}
+              <div className="log-card">
+                <div className="log-head" onClick={() => setShowLogs(s => !s)}>
+                  <div>
+                    <span className="log-title">{selectedBranch?.name} 수정 이력</span>
+                    <span className="log-sub">저장 · 마감 · 이름변경 · 삭제 기록 (최근 50건)</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      className="btn outline"
+                      style={{ padding: '6px 12px', fontSize: 12 }}
+                      onClick={e => { e.stopPropagation(); loadBranchLogs(selectedBranch.name) }}
+                    >새로고침 ↻</button>
+                    <span className="log-toggle">{showLogs ? '접기 ▲' : '펼치기 ▼'}</span>
+                  </div>
+                </div>
+                {showLogs && (
+                  <div className="log-body">
+                    {logsLoading ? (
+                      <div className="log-empty">불러오는 중…</div>
+                    ) : branchLogs.length === 0 ? (
+                      <div className="log-empty">아직 기록된 수정 이력이 없습니다.</div>
+                    ) : (
+                      <table className="log-table">
+                        <thead>
+                          <tr>
+                            <th>일시</th>
+                            <th>작업</th>
+                            <th>직원</th>
+                            <th>대상</th>
+                            <th className="log-th-r">금액</th>
+                            <th>비고</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {branchLogs.map(lg => (
+                            <tr key={lg.id}>
+                              <td className="log-time">{fmtLogTime(lg.created_at)}</td>
+                              <td><span className={`log-act log-act-${lg.action}`}>{lg.action}</span></td>
+                              <td>{lg.emp_name || '-'}</td>
+                              <td className="log-target">{lg.year ? `${lg.year}.${lg.month}` : '-'}</td>
+                              <td className="log-amt">{lg.grand_total ? fmt(lg.grand_total) + '원' : '-'}</td>
+                              <td className="log-detail">{lg.detail || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </main>
