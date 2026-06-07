@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
+import BranchInventory from '../components/BranchInventory'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
 const MASTER_PASSWORD = 'ejzhaak0080'
@@ -440,6 +441,7 @@ export default function Home() {
   const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
   const [importing, setImporting] = useState(false)
   const [saving, setSaving] = useState(null)   // null | {done, total} 전원 저장 진행상황
+  const [branchTab, setBranchTab] = useState('payroll') // 지점 화면 탭: payroll | inventory
   const [branchLogs, setBranchLogs] = useState([])      // 이 지점 수정 이력
   const [logsLoading, setLogsLoading] = useState(false)
   const [showLogs, setShowLogs] = useState(false)       // 이력 패널 펼침/접힘
@@ -1685,6 +1687,11 @@ export default function Home() {
     .btn.full { width: 100%; padding: 13px; }
     .error-msg { font-size: 12px; color: #e05555; margin-bottom: 12px; }
 
+    .branch-view-tabs { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+    .bvt-group { display: inline-flex; background: #f0ede8; border-radius: 10px; padding: 4px; gap: 2px; }
+    .bvt { padding: 9px 20px; border: none; background: transparent; border-radius: 8px; font-size: 14px; font-weight: 600; color: #8a8276; cursor: pointer; font-family: 'Pretendard', sans-serif; letter-spacing: 0.01em; transition: all 0.15s; }
+    .bvt.active { background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .bvt:hover:not(.active) { color: #1a1a1a; }
     .section-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
     .section-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 24px; }
     .section-sub { font-size: 13px; color: #999; margin-top: 5px; }
@@ -2126,9 +2133,24 @@ export default function Home() {
             </div>
           )}
 
-          {/* STEP 3: 급여 계산 */}
-          {step === 'main' && activeEmp && (
+          {/* STEP 3: 급여 계산 / 재고 관리 */}
+          {step === 'main' && (
             <div>
+              {/* 지점 화면 탭: 급여 / 재고 */}
+              <div className="branch-view-tabs">
+                <div className="bvt-group">
+                  <button className={`bvt${branchTab === 'payroll' ? ' active' : ''}`} onClick={() => setBranchTab('payroll')}>💰 급여 계산</button>
+                  <button className={`bvt${branchTab === 'inventory' ? ' active' : ''}`} onClick={() => setBranchTab('inventory')}>📦 재고 관리</button>
+                </div>
+                <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
+              </div>
+
+              {branchTab === 'inventory' && (
+                <BranchInventory branch={selectedBranch?.name} actor={selectedBranch?.name} />
+              )}
+
+              {branchTab === 'payroll' && activeEmp && (
+              <div>
               <div className="section-header">
                 <div>
                   <div className="section-title">{selectedBranch?.name} 급여 계산</div>
@@ -2198,7 +2220,6 @@ export default function Home() {
                       fontFamily: "'Pretendard', 'DM Sans', sans-serif",
                     }}
                   >급여명세서 🖨</button>
-                  <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
                 </div>
               </div>
 
@@ -2868,6 +2889,8 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              </div>
+              )}
             </div>
           )}
         </main>
