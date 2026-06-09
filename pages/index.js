@@ -1634,7 +1634,7 @@ export default function Home() {
       background: #fff; border-bottom: 1px solid #ebe9e4;
       padding: 18px 40px; display: flex; justify-content: space-between; align-items: center;
     }
-    .logo-img { height: 52px; width: auto; display: block; }
+    .logo-img { height: 52px; width: auto; display: block; cursor: pointer; }
     @media (max-width: 600px) { .logo-img { height: 42px; } }
     .header-tag { font-size: 10px; letter-spacing: 0.2em; color: #999; }
 
@@ -2098,7 +2098,9 @@ export default function Home() {
 
       <div className="wrap">
         <header className="header">
-          <img src="/logo.png" alt="THE COMMA' LOUNGE" className="logo-img" />
+          <img src="/logo.png" alt="THE COMMA' LOUNGE" className="logo-img"
+            onClick={() => { setStep('home'); setSelectedBranch(null); setPw(''); setPwError(false) }}
+            title="처음 화면으로" />
           <span className="header-tag">CREW PAYROLL</span>
         </header>
 

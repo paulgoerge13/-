@@ -126,12 +126,20 @@ export default function ManagerDashboard({ onBack }) {
   const STATUS_LABEL = { '작성중': '작성중', '수정중': '수정중', '확정': '확정', '이체완료': '이체완료', '보류': '보류' }
 
   // records 가 바뀌면 DB 의 transfer_status / transfer_note 로 상태·비고맵 초기화
+  // 비고는 이 브라우저(localStorage)에도 저장해, DB 컬럼이 없어도 사라지지 않게 한다
+  const notesKey = `payroll_txnotes_${year}_${month}`
   useEffect(() => {
+    let stored = {}
+    try { stored = JSON.parse(localStorage.getItem(notesKey) || '{}') } catch (e) { stored = {} }
     const m = {}, nm = {}
-    for (const r of records) { m[r.id] = r.transfer_status || '작성중'; nm[r.id] = r.transfer_note || '' }
+    for (const r of records) {
+      m[r.id] = r.transfer_status || '작성중'
+      // DB 값이 있으면 우선, 없으면 이 브라우저에 저장된 값 사용
+      nm[r.id] = (r.transfer_note != null && r.transfer_note !== '') ? r.transfer_note : (stored[r.id] || '')
+    }
     setStatusMap(m)
     setNoteMap(nm)
-  }, [records])
+  }, [records, notesKey])
 
   function txStatus(r) { return statusMap[r.id] || '작성중' }
 
@@ -214,9 +222,16 @@ export default function ManagerDashboard({ onBack }) {
   function setUnitNoteLocal(u, val) {
     setNoteMap(m => { const n = { ...m }; for (const r of u.recs) n[r.id] = val; return n })
   }
-  // 비고는 포커스를 잃을 때(onBlur) DB 의 transfer_note 컬럼에 저장
+  // 비고는 포커스를 잃을 때(onBlur) 저장: ① 이 브라우저(localStorage) ② DB(컬럼 있으면)
   async function saveNote(u) {
     const val = unitNote(u)
+    // ① localStorage 저장 — DB 컬럼이 없어도 이 컴퓨터에서는 항상 유지됨
+    try {
+      const stored = JSON.parse(localStorage.getItem(notesKey) || '{}')
+      for (const r of u.recs) { if (val) stored[r.id] = val; else delete stored[r.id] }
+      localStorage.setItem(notesKey, JSON.stringify(stored))
+    } catch (e) {}
+    // ② DB 저장 시도 — transfer_note 컬럼이 있으면 다른 기기와도 공유됨
     for (const r of u.recs) {
       const { error } = await supabase.from('payroll').update({ transfer_note: val }).eq('id', r.id)
       if (error) setNoteUnavailable(true)
@@ -894,7 +909,7 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
                 )}
                 {noteUnavailable && (
-                  <div className="tx-warn">⚠ 비고 메모가 저장되지 않습니다. Supabase 에 <b>transfer_note</b> 컬럼을 추가해 주세요.</div>
+                  <div className="tx-warn">ℹ 비고는 이 컴퓨터에는 저장되지만, 다른 기기와 공유되지 않습니다. 공유하려면 Supabase 에 <b>transfer_note</b> 컬럼을 추가해 주세요.</div>
                 )}
 
                 {groups.every(g => g.units.filter(matchFilter).length === 0) ? (
