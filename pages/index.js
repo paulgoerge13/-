@@ -359,7 +359,8 @@ const RATE_EMPLOYMENT = 0.009    // 고용보험 0.9% (2026 동결)
 
 // ── 공제 계산: 세전 총액(gross) 기준으로 항목별 공제액 산출 ──
 function calcDeductions(gross, emp) {
-  const dt = emp.deductionType || 'none'
+  // 직원은 공제 방식 선택과 무관하게 항상 4대보험 적용 (알바만 deductionType 따름)
+  const dt = (emp.empType === '직원') ? '4대' : (emp.deductionType || 'none')
   let pension = 0, health = 0, care = 0, employment = 0, incomeTax = 0, localTax = 0, bizTax = 0
   if (dt === '4대') {
     pension    = Math.floor(gross * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
@@ -2704,20 +2705,26 @@ export default function Home() {
               {/* 공제 방식 (급여 내역 바로 위) */}
               <div style={{ marginBottom: 16 }}>
                 <div className="field-label" style={{ marginBottom: 6 }}>공제 방식 (세금·4대보험)</div>
-                <div className="emp-type-tabs">
-                  {[
-                    { v: 'none', t: '공제 없음' },
-                    { v: '3.3',  t: '3.3% 원천징수' },
-                    { v: '4대',  t: '4대보험' },
-                  ].map(({ v, t }) => (
-                    <button
-                      key={v}
-                      className={`emp-type-tab${(activeEmp.deductionType || 'none') === v ? ' active' : ''}`}
-                      onClick={() => updateEmp('deductionType', v)}
-                    >{t}</button>
-                  ))}
-                </div>
-                {activeEmp.deductionType === '4대' && (
+                {(activeEmp.empType || '알바') === '직원' ? (
+                  <div style={{ fontSize: 12.5, color: '#2f6bbf', background: '#eaf2fc', border: '1px solid #cfe0f5', borderRadius: 8, padding: '9px 12px', fontWeight: 600 }}>
+                    직원 — <b>공제 없음 금액</b>과 <b>4대보험 공제 후 금액</b>이 아래에 함께 표시됩니다 (4대보험 자동 적용)
+                  </div>
+                ) : (
+                  <div className="emp-type-tabs">
+                    {[
+                      { v: 'none', t: '공제 없음' },
+                      { v: '3.3',  t: '3.3% 원천징수' },
+                      { v: '4대',  t: '4대보험' },
+                    ].map(({ v, t }) => (
+                      <button
+                        key={v}
+                        className={`emp-type-tab${(activeEmp.deductionType || 'none') === v ? ' active' : ''}`}
+                        onClick={() => updateEmp('deductionType', v)}
+                      >{t}</button>
+                    ))}
+                  </div>
+                )}
+                {((activeEmp.empType || '알바') === '직원' || activeEmp.deductionType === '4대') && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888' }}>
                     소득세 (세무사 안내 금액)
                     <input
@@ -2729,7 +2736,7 @@ export default function Home() {
                     원 <span style={{ color: '#bbb' }}>(지방소득세는 10% 자동)</span>
                   </label>
                 )}
-                {activeEmp.deductionType === '3.3' && (
+                {(activeEmp.empType || '알바') !== '직원' && activeEmp.deductionType === '3.3' && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
                 )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
@@ -2784,7 +2791,10 @@ export default function Home() {
                     ))}
                   </div>
                   <div className="summary-total-row">
-                    <div className="summary-total-label">지급액 계{totals.meal > 0 ? ' (식대 포함)' : ''}</div>
+                    <div className="summary-total-label">
+                      지급액 계{totals.meal > 0 ? ' (식대 포함)' : ''}
+                      {totals.isStaff && <span style={{ fontSize: 12, color: '#1f9d57', fontWeight: 600, marginLeft: 6 }}>= 공제 없음 실수령액</span>}
+                    </div>
                     <div className="summary-total-val">{fmt(totals.grossPay)}<span className="won-big">원</span></div>
                   </div>
 
@@ -2816,7 +2826,7 @@ export default function Home() {
                         <div className="summary-total-val" style={{ color: '#e05555', fontSize: 20 }}>- {fmt(totals.totalDeduction)}<span className="won-big">원</span></div>
                       </div>
                       <div className="net-pay-row">
-                        <div className="net-pay-label">실수령액</div>
+                        <div className="net-pay-label">실수령액{totals.isStaff ? ' (4대보험 공제 후)' : ''}</div>
                         <div className="net-pay-val">{fmt(totals.netPay)}<span className="won-big">원</span></div>
                       </div>
                     </>
