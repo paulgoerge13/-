@@ -426,8 +426,6 @@ export default function ManagerDashboard({ onBack }) {
 
   const css = `
     .md-wrap { max-width: 920px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
-    /* 이체 처리 화면은 메모 칸을 옆에 두기 위해 더 넓게 */
-    .md-wrap.wide { max-width: 1360px; }
 
     .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
     .md-back:hover { border-color: #1a1a1a; color: #1a1a1a; }
@@ -694,31 +692,29 @@ export default function ManagerDashboard({ onBack }) {
     .tx-note-input:focus { border-color: #b8954a; background: #fff; }
     .tx-note-input::placeholder { color: #c4bfb6; }
 
-    /* 이체 본문: 목록(왼쪽) + 메모(오른쪽, 따라다님) 2단 레이아웃 */
-    .tx-body { display: flex; align-items: flex-start; gap: 22px; }
-    .tx-list { flex: 1; min-width: 0; }
-
-    /* 자유 메모 박스 — 오른쪽에서 스크롤 따라다니는 큰 창 */
+    /* 자유 메모 박스 — 오른쪽 끝에 고정되어 스크롤을 따라다니는 큰 창 */
     .tx-memo {
-      flex: none; width: 380px; position: sticky; top: 18px;
-      display: flex; flex-direction: column;
+      display: flex; flex-direction: column; margin-top: 20px;
       background: #fffdf7; border: 1px solid #ece4cf; border-radius: 14px;
       box-shadow: 0 6px 20px rgba(120,100,50,0.08); padding: 16px 16px 12px;
     }
-    /* 화면이 좁으면 2단 → 1단(목록 아래로). 절대 사라지지 않음 */
-    @media (max-width: 1100px) {
-      .tx-body { flex-direction: column; }
-      .tx-memo { width: 100%; position: static; }
+    /* 넓은 화면: 오른쪽 빈 공간에 고정(스크롤 따라다님) */
+    @media (min-width: 1200px) {
+      .tx-memo {
+        position: fixed; top: 118px; bottom: 24px; right: 24px; left: calc(50% + 478px);
+        margin-top: 0;
+      }
     }
     .tx-memo-head { font-size: 14px; font-weight: 700; color: #8a6a1e; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; flex: none; }
     .tx-memo-head span { font-size: 11px; font-weight: 600; color: #b3a98e; background: #f5efdd; padding: 2px 8px; border-radius: 999px; }
     .tx-memo-area {
-      width: 100%; height: 62vh; min-height: 240px; max-height: 72vh; resize: vertical; box-sizing: border-box;
+      width: 100%; height: 240px; resize: vertical; box-sizing: border-box;
       font-size: 14px; line-height: 1.7; color: #3a3530; font-family: inherit;
       border: 1px solid #ece4cf; border-radius: 9px; padding: 12px 13px;
       background: #fff; outline: none;
     }
-    @media (max-width: 1100px) { .tx-memo-area { height: 220px; } }
+    /* 오른쪽 고정 모드에선 세로로 길게 채움 */
+    @media (min-width: 1200px) { .tx-memo-area { flex: 1; height: auto; resize: none; } }
     .tx-memo-area:focus { border-color: #d8b860; }
     .tx-memo-area::placeholder { color: #c8c0ad; }
     .tx-memo-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex: none; }
@@ -835,7 +831,7 @@ export default function ManagerDashboard({ onBack }) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className={`md-wrap ${view === 'transfer' ? 'wide' : ''}`}>
+      <div className="md-wrap">
 
         {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
 
@@ -942,8 +938,6 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="tx-warn">ℹ 비고는 이 컴퓨터에는 저장되지만, 다른 기기와 공유되지 않습니다. 공유하려면 Supabase 에 <b>transfer_note</b> 컬럼을 추가해 주세요.</div>
                 )}
 
-                <div className="tx-body">
-                  <div className="tx-list">
                 {groups.every(g => g.units.filter(matchFilter).length === 0) ? (
                   <p className="md-empty">{statusFilter === 'all' ? '해당 월의 데이터가 없습니다.' : `'${statusFilter}' 상태인 건이 없습니다.`}</p>
                 ) : groups.map(g => {
@@ -1037,27 +1031,25 @@ export default function ManagerDashboard({ onBack }) {
                     </div>
                   )
                 })}
-                  </div>{/* /tx-list */}
 
-                  {/* 오른쪽에 따라다니는(sticky) 자유 메모 박스 */}
-                  <aside className="tx-memo">
-                    <div className="tx-memo-head">📝 메모 <span>{year}년 {month}월</span></div>
-                    <textarea
-                      className="tx-memo-area"
-                      value={txMemo}
-                      onChange={e => changeTxMemo(e.target.value)}
-                      onBlur={saveTxMemo}
-                      placeholder="이체 관련 메모를 자유롭게 적어두세요.&#10;(예: 퇴직금 별도 처리, 보류 사유 등)"
-                    />
-                    <div className="tx-memo-foot">
-                      <span className={`tx-memo-state ${memoSaved ? 'ok' : memoDirty ? 'dirty' : ''}`}>
-                        {memoSaved ? '저장됨 ✓' : memoDirty ? '저장 안 됨 (저장 버튼을 눌러주세요)'
-                          : memoShareOff ? '이 컴퓨터에만 저장됨 (공유하려면 설정 필요)' : '모든 컴퓨터에 공유됩니다'}
-                      </span>
-                      <button className="tx-memo-save" onClick={saveTxMemo} disabled={!memoDirty}>저장</button>
-                    </div>
-                  </aside>
-                </div>{/* /tx-body */}
+                {/* 오른쪽 끝에 고정되어 스크롤을 따라다니는 자유 메모 박스 */}
+                <aside className="tx-memo">
+                  <div className="tx-memo-head">📝 메모 <span>{year}년 {month}월</span></div>
+                  <textarea
+                    className="tx-memo-area"
+                    value={txMemo}
+                    onChange={e => changeTxMemo(e.target.value)}
+                    onBlur={saveTxMemo}
+                    placeholder="이체 관련 메모를 자유롭게 적어두세요.&#10;(예: 퇴직금 별도 처리, 보류 사유 등)"
+                  />
+                  <div className="tx-memo-foot">
+                    <span className={`tx-memo-state ${memoSaved ? 'ok' : memoDirty ? 'dirty' : ''}`}>
+                      {memoSaved ? '저장됨 ✓' : memoDirty ? '저장 안 됨 (저장 버튼을 눌러주세요)'
+                        : memoShareOff ? '이 컴퓨터에만 저장됨 (공유하려면 설정 필요)' : '모든 컴퓨터에 공유됩니다'}
+                    </span>
+                    <button className="tx-memo-save" onClick={saveTxMemo} disabled={!memoDirty}>저장</button>
+                  </div>
+                </aside>
               </>
             )
           })()
