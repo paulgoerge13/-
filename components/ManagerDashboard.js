@@ -23,6 +23,7 @@ export default function ManagerDashboard({ onBack }) {
   const [txMemo, setTxMemo] = useState('')          // 이체 화면 우측 자유 메모 (월별, 브라우저 저장)
   const [memoDirty, setMemoDirty] = useState(false) // 저장 안 된 변경 있음
   const [memoSaved, setMemoSaved] = useState(false) // 방금 저장됨 표시
+  const [memoShareOff, setMemoShareOff] = useState(false) // DB(app_kv) 미설정 → 이 컴퓨터에만 저장
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   const [editAcctKey, setEditAcctKey] = useState(null)  // 계좌 편집 중인 유닛 key
@@ -143,26 +144,46 @@ export default function ManagerDashboard({ onBack }) {
 
   function txStatus(r) { return statusMap[r.id] || '작성중' }
 
-  // ── 이체 화면 우측 자유 메모 (월별, 이 브라우저에만 저장) ──
-  const memoKey = `payroll_txmemo_${year}_${month}`
+  // ── 이체 화면 자유 메모 (월별) ──
+  //   1순위: DB(app_kv 테이블) → 모든 컴퓨터에서 공유
+  //   2순위: localStorage → DB 준비 전이거나 오프라인일 때 이 컴퓨터에 백업
+  const memoKey = `payroll_txmemo_${year}_${month}`   // localStorage 백업 키
+  const memoId = `txmemo_${year}_${month}`            // DB(app_kv) 키
   useEffect(() => {
-    try { setTxMemo(localStorage.getItem(memoKey) || '') } catch (e) { setTxMemo('') }
-    setMemoDirty(false); setMemoSaved(false)
-  }, [memoKey])
+    let cancelled = false
+    ;(async () => {
+      let local = ''
+      try { local = localStorage.getItem(memoKey) || '' } catch (e) {}
+      if (!cancelled) { setTxMemo(local); setMemoDirty(false); setMemoSaved(false) }
+      // DB 에서 최신값(다른 컴퓨터에서 적은 것 포함) 불러오기
+      try {
+        const { data, error } = await supabase.from('app_kv').select('value').eq('id', memoId).maybeSingle()
+        if (cancelled) return
+        if (error) { setMemoShareOff(true); return }
+        setMemoShareOff(false)
+        const val = (data && typeof data.value === 'string') ? data.value : ''
+        setTxMemo(val)
+        try { localStorage.setItem(memoKey, val) } catch (e) {}
+      } catch (e) { if (!cancelled) setMemoShareOff(true) }
+    })()
+    return () => { cancelled = true }
+  }, [memoId, memoKey])
   function changeTxMemo(val) {
     setTxMemo(val)
     setMemoDirty(true)
     setMemoSaved(false)
   }
-  function saveTxMemo() {
+  async function saveTxMemo() {
+    try { localStorage.setItem(memoKey, txMemo) } catch (e) {}   // 백업
+    // DB 저장(공유). 테이블이 없으면 오류 → 이 컴퓨터에만 저장된 상태로 안내
     try {
-      localStorage.setItem(memoKey, txMemo)
-      setMemoDirty(false)
-      setMemoSaved(true)
-      setTimeout(() => setMemoSaved(false), 2000)
-    } catch (e) {
-      alert('메모 저장에 실패했습니다. 브라우저 설정(시크릿 모드 등)을 확인해 주세요.')
-    }
+      const { error } = await supabase.from('app_kv')
+        .upsert({ id: memoId, value: txMemo, updated_at: new Date().toISOString() })
+      setMemoShareOff(!!error)
+    } catch (e) { setMemoShareOff(true) }
+    setMemoDirty(false)
+    setMemoSaved(true)
+    setTimeout(() => setMemoSaved(false), 2000)
   }
 
   // ── 같은 계좌 = 한 번의 이체로 묶기 ──
@@ -671,20 +692,16 @@ export default function ManagerDashboard({ onBack }) {
     .tx-note-input:focus { border-color: #b8954a; background: #fff; }
     .tx-note-input::placeholder { color: #c4bfb6; }
 
-    /* 우측 빈 공간 자유 메모 박스 (넓은 화면에서만 표시, 오른쪽 여백을 가로로 꽉 채움) */
-    .tx-memo { display: none; }
-    @media (min-width: 1300px) {
-      .tx-memo {
-        display: flex; flex-direction: column; position: fixed;
-        top: 120px; bottom: 24px; right: 24px; left: calc(50% + 478px);
-        background: #fffdf7; border: 1px solid #ece4cf; border-radius: 14px;
-        box-shadow: 0 6px 20px rgba(120,100,50,0.08); padding: 16px 16px 12px;
-      }
+    /* 자유 메모 박스 (이체 목록 아래, 항상 표시) */
+    .tx-memo {
+      display: flex; flex-direction: column; margin-top: 20px;
+      background: #fffdf7; border: 1px solid #ece4cf; border-radius: 14px;
+      box-shadow: 0 4px 14px rgba(120,100,50,0.06); padding: 16px 16px 12px;
     }
     .tx-memo-head { font-size: 14px; font-weight: 700; color: #8a6a1e; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; flex: none; }
     .tx-memo-head span { font-size: 11px; font-weight: 600; color: #b3a98e; background: #f5efdd; padding: 2px 8px; border-radius: 999px; }
     .tx-memo-area {
-      flex: 1; width: 100%; resize: none; box-sizing: border-box;
+      width: 100%; height: 200px; resize: vertical; box-sizing: border-box;
       font-size: 14px; line-height: 1.7; color: #3a3530; font-family: inherit;
       border: 1px solid #ece4cf; border-radius: 9px; padding: 12px 13px;
       background: #fff; outline: none;
@@ -1018,7 +1035,8 @@ export default function ManagerDashboard({ onBack }) {
                   />
                   <div className="tx-memo-foot">
                     <span className={`tx-memo-state ${memoSaved ? 'ok' : memoDirty ? 'dirty' : ''}`}>
-                      {memoSaved ? '저장됨 ✓' : memoDirty ? '저장 안 됨' : '이 컴퓨터에 저장됩니다'}
+                      {memoSaved ? '저장됨 ✓' : memoDirty ? '저장 안 됨 (저장 버튼을 눌러주세요)'
+                        : memoShareOff ? '이 컴퓨터에만 저장됨 (공유하려면 설정 필요)' : '모든 컴퓨터에 공유됩니다'}
                     </span>
                     <button className="tx-memo-save" onClick={saveTxMemo} disabled={!memoDirty}>저장</button>
                   </div>
