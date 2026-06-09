@@ -17,7 +17,7 @@ export default function ManagerDashboard({ onBack }) {
   const [view, setView] = useState('summary')      // summary | transfer
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료' }
-  const [onlyPending, setOnlyPending] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   // 퇴직금 계산
@@ -482,12 +482,19 @@ export default function ManagerDashboard({ onBack }) {
     .tx-stat-bar { margin-top: 10px; height: 6px; border-radius: 4px; background: #eee; overflow: hidden; }
     .tx-stat-fill { height: 100%; background: #2ecc71; border-radius: 4px; transition: width 0.3s; }
 
-    .tx-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; padding: 0 2px; }
-    .tx-legend { display: flex; flex-wrap: wrap; gap: 12px; }
-    .tx-leg { font-size: 11.5px; color: #777; display: flex; align-items: center; }
+    /* 상태 필터 칩: 전 지점을 상태별로 모아보기 */
+    .tx-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding: 0 2px; }
+    .tx-fchip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;
+      color: #6b6760; background: #fff; border: 1.5px solid #e7e3da; border-radius: 999px;
+      padding: 8px 14px; cursor: pointer; transition: all .15s; }
+    .tx-fchip:hover { border-color: #d8cba3; }
+    .tx-fchip em { font-style: normal; font-size: 12px; font-weight: 700; color: #b8954a;
+      background: #f6efdd; border-radius: 999px; padding: 1px 7px; }
+    .tx-fchip .tx-chip { margin-right: 0; }
+    .tx-fchip.on { color: #fff; background: #b8954a; border-color: #b8954a; }
+    .tx-fchip.on em { color: #fff; background: rgba(255,255,255,0.25); }
+    .tx-fchip.on .tx-chip { border-color: rgba(255,255,255,0.6); }
     .tx-chip { width: 12px; height: 12px; border-radius: 4px; margin-right: 5px; display: inline-block; border: 1px solid rgba(0,0,0,0.08); }
-    .tx-toggle { font-size: 12px; color: #666; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-    .tx-toggle input { width: 15px; height: 15px; accent-color: #b8954a; cursor: pointer; }
 
     /* 상태별 색상 칩 (작성중=주황 / 수정중=흰색 / 확정=노랑 / 이체완료=초록) */
     .tx-chip.작성중 { background: #f6b26b; }
@@ -694,6 +701,13 @@ export default function ManagerDashboard({ onBack }) {
             const remainAmt = totalAmt - doneAmt
             const totalUnits = allUnits.length
 
+            // 상태별 건수 (필터 칩에 표시)
+            const statusCounts = STATUS_ORDER.reduce((acc, s) => {
+              acc[s] = allUnits.filter(u => unitStatus(u) === s).length
+              return acc
+            }, {})
+            const matchFilter = u => statusFilter === 'all' || unitStatus(u) === statusFilter
+
             return (
               <>
                 {/* 진행 요약 (밝은 카드) */}
@@ -719,18 +733,23 @@ export default function ManagerDashboard({ onBack }) {
                   </div>
                 </div>
 
-                {/* 상태 범례 + 필터 */}
-                <div className="tx-bar">
-                  <div className="tx-legend">
-                    <span className="tx-leg"><b className="tx-chip 작성중" />작성중</span>
-                    <span className="tx-leg"><b className="tx-chip 수정중" />수정중</span>
-                    <span className="tx-leg"><b className="tx-chip 확정" />확정</span>
-                    <span className="tx-leg"><b className="tx-chip 이체완료" />이체완료</span>
-                  </div>
-                  <label className="tx-toggle">
-                    <input type="checkbox" checked={onlyPending} onChange={e => setOnlyPending(e.target.checked)} />
-                    미완료만 보기
-                  </label>
+                {/* 상태 필터 칩: 전 지점을 상태별로 모아보기 */}
+                <div className="tx-filter">
+                  <button
+                    className={`tx-fchip all ${statusFilter === 'all' ? 'on' : ''}`}
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    전체 <em>{totalUnits}</em>
+                  </button>
+                  {STATUS_ORDER.map(s => (
+                    <button
+                      key={s}
+                      className={`tx-fchip ${s} ${statusFilter === s ? 'on' : ''}`}
+                      onClick={() => setStatusFilter(s)}
+                    >
+                      <b className={`tx-chip ${s}`} />{s} <em>{statusCounts[s]}</em>
+                    </button>
+                  ))}
                 </div>
 
                 <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 수정중 → 확정 → 이체완료 순으로 바뀝니다.</div>
@@ -738,10 +757,10 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
                 )}
 
-                {groups.every(g => g.units.filter(u => !onlyPending || unitStatus(u) !== '이체완료').length === 0) ? (
-                  <p className="md-empty">{onlyPending ? '미완료 건이 없습니다. 모두 이체 완료!' : '해당 월의 데이터가 없습니다.'}</p>
+                {groups.every(g => g.units.filter(matchFilter).length === 0) ? (
+                  <p className="md-empty">{statusFilter === 'all' ? '해당 월의 데이터가 없습니다.' : `'${statusFilter}' 상태인 건이 없습니다.`}</p>
                 ) : groups.map(g => {
-                  const shown = g.units.filter(u => !onlyPending || unitStatus(u) !== '이체완료')
+                  const shown = g.units.filter(matchFilter)
                     .sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko'))
                   if (shown.length === 0) return null
                   const gTotal = g.units.reduce((s, u) => s + unitAmt(u), 0)

@@ -1660,24 +1660,37 @@ export default function Home() {
     }
     .branch-card:hover { border-color: #d4b87a; box-shadow: 0 8px 32px rgba(184,149,74,0.12); transform: translateY(-2px); }
     .branch-card:hover::after { transform: scaleX(1); }
-    .branch-num { font-size: 12px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 16px; font-weight: 500; }
-    .branch-name { font-size: 21px; font-weight: 600; color: #1a1a1a; }
+    .branch-num { font-size: 12px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 14px; font-weight: 500; }
+    .branch-name { font-size: 27px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
 
-    /* 6개 지점 아래 — 전 지점 통합 관리자 진입 (골드 강조) */
+    /* 6개 지점 아래 — 전지점 관리(관리자 페이지) 진입 */
     .admin-entry {
-      max-width: 900px; margin: 20px auto 0; cursor: pointer;
-      display: flex; align-items: center; gap: 16px;
-      background: linear-gradient(135deg, #cdaa5d, #b8954a);
-      border-radius: 16px; padding: 20px 24px;
-      box-shadow: 0 4px 18px rgba(184,149,74,0.28);
-      transition: transform 0.15s, box-shadow 0.15s;
+      max-width: 900px; margin: 28px auto 0; cursor: pointer;
+      display: flex; align-items: center; gap: 18px;
+      background: #fdfbf6; border: 1.5px solid #e3d3a6;
+      border-radius: 18px; padding: 22px 24px;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
     }
-    .admin-entry:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(184,149,74,0.4); }
-    .admin-entry-icon { font-size: 24px; line-height: 1; }
+    .admin-entry:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(184,149,74,0.18); border-color: #c9a85f; }
+    .admin-entry-icon {
+      font-size: 26px; width: 56px; height: 56px; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      background: #f3e9d2; border-radius: 15px;
+    }
     .admin-entry-texts { flex: 1; min-width: 0; }
-    .admin-entry-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 3px; }
-    .admin-entry-sub { font-size: 12px; color: #fbf3e0; }
-    .admin-entry-chev { font-size: 22px; color: rgba(255,255,255,0.8); }
+    .admin-entry-title { font-size: 24px; font-weight: 700; color: #1a1a1a; margin-bottom: 5px; line-height: 1.2; }
+    .admin-entry-title span { font-size: 15px; font-weight: 600; color: #b8954a; margin-left: 4px; }
+    .admin-entry-sub { font-size: 13.5px; color: #9a9286; }
+    .admin-entry-cta {
+      flex: none; background: #b8954a; color: #fff; font-size: 15px; font-weight: 700;
+      padding: 13px 24px; border-radius: 12px; white-space: nowrap;
+      display: flex; align-items: center; gap: 7px; transition: background 0.15s, transform 0.15s;
+    }
+    .admin-entry:hover .admin-entry-cta { background: #a07f3a; transform: translateX(2px); }
+    @media (max-width: 640px) {
+      .admin-entry { flex-wrap: wrap; }
+      .admin-entry-cta { width: 100%; justify-content: center; }
+    }
 
     .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 60vh; }
     .login-box {
@@ -2136,10 +2149,10 @@ export default function Home() {
                 <div className="admin-entry" onClick={() => { setStep('adminLogin'); setPw(''); setPwError(false) }}>
                   <div className="admin-entry-icon">📊</div>
                   <div className="admin-entry-texts">
-                    <div className="admin-entry-title">전 지점 통합 관리</div>
-                    <div className="admin-entry-sub">모든 지점 인건비를 한눈에 (관리자 전용)</div>
+                    <div className="admin-entry-title">전지점 관리 <span>(관리자 페이지)</span></div>
+                    <div className="admin-entry-sub">모든 지점 인건비 · 이체 · 퇴직금을 한눈에 (관리자 전용)</div>
                   </div>
-                  <div className="admin-entry-chev">›</div>
+                  <div className="admin-entry-cta">입장하기 →</div>
                 </div>
               )}
             </div>
