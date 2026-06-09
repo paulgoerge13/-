@@ -20,6 +20,9 @@ export default function ManagerDashboard({ onBack }) {
   const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
+  const [editAcctKey, setEditAcctKey] = useState(null)  // 계좌 편집 중인 유닛 key
+  const [acctDraft, setAcctDraft] = useState('')        // 편집 입력값
+  const [acctSaving, setAcctSaving] = useState(false)
   // 퇴직금 계산
   const [sevBranch, setSevBranch] = useState('')
   const [sevEmps, setSevEmps] = useState([])        // [{name, hire, resign}]
@@ -177,6 +180,37 @@ export default function ManagerDashboard({ onBack }) {
     } catch (e) {
       // 클립보드 권한이 없으면 무시
     }
+  }
+
+  // ── 계좌번호 입력/수정 (이체 처리 화면에서 바로 → 급여 기록에 저장) ──
+  //   유닛에 속한 모든 급여 기록의 account_number 를 같은 값으로 업데이트한다.
+  //   저장하면 지점 급여 계산 화면의 '계좌번호' 칸에도 동일하게 반영된다.
+  function startEditAcct(u) {
+    setEditAcctKey(u.key)
+    setAcctDraft(u.account || '')
+  }
+  function cancelEditAcct() {
+    setEditAcctKey(null)
+    setAcctDraft('')
+  }
+  async function saveAcct(u) {
+    const value = acctDraft.trim()
+    setAcctSaving(true)
+    const ids = u.recs.map(r => r.id)
+    let failed = false
+    for (const id of ids) {
+      const { error } = await supabase
+        .from('payroll')
+        .update({ account_number: value, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) failed = true
+    }
+    setAcctSaving(false)
+    if (failed) { alert('계좌 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.'); return }
+    // 화면 즉시 반영
+    setRecords(prev => prev.map(r => ids.includes(r.id) ? { ...r, account_number: value } : r))
+    setEditAcctKey(null)
+    setAcctDraft('')
   }
 
   // ── 퇴직금 계산 ──
@@ -529,8 +563,15 @@ export default function ManagerDashboard({ onBack }) {
 
     .tx-acct-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; }
     .tx-acct { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tx-acct.empty { color: #c0392b; font-style: italic; }
     .tx-copy { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 10.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; }
     .tx-copy:hover { border-color: #b8954a; color: #b8954a; }
+    .tx-acct-edit { flex: none; background: #fff; border: 1px solid #d8cba3; color: #b8954a; font-size: 10.5px; font-weight: 700; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+    .tx-acct-edit:hover { background: #b8954a; color: #fff; border-color: #b8954a; }
+    .tx-acct-input { flex: 1; min-width: 140px; font-size: 12px; color: #333; padding: 6px 9px; border: 1.5px solid #b8954a; border-radius: 7px; font-family: inherit; outline: none; }
+    .tx-acct-save { flex: none; background: #b8954a; border: none; color: #fff; font-size: 11px; font-weight: 700; padding: 6px 11px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+    .tx-acct-save:disabled { opacity: 0.6; cursor: default; }
+    .tx-acct-cancel { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; }
 
     .tx-amt { flex: none; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; min-width: 84px; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
@@ -774,11 +815,33 @@ export default function ManagerDashboard({ onBack }) {
                               ))}
                             </div>
                             <div className="tx-acct-wrap">
-                              <span className="tx-acct">{u.account || '계좌 미입력'}</span>
-                              {u.account && (
-                                <button className="tx-copy" onClick={() => copyAcct(u)}>
-                                  {copiedId === u.key ? '복사됨 ✓' : '복사'}
-                                </button>
+                              {editAcctKey === u.key ? (
+                                <>
+                                  <input
+                                    className="tx-acct-input"
+                                    value={acctDraft}
+                                    onChange={e => setAcctDraft(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') saveAcct(u); if (e.key === 'Escape') cancelEditAcct() }}
+                                    placeholder="예: 기업은행 117-161493-01-011"
+                                    autoFocus
+                                  />
+                                  <button className="tx-acct-save" disabled={acctSaving} onClick={() => saveAcct(u)}>
+                                    {acctSaving ? '저장중…' : '저장'}
+                                  </button>
+                                  <button className="tx-acct-cancel" onClick={cancelEditAcct}>취소</button>
+                                </>
+                              ) : (
+                                <>
+                                  <span className={`tx-acct ${u.account ? '' : 'empty'}`}>{u.account || '계좌 미입력'}</span>
+                                  <button className="tx-acct-edit" onClick={() => startEditAcct(u)}>
+                                    {u.account ? '수정' : '계좌 입력'}
+                                  </button>
+                                  {u.account && (
+                                    <button className="tx-copy" onClick={() => copyAcct(u)}>
+                                      {copiedId === u.key ? '복사됨 ✓' : '복사'}
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                             <div className="tx-amt">{fmt(unitAmt(u))}<small>원</small></div>
