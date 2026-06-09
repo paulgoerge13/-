@@ -1363,73 +1363,107 @@ export default function Home() {
     }
   }
 
-  function downloadExcelSingle() {
-    if (!activeEmp) return
-    const totals = calcTotal(activeEmp)
-    const headers = ['날짜', '유형', '시작', '종료', '주간', '야간', '휴게', '연장', '휴일주간', '휴일야간', '휴일휴게', '휴일연장']
-    const rows = []
-    const weeks = getWeeksInMonth(activeEmp.year, activeEmp.month)
+  // 근무표 엑셀 공통 유형 라벨 / 요일
+  const TYPE_LABEL = { '평': '평일', '휴': '휴일근로', '공': '휴무', '연': '연차', '결': '결근' }
+  const WD_LABEL = ['일', '월', '화', '수', '목', '금', '토']
+
+  // 한 직원의 근무표 시트(2차원 배열 + 열너비) 생성
+  // - 일 안 한 날(근무시간 0 & 평일/휴무)은 제외
+  // - 유형은 풀네임(평일/휴일근로/휴무/연차/결근)으로 표기
+  // - 알바는 연장·휴일 관련 칸 제거(직원만 표시)
+  function buildEmpSheetAoa(emp) {
+    const totals = calcTotal(emp)
+    const isStaff = (emp.empType || '알바') === '직원'
+    const blank = v => (v ? v : '')
+
+    const headers = isStaff
+      ? ['날짜', '요일', '유형', '시작', '종료', '주간', '야간', '휴게', '연장', '휴일주간', '휴일야간', '휴일휴게', '휴일연장']
+      : ['날짜', '요일', '유형', '시작', '종료', '주간', '야간', '휴게']
+
+    const dayRows = []
+    const weeks = getWeeksInMonth(emp.year, emp.month)
     weeks.forEach(week => {
       week.forEach(day => {
         if (!day) return
-        const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-        const d = activeEmp.workData[ds]
+        const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+        const d = emp.workData[ds]
         if (!d) return
-        rows.push([
-          ds, d.type || '평',
+        const type = d.type || '평'
+        const hoursSum = (d.daytimeH||0)+(d.nightH||0)+(d.restH||0)+(d.overtimeH||0)+(d.holidayDaytimeH||0)+(d.holidayNightH||0)+(d.holidayRestH||0)+(d.holidayOtH||0)
+        // 일 안 한 날(시간 0)이면서 평일/휴무면 표에서 제외 — 연차·결근·휴일근로는 의미가 있으니 남김
+        if (hoursSum <= 0 && (type === '평' || type === '공')) return
+        const dow = new Date(emp.year, emp.month - 1, day).getDay()
+        const dateStr = `${emp.year}.${emp.month}.${day}`
+        const base = [
+          dateStr, WD_LABEL[dow], TYPE_LABEL[type] || type,
           d.timeStart || '', d.timeEnd || '',
-          d.daytimeH || 0, d.nightH || 0, d.restH || 0, d.overtimeH || 0,
-          d.holidayDaytimeH || 0, d.holidayNightH || 0, d.holidayRestH || 0, d.holidayOtH || 0,
-        ])
+          blank(d.daytimeH), blank(d.nightH), blank(d.restH),
+        ]
+        if (isStaff) {
+          base.push(blank(d.overtimeH), blank(d.holidayDaytimeH), blank(d.holidayNightH), blank(d.holidayRestH), blank(d.holidayOtH))
+        }
+        dayRows.push(base)
       })
     })
-    const summaryHeaders = ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '식대', '지급액계']
-    const summaryRow = [
-      '급여합계',
-      Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday),
-      Math.round(totals.totalOvertime), Math.round(totals.totalNight),
-      Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
-      Math.round(totals.totalHolidayNightPay), Math.round(totals.meal), Math.round(totals.grossPay),
-    ]
-    const deductHeaders = ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '사업소득세', '지방소득세', '공제합계']
-    const deductRow = [
-      totals.deductions.dt === '4대' ? '4대보험' : totals.deductions.dt === '3.3' ? '3.3%' : '없음',
-      totals.deductions.pension, totals.deductions.health, totals.deductions.care,
-      totals.deductions.employment, totals.deductions.incomeTax, totals.deductions.bizTax,
-      totals.deductions.localTax, totals.totalDeduction,
-    ]
-    const infoRow = [`직원명: ${activeEmp.name}`, `지점: ${selectedBranch?.name}`, `${activeEmp.year}년 ${activeEmp.month}월`, `구분: ${activeEmp.empType || '알바'}`]
-    // 기본급 차감 내역(조퇴·지각 수동차감 / 결근공제)
-    const deductInfoLines = []
+
+    const summaryHeaders = isStaff
+      ? ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '식대', '지급액계']
+      : ['', '기본급', '주휴수당', '야간수당', '식대', '지급액계']
+    const summaryRow = isStaff
+      ? ['급여합계', Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday), Math.round(totals.totalOvertime), Math.round(totals.totalNight), Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay), Math.round(totals.totalHolidayNightPay), Math.round(totals.meal), Math.round(totals.grossPay)]
+      : ['급여합계', Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday), Math.round(totals.totalNight), Math.round(totals.meal), Math.round(totals.grossPay)]
+
+    const deductInfoRows = []
     if (totals.manualDeduction > 0) {
-      deductInfoLines.push(`"기본급 차감(조퇴·지각)","-${Math.round(totals.manualDeduction)}","${totals.manualDeductHours}시간 × 시급 (기본급에 반영됨)"`)
+      deductInfoRows.push(['기본급 차감(조퇴·지각)', `-${Math.round(totals.manualDeduction)}`, `${totals.manualDeductHours}시간 × 시급 (기본급에 반영됨)`])
     }
     if (totals.absentDeduction > 0) {
-      deductInfoLines.push(`"결근 공제","-${Math.round(totals.absentDeduction)}","결근 ${totals.absentDays}일 + 주휴 ${totals.absentWeeks}주 (기본급에 반영됨)"`)
+      deductInfoRows.push(['결근 공제', `-${Math.round(totals.absentDeduction)}`, `결근 ${totals.absentDays}일 + 주휴 ${totals.absentWeeks}주 (기본급에 반영됨)`])
     }
-    const BOM = '\uFEFF'
-    const csv = BOM + [
-      infoRow.map(v => `"${v}"`).join(','),
-      '',
-      headers.map(v => `"${v}"`).join(','),
-      ...rows.map(row => row.map(v => `"${String(v)}"`).join(',')),
-      '',
-      summaryHeaders.map(v => `"${v}"`).join(','),
-      summaryRow.map(v => `"${String(v)}"`).join(','),
-      ...(deductInfoLines.length > 0 ? ['', '"기본급 차감 내역","금액","비고"', ...deductInfoLines] : []),
-      '',
-      deductHeaders.map(v => `"${v}"`).join(','),
-      deductRow.map(v => `"${String(v)}"`).join(','),
-      '',
-      `"실지급액","${totals.netPay}"`,
-    ].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `근무표_${activeEmp.year}년${activeEmp.month}월_${activeEmp.name}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+
+    // 공제: 직원=4대보험, 알바=3.3%만 표기
+    const deductHeaders = isStaff
+      ? ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '지방소득세', '공제합계']
+      : ['공제', '사업소득세(3%)', '지방소득세(0.3%)', '공제합계']
+    const deductRow = isStaff
+      ? ['4대보험', totals.deductions.pension, totals.deductions.health, totals.deductions.care, totals.deductions.employment, totals.deductions.incomeTax, totals.deductions.localTax, totals.totalDeduction]
+      : ['3.3%', totals.deductions.bizTax, totals.deductions.localTax, totals.totalDeduction]
+
+    const aoa = [
+      [`직원명: ${emp.name}`, `지점: ${selectedBranch?.name || ''}`, `${emp.year}년 ${emp.month}월`, `구분: ${emp.empType || '알바'}`],
+      [],
+      headers,
+      ...dayRows,
+      [],
+      summaryHeaders,
+      summaryRow,
+      ...(deductInfoRows.length > 0 ? [[], ['기본급 차감 내역', '금액', '비고'], ...deductInfoRows] : []),
+      [],
+      deductHeaders,
+      deductRow,
+      [],
+      ['실지급액', totals.netPay],
+    ]
+
+    const cols = headers.map(h => {
+      if (h === '날짜') return { wch: 12 }
+      if (h === '요일') return { wch: 5 }
+      if (h === '유형') return { wch: 9 }
+      return { wch: 9 }
+    })
+
+    return { aoa, cols }
+  }
+
+  async function downloadExcelSingle() {
+    if (!activeEmp) return
+    const XLSX = await import('xlsx')
+    const { aoa, cols } = buildEmpSheetAoa(activeEmp)
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    ws['!cols'] = cols
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '근무표')
+    XLSX.writeFile(wb, `근무표_${activeEmp.year}년${activeEmp.month}월_${activeEmp.name}.xlsx`)
   }
 
   // ── 지점 전체 엑셀: 한 파일 안에 직원별 시트로 분리 ──
@@ -1447,60 +1481,9 @@ export default function Home() {
       return `${n}(${usedNames[n]})`
     }
     named.forEach(emp => {
-      const totals = calcTotal(emp)
-      // 기본급에서 빠진 차감 내역(조퇴·지각 수동차감 / 결근공제)을 따로 표기
-      const deductInfoRows = []
-      if (totals.manualDeduction > 0) {
-        deductInfoRows.push(['기본급 차감(조퇴·지각)', `-${Math.round(totals.manualDeduction)}`, `${totals.manualDeductHours}시간 × 시급 (기본급에 반영됨)`])
-      }
-      if (totals.absentDeduction > 0) {
-        deductInfoRows.push(['결근 공제', `-${Math.round(totals.absentDeduction)}`, `결근 ${totals.absentDays}일 + 주휴 ${totals.absentWeeks}주 (기본급에 반영됨)`])
-      }
-      const headers = ['날짜', '유형', '시작', '종료', '주간', '야간', '휴게', '연장', '휴일주간', '휴일야간', '휴일휴게', '휴일연장']
-      const dayRows = []
-      const weeks = getWeeksInMonth(emp.year, emp.month)
-      weeks.forEach(week => {
-        week.forEach(day => {
-          if (!day) return
-          const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-          const d = emp.workData[ds]
-          if (!d) return
-          dayRows.push([
-            ds, d.type || '평',
-            d.timeStart || '', d.timeEnd || '',
-            d.daytimeH || 0, d.nightH || 0, d.restH || 0, d.overtimeH || 0,
-            d.holidayDaytimeH || 0, d.holidayNightH || 0, d.holidayRestH || 0, d.holidayOtH || 0,
-          ])
-        })
-      })
-      const aoa = [
-        [`직원명: ${emp.name}`, `지점: ${selectedBranch?.name || ''}`, `${emp.year}년 ${emp.month}월`, `구분: ${emp.empType || '알바'}`],
-        [],
-        headers,
-        ...dayRows,
-        [],
-        ['', '기본급', '주휴수당', '연장수당', '야간수당', '휴일수당', '휴일연장', '휴일야간', '식대', '지급액계'],
-        [
-          '급여합계',
-          Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday),
-          Math.round(totals.totalOvertime), Math.round(totals.totalNight),
-          Math.round(totals.totalHoliday), Math.round(totals.totalHolidayOtPay),
-          Math.round(totals.totalHolidayNightPay), Math.round(totals.meal), Math.round(totals.grossPay),
-        ],
-        ...(deductInfoRows.length > 0 ? [[], ['기본급 차감 내역', '금액', '비고'], ...deductInfoRows] : []),
-        [],
-        ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '사업소득세', '지방소득세', '공제합계'],
-        [
-          totals.deductions.dt === '4대' ? '4대보험' : totals.deductions.dt === '3.3' ? '3.3%' : '없음',
-          totals.deductions.pension, totals.deductions.health, totals.deductions.care,
-          totals.deductions.employment, totals.deductions.incomeTax, totals.deductions.bizTax,
-          totals.deductions.localTax, totals.totalDeduction,
-        ],
-        [],
-        ['실지급액', totals.netPay],
-      ]
+      const { aoa, cols } = buildEmpSheetAoa(emp)
       const ws = XLSX.utils.aoa_to_sheet(aoa)
-      ws['!cols'] = headers.map(() => ({ wch: 11 }))
+      ws['!cols'] = cols
       XLSX.utils.book_append_sheet(wb, ws, safeSheetName(emp.name))
     })
     const ym = `${activeEmp?.year || named[0].year}년${activeEmp?.month || named[0].month}월`
