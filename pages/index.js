@@ -449,6 +449,7 @@ export default function Home() {
   const [showLogs, setShowLogs] = useState(false)       // 이력 패널 펼침/접힘
   const importInputRef = useRef(null)
   const saveTimer = useRef(null)
+  const skipPushRef = useRef(false)   // popstate(뒤로가기)로 인한 step 변경 시 히스토리 재등록 방지
 
   // ── 이 지점 수정 이력 불러오기 (실패해도 화면 안 깨지게) ──
   async function loadBranchLogs(branchName) {
@@ -487,6 +488,27 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem('payroll_backup', JSON.stringify(employees))
   }, [employees])
+
+  // ── 브라우저 뒤로가기 = 단계(step) 뒤로가기 ──
+  // step 변경 시 브라우저 히스토리에 한 칸 쌓고, 뒤로가기(popstate)를 누르면 이전 단계로 복원한다.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.history.replaceState({ step: 'home' }, '')
+    const onPop = (e) => {
+      const s = (e.state && e.state.step) || 'home'
+      skipPushRef.current = true   // 이 변경은 이미 히스토리에 있으므로 다시 push 하지 않음
+      setStep(s)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (skipPushRef.current) { skipPushRef.current = false; return }
+    if (window.history.state && window.history.state.step === step) return
+    window.history.pushState({ step }, '')
+  }, [step])
 
   // ── 버그픽스: empId를 인자로 받아 클로저 stale 문제 해결 ──
   async function loadData(branchName, empName, yr, mo, empId) {
