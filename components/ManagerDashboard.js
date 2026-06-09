@@ -16,8 +16,10 @@ export default function ManagerDashboard({ onBack }) {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [view, setView] = useState('summary')      // summary | transfer
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
-  const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료' }
-  const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료
+  const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
+  const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료 | 보류
+  const [noteMap, setNoteMap] = useState({})        // { [recId]: '비고 메모' }
+  const [noteUnavailable, setNoteUnavailable] = useState(false)
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   const [editAcctKey, setEditAcctKey] = useState(null)  // 계좌 편집 중인 유닛 key
@@ -117,14 +119,15 @@ export default function ManagerDashboard({ onBack }) {
   function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
 
   // ── 이체 상태 (작성중 → 수정중 → 확정 → 이체완료 순환) ──
-  const STATUS_ORDER = ['작성중', '수정중', '확정', '이체완료']
-  const STATUS_LABEL = { '작성중': '작성중', '수정중': '수정중', '확정': '확정', '이체완료': '이체완료' }
+  const STATUS_ORDER = ['작성중', '수정중', '확정', '이체완료', '보류']
+  const STATUS_LABEL = { '작성중': '작성중', '수정중': '수정중', '확정': '확정', '이체완료': '이체완료', '보류': '보류' }
 
-  // records 가 바뀌면 DB 의 transfer_status 로 상태맵 초기화
+  // records 가 바뀌면 DB 의 transfer_status / transfer_note 로 상태·비고맵 초기화
   useEffect(() => {
-    const m = {}
-    for (const r of records) m[r.id] = r.transfer_status || '작성중'
+    const m = {}, nm = {}
+    for (const r of records) { m[r.id] = r.transfer_status || '작성중'; nm[r.id] = r.transfer_note || '' }
     setStatusMap(m)
+    setNoteMap(nm)
   }, [records])
 
   function txStatus(r) { return statusMap[r.id] || '작성중' }
@@ -169,6 +172,19 @@ export default function ManagerDashboard({ onBack }) {
     for (const r of u.recs) {
       const { error } = await supabase.from('payroll').update({ transfer_status: next }).eq('id', r.id)
       if (error) setTxUnavailable(true)
+    }
+  }
+
+  function unitNote(u) { return noteMap[u.recs[0]?.id] || '' }
+  function setUnitNoteLocal(u, val) {
+    setNoteMap(m => { const n = { ...m }; for (const r of u.recs) n[r.id] = val; return n })
+  }
+  // 비고는 포커스를 잃을 때(onBlur) DB 의 transfer_note 컬럼에 저장
+  async function saveNote(u) {
+    const val = unitNote(u)
+    for (const r of u.recs) {
+      const { error } = await supabase.from('payroll').update({ transfer_note: val }).eq('id', r.id)
+      if (error) setNoteUnavailable(true)
     }
   }
 
@@ -514,6 +530,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-fchip.수정중 em { color: #2f6bbf; background: #e8f0fb; }
     .tx-fchip.확정 em { color: #b07a1e; background: #fbf2dd; }
     .tx-fchip.이체완료 em { color: #1f9d57; background: #e3f4ea; }
+    .tx-fchip.보류 em { color: #8a5cc4; background: #f0eafa; }
     .tx-fchip.on { color: #fff; }
     .tx-fchip.on em { color: #fff; background: rgba(255,255,255,0.25); }
     .tx-fchip.all.on { background: #b8954a; border-color: #b8954a; }
@@ -521,6 +538,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-fchip.수정중.on { background: #2f6bbf; border-color: #2f6bbf; }
     .tx-fchip.확정.on { background: #c69a32; border-color: #c69a32; }
     .tx-fchip.이체완료.on { background: #1f9d57; border-color: #1f9d57; }
+    .tx-fchip.보류.on { background: #8a5cc4; border-color: #8a5cc4; }
 
     .tx-hint { font-size: 11.5px; color: #aaa; margin: 4px 2px 12px; }
     .tx-warn { font-size: 12px; color: #b06a1a; background: #fdf3e6; border: 1px solid #f0d8b8; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
@@ -541,6 +559,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-row.st-수정중 { border-left-color: #6ba1e6; }
     .tx-row.st-확정   { border-left-color: #e0bf6a; }
     .tx-row.st-이체완료 { border-left-color: #5cc189; background: #f7fbf8; }
+    .tx-row.st-보류 { border-left-color: #b89ce0; background: #faf8fd; }
 
     .tx-status {
       flex: none; width: 70px; padding: 7px 0; border-radius: 7px;
@@ -551,14 +570,17 @@ export default function ManagerDashboard({ onBack }) {
     .tx-status.수정중 { background: #e8f0fb; color: #2f6bbf; border-color: #cfe0f5; }
     .tx-status.확정   { background: #fbf0d6; color: #a9781a; border-color: #f0dca8; }
     .tx-status.이체완료 { background: #e3f4ea; color: #1f9d57; border-color: #c3e6d1; }
+    .tx-status.보류 { background: #f0eafa; color: #7a4cb8; border-color: #e0d2f2; }
     .tx-status:hover { filter: brightness(0.97); transform: translateY(-1px); }
 
-    .tx-name-wrap { flex: none; width: 120px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-    .tx-name { font-size: 14px; font-weight: 700; color: #1a1a1a; }
-    .tx-pt { font-size: 9px; font-weight: 700; color: #847e73; background: #efede8; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
+    /* 이름: 한 줄 고정 (줄바꿈 방지로 행 높이 일정하게) */
+    .tx-name-wrap { flex: none; width: 108px; display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
+    .tx-name { font-size: 14px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tx-pt { flex: none; font-size: 9px; font-weight: 700; color: #847e73; background: #efede8; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
     .tx-pt.merge { color: #5e6b78; background: #eaeef2; }
 
-    .tx-ded-wrap { flex: none; width: 92px; display: flex; flex-wrap: wrap; gap: 4px; }
+    /* 공제 배지: 한 줄 고정 폭 (직원=공제없음+4대보험 2개도 한 줄에) */
+    .tx-ded-wrap { flex: none; width: 128px; display: flex; flex-wrap: nowrap; gap: 4px; }
     .tx-ded { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; border: 1px solid #e2ded5; color: #6b6760; background: #f4f2ed; }
     .tx-ded.four { color: #2f6bbf; background: #eaf2fc; border-color: #cfe0f5; }    /* 4대보험 = 파랑 */
     .tx-ded.three { color: #b07a1e; background: #fbf3e2; border-color: #f0e0bd; }   /* 3.3% = 호박색 */
@@ -576,8 +598,15 @@ export default function ManagerDashboard({ onBack }) {
     .tx-acct-save:disabled { opacity: 0.6; cursor: default; }
     .tx-acct-cancel { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; }
 
-    .tx-amt { flex: none; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; min-width: 84px; }
+    /* 금액: 고정 폭으로 오른쪽 정렬 (비고 칸 왼쪽에 위치) */
+    .tx-amt { flex: none; width: 96px; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
+
+    /* 비고: 담당자가 메모를 적는 칸 (행 오른쪽 끝) */
+    .tx-note { flex: none; width: 150px; }
+    .tx-note-input { width: 100%; font-size: 12px; color: #444; padding: 6px 9px; border: 1px solid #e7e3da; border-radius: 7px; font-family: inherit; outline: none; background: #fcfbf9; transition: border-color .12s; }
+    .tx-note-input:focus { border-color: #b8954a; background: #fff; }
+    .tx-note-input::placeholder { color: #c4bfb6; }
 
     /* ───── 퇴직금 계산기 (떠있는 버튼 + 팝업) ───── */
     .sev-fab {
@@ -658,6 +687,7 @@ export default function ManagerDashboard({ onBack }) {
     @media (max-width: 560px) {
       .tx-row { flex-wrap: wrap; }
       .tx-acct-wrap { order: 3; width: 100%; flex-basis: 100%; }
+      .tx-note { order: 4; width: 100%; flex-basis: 100%; }
       .tx-name-wrap { width: auto; flex: 1; }
     }
 
@@ -779,9 +809,12 @@ export default function ManagerDashboard({ onBack }) {
                   ))}
                 </div>
 
-                <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 수정중 → 확정 → 이체완료 순으로 바뀝니다.</div>
+                <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 수정중 → 확정 → 이체완료 → 보류 순으로 바뀝니다. 오른쪽 비고 칸에 메모를 적을 수 있습니다.</div>
                 {txUnavailable && (
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
+                )}
+                {noteUnavailable && (
+                  <div className="tx-warn">⚠ 비고 메모가 저장되지 않습니다. Supabase 에 <b>transfer_note</b> 컬럼을 추가해 주세요.</div>
                 )}
 
                 {groups.every(g => g.units.filter(matchFilter).length === 0) ? (
@@ -848,6 +881,15 @@ export default function ManagerDashboard({ onBack }) {
                               )}
                             </div>
                             <div className="tx-amt">{fmt(unitAmt(u))}<small>원</small></div>
+                            <div className="tx-note">
+                              <input
+                                className="tx-note-input"
+                                value={unitNote(u)}
+                                onChange={e => setUnitNoteLocal(u, e.target.value)}
+                                onBlur={() => saveNote(u)}
+                                placeholder="비고"
+                              />
+                            </div>
                           </div>
                         )
                       })}
