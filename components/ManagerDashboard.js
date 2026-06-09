@@ -14,7 +14,8 @@ export default function ManagerDashboard({ onBack }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
-  const [view, setView] = useState('summary')      // summary | transfer | severance
+  const [view, setView] = useState('summary')      // summary | transfer
+  const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료' }
   const [onlyPending, setOnlyPending] = useState(false)
   const [txUnavailable, setTxUnavailable] = useState(false)
@@ -544,8 +545,40 @@ export default function ManagerDashboard({ onBack }) {
     .tx-amt { flex: none; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; min-width: 84px; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
 
-    /* ───── 퇴직금 계산 ───── */
-    .sv-wrap { max-width: 620px; }
+    /* ───── 퇴직금 계산기 (떠있는 버튼 + 팝업) ───── */
+    .sev-fab {
+      position: fixed; right: 24px; bottom: 24px; z-index: 50;
+      display: flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, #cdaa5d, #b8954a); color: #fff;
+      border: none; border-radius: 999px; padding: 12px 20px 12px 16px; cursor: pointer;
+      box-shadow: 0 6px 20px rgba(184,149,74,0.45); font-family: 'Pretendard', sans-serif;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .sev-fab:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(184,149,74,0.55); }
+    .sev-fab-ico { font-size: 22px; line-height: 1; }
+    .sev-fab-txt { font-size: 12px; font-weight: 700; line-height: 1.15; text-align: left; letter-spacing: 0.02em; }
+
+    .sev-overlay {
+      position: fixed; inset: 0; z-index: 60; background: rgba(26,22,16,0.45);
+      display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px;
+      overflow-y: auto; backdrop-filter: blur(2px);
+      animation: sev-fade 0.15s ease;
+    }
+    @keyframes sev-fade { from { opacity: 0 } to { opacity: 1 } }
+    .sev-panel {
+      width: 100%; max-width: 460px; background: #faf8f3; border-radius: 18px;
+      padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); margin: auto 0;
+      animation: sev-pop 0.18s ease;
+    }
+    @keyframes sev-pop { from { transform: translateY(12px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+    .sev-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .sev-head-ico { font-size: 26px; margin-bottom: 6px; }
+    .sev-head-title { font-size: 19px; font-weight: 700; color: #1a1a1a; margin: 0 0 4px; }
+    .sev-head-sub { font-size: 12px; color: #999; margin: 0; line-height: 1.5; }
+    .sev-close { background: #fff; border: 1px solid #e0ddd6; color: #888; font-size: 15px; cursor: pointer; width: 32px; height: 32px; border-radius: 9px; flex: none; }
+    .sev-close:hover { border-color: #1a1a1a; color: #1a1a1a; }
+
+    /* ───── 퇴직금 폼/결과 (팝업 내부) ───── */
     .sv-form { background: #fff; border: 1px solid #ebe9e4; border-radius: 14px; padding: 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
     .sv-field { display: flex; flex-direction: column; gap: 5px; }
     .sv-field label { font-size: 11px; font-weight: 600; color: #999; letter-spacing: 0.04em; }
@@ -642,74 +675,9 @@ export default function ManagerDashboard({ onBack }) {
         <div className="md-tabs">
           <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
           <button className={`md-tab ${view === 'transfer' ? 'on' : ''}`} onClick={() => setView('transfer')}>💸 이체 처리</button>
-          <button className={`md-tab ${view === 'severance' ? 'on' : ''}`} onClick={() => setView('severance')}>🧮 퇴직금</button>
         </div>
 
-        {view === 'severance' ? (
-          /* ───────── 퇴직금 계산 ───────── */
-          <div className="sv-wrap">
-            <div className="sv-form">
-              <div className="sv-field">
-                <label>지점</label>
-                <select value={sevBranch} onChange={e => { setSevBranch(e.target.value); loadSevEmps(e.target.value) }}>
-                  <option value="">지점 선택</option>
-                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
-              </div>
-              <div className="sv-field">
-                <label>직원</label>
-                <select value={sevEmp} onChange={e => pickSevEmp(e.target.value)} disabled={!sevBranch}>
-                  <option value="">{sevBranch ? '직원 선택' : '지점 먼저 선택'}</option>
-                  {sevEmps.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
-                </select>
-              </div>
-              <div className="sv-field">
-                <label>입사일</label>
-                <input type="date" value={sevHire} onChange={e => setSevHire(e.target.value)} />
-              </div>
-              <div className="sv-field">
-                <label>퇴사일</label>
-                <input type="date" value={sevResign} onChange={e => setSevResign(e.target.value)} />
-              </div>
-              <button className="sv-calc" onClick={calcSeverance} disabled={sevLoading}>
-                {sevLoading ? '계산 중…' : '퇴직금 계산'}
-              </button>
-            </div>
-
-            <div className="sv-note">
-              ※ 퇴사일 직전 3개월 급여로 1일 평균임금을 구해 계산한 <b>추정치</b>입니다.
-              연차수당·상여금 등 일부 항목과 통상임금 보정은 반영되지 않으니, 실제 지급 전 <b>노무사 확인</b>을 권합니다.
-            </div>
-
-            {sevResult && (
-              <div className="sv-result">
-                {!sevResult.eligible && (
-                  <div className="sv-warn">⚠ 재직일수가 1년(365일) 미만입니다 — 법정 퇴직금 대상이 아닐 수 있습니다. (아래는 참고용 계산값)</div>
-                )}
-                <div className="sv-big">
-                  <div className="sv-big-k">예상 퇴직금</div>
-                  <div className="sv-big-v">{fmt(sevResult.severance)}<small>원</small></div>
-                </div>
-                <div className="sv-rows">
-                  <div className="sv-r"><span>1일 평균임금</span><b>{fmt(sevResult.avgDaily)}원</b></div>
-                  <div className="sv-r"><span>3개월 임금총액</span><b>{fmt(sevResult.wageSum)}원</b></div>
-                  <div className="sv-r"><span>산정기간 일수</span><b>{sevResult.daysSum}일</b></div>
-                  <div className="sv-r"><span>총 재직일수</span><b>{sevResult.serviceDays}일 ({(sevResult.serviceDays / 365).toFixed(2)}년)</b></div>
-                </div>
-                <div className="sv-formula">계산식 : {fmt(sevResult.avgDaily)} × 30일 × ({sevResult.serviceDays} ÷ 365)</div>
-                <div className="sv-used">
-                  <div className="sv-used-h">평균임금 산정에 사용한 급여 (식대 포함)</div>
-                  {sevResult.used.map(r => (
-                    <div key={r.id} className="sv-used-r">
-                      <span>{r.year}년 {r.month}월</span>
-                      <b>{fmt(fixGrand(r) + (r.meal_allowance || 0))}원</b>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : loading ? (
+        {loading ? (
           <p className="md-loading">LOADING...</p>
         ) : view === 'transfer' ? (
           /* ───────── 이체 처리 화면 ───────── */
@@ -999,6 +967,89 @@ export default function ManagerDashboard({ onBack }) {
           </>
         )}
       </div>
+
+      {/* ── 우측 하단 떠있는 퇴직금 계산기 버튼 ── */}
+      <button className="sev-fab" onClick={() => setSevOpen(true)} title="퇴직금 계산기">
+        <span className="sev-fab-ico">🧮</span>
+        <span className="sev-fab-txt">퇴직금<br/>계산기</span>
+      </button>
+
+      {/* ── 퇴직금 계산기 팝업 ── */}
+      {sevOpen && (
+        <div className="sev-overlay" onClick={() => setSevOpen(false)}>
+          <div className="sev-panel" onClick={e => e.stopPropagation()}>
+            <div className="sev-head">
+              <div>
+                <div className="sev-head-ico">🧮</div>
+                <h2 className="sev-head-title">퇴직금 계산기</h2>
+                <p className="sev-head-sub">직원을 고르면 입·퇴사일과 직전 3개월 급여로 자동 계산해요.</p>
+              </div>
+              <button className="sev-close" onClick={() => setSevOpen(false)}>✕</button>
+            </div>
+
+            <div className="sv-form">
+              <div className="sv-field">
+                <label>지점</label>
+                <select value={sevBranch} onChange={e => { setSevBranch(e.target.value); loadSevEmps(e.target.value) }}>
+                  <option value="">지점 선택</option>
+                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div className="sv-field">
+                <label>직원</label>
+                <select value={sevEmp} onChange={e => pickSevEmp(e.target.value)} disabled={!sevBranch}>
+                  <option value="">{sevBranch ? '직원 선택' : '지점 먼저 선택'}</option>
+                  {sevEmps.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
+                </select>
+              </div>
+              <div className="sv-field">
+                <label>입사일</label>
+                <input type="date" value={sevHire} onChange={e => setSevHire(e.target.value)} />
+              </div>
+              <div className="sv-field">
+                <label>퇴사일</label>
+                <input type="date" value={sevResign} onChange={e => setSevResign(e.target.value)} />
+              </div>
+              <button className="sv-calc" onClick={calcSeverance} disabled={sevLoading}>
+                {sevLoading ? '계산 중…' : '퇴직금 계산'}
+              </button>
+            </div>
+
+            <div className="sv-note">
+              ※ 퇴사일 직전 3개월 급여로 1일 평균임금을 구해 계산한 <b>추정치</b>입니다.
+              연차수당·상여금 등 일부 항목과 통상임금 보정은 반영되지 않으니, 실제 지급 전 <b>노무사 확인</b>을 권합니다.
+            </div>
+
+            {sevResult && (
+              <div className="sv-result">
+                {!sevResult.eligible && (
+                  <div className="sv-warn">⚠ 재직일수가 1년(365일) 미만입니다 — 법정 퇴직금 대상이 아닐 수 있습니다. (아래는 참고용 계산값)</div>
+                )}
+                <div className="sv-big">
+                  <div className="sv-big-k">예상 퇴직금</div>
+                  <div className="sv-big-v">{fmt(sevResult.severance)}<small>원</small></div>
+                </div>
+                <div className="sv-rows">
+                  <div className="sv-r"><span>1일 평균임금</span><b>{fmt(sevResult.avgDaily)}원</b></div>
+                  <div className="sv-r"><span>3개월 임금총액</span><b>{fmt(sevResult.wageSum)}원</b></div>
+                  <div className="sv-r"><span>산정기간 일수</span><b>{sevResult.daysSum}일</b></div>
+                  <div className="sv-r"><span>총 재직일수</span><b>{sevResult.serviceDays}일 ({(sevResult.serviceDays / 365).toFixed(2)}년)</b></div>
+                </div>
+                <div className="sv-formula">계산식 : {fmt(sevResult.avgDaily)} × 30일 × ({sevResult.serviceDays} ÷ 365)</div>
+                <div className="sv-used">
+                  <div className="sv-used-h">평균임금 산정에 사용한 급여 (식대 포함)</div>
+                  {sevResult.used.map(r => (
+                    <div key={r.id} className="sv-used-r">
+                      <span>{r.year}년 {r.month}월</span>
+                      <b>{fmt(fixGrand(r) + (r.meal_allowance || 0))}원</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   )
 }
