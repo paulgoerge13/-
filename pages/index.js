@@ -272,6 +272,7 @@ const EMPTY_EMP = {
   deductionType: 'none',   // 공제 방식: 'none' | '3.3' | '4대'
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
   mealAllowance: 0,        // 식대 (비과세) — 4대보험·소득세 산정에서 제외
+  severancePay: 0,         // 퇴직금 — 4대보험·소득세 제외, 지급액·실수령액에만 합산 (퇴직소득세 별도)
   birthDate: '',           // 생년월일 (명세서용, 비우면 주민번호 앞자리에서 자동)
   hireDate: '',            // 입사일 (YYYY-MM-DD) — 직원 기본급 일할계산용. 비우면 월초부터 만근
   resignDate: '',          // 퇴사일 (YYYY-MM-DD) — 직원 기본급 일할계산용. 비우면 월말까지 만근
@@ -282,7 +283,7 @@ const EMPTY_EMP = {
 // 공제방식·소득세·식대·생년월일·입사일·퇴사일은 Supabase payroll 테이블에 컬럼이 없어서
 // DB에서 다시 불러올 때 매번 초기화됐다(=리셋 버그). 이 값들은 지점별·직원이름별로
 // 별도 localStorage 키에 따로 저장해 두고, DB 로드 후 다시 덮어 씌워 유지한다.
-const EMP_SETTINGS_FIELDS = ['deductionType', 'manualIncomeTax', 'mealAllowance', 'birthDate', 'hireDate', 'resignDate']
+const EMP_SETTINGS_FIELDS = ['deductionType', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate']
 function empSettingsKey(branchName) { return `payroll_empsettings_${branchName}` }
 function loadAllEmpSettings(branchName) {
   if (typeof window === 'undefined' || !branchName) return {}
@@ -976,14 +977,15 @@ export default function Home() {
 
     const hoursWeekly = emp.hourlyWage > 0 ? Math.round((totalWeeklyFinal / emp.hourlyWage) * 10) / 10 : 0
 
-    // ── 식대(비과세) · 지급액계 · 공제 · 실수령액 ──
+    // ── 식대(비과세) · 퇴직금 · 지급액계 · 공제 · 실수령액 ──
     const meal = emp.mealAllowance || 0
-    const grossPay = grandTotal + meal                      // 지급액계 (과세 + 비과세)
-    const deductions = calcDeductions(grandTotal, emp)        // 공제는 과세급여(식대 제외) 기준
+    const severance = emp.severancePay || 0                   // 퇴직금 (4대보험·소득세 제외)
+    const grossPay = grandTotal + meal + severance            // 지급액계 (과세 + 비과세 + 퇴직금)
+    const deductions = calcDeductions(grandTotal, emp)        // 공제는 과세급여(식대·퇴직금 제외) 기준
     const netPay = grossPay - deductions.total                // 실지급액
 
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
-      meal, grossPay,
+      meal, severance, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic,
@@ -1129,6 +1131,7 @@ export default function Home() {
         deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
         manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
         mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
+        severancePay:    pick(undefined, s.severancePay, 0),   // DB 컬럼 없음 → 브라우저 저장값만 사용
       }
       // 퇴사일이 있으면 그 범위 밖 근무표도 정리
       emp.workData = pruneWorkDataToEmployment(emp.workData, emp.hireDate, emp.resignDate)
@@ -1518,6 +1521,7 @@ export default function Home() {
       ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근무시간(주간+야간 ${t.hoursHolidayWork}h) × 1.5배`],
       ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 0.5배 가산 (휴일근로 1.5배 + 0.5배 = 2.0배)`],
       ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
+      ['퇴직금', t.severance, '4대보험·소득세 제외 (퇴직소득세 별도)', '퇴직'],
     ].filter(([l, v]) => v > 0 || l === '기본급')
 
     // 공제 항목: [라벨, 금액]
@@ -1533,7 +1537,7 @@ export default function Home() {
     for (let i = 0; i < maxRows; i++) {
       const p = payItems[i], de = dedItems[i]
       bodyRows += `<tr>
-        <td class="c-gubun">${p ? '매월' : ''}</td>
+        <td class="c-gubun">${p ? (p[3] || '매월') : ''}</td>
         <td class="c-item">${p ? p[0] : ''}</td>
         <td class="c-amt">${p ? w(p[1]) : ''}</td>
         <td class="c-item">${de ? de[0] : ''}</td>
@@ -2749,6 +2753,19 @@ export default function Home() {
                   />
                   원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
                 </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
+                  퇴직금
+                  <input
+                    type="number"
+                    value={activeEmp.severancePay || 0}
+                    onChange={e => updateEmp('severancePay', Number(e.target.value))}
+                    style={{ width: 130, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                  />
+                  원 <span style={{ color: '#bbb' }}>(4대보험·소득세 제외 · 퇴직소득세 별도)</span>
+                </label>
+                {(activeEmp.severancePay || 0) > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#b8954a' }}>※ 퇴직금은 우측 하단 퇴직금 계산기로 금액 확인 후 입력하세요. 4대보험은 월급에만 계산됩니다.</div>
+                )}
               </div>
 
               {/* ── 수정 #5: 급여 합계 (수동 입력 + 자동계산 합산) ── */}
@@ -2780,6 +2797,7 @@ export default function Home() {
                       { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 0.5배 (휴일근로 1.5배에 추가 가산 → 합 2.0배)` },
                       { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배 (휴일근로에 추가 가산)` },
                       { label: '식대',      total: totals.meal,                 hours: null,                      desc: `비과세 (4대보험·소득세 제외)` },
+                      { label: '퇴직금',    total: totals.severance,            hours: null,                      desc: `4대보험·소득세 제외 (퇴직소득세 별도)` },
                     ].filter(row => row.total > 0 || row.label === '기본급' || row.neg).map(({ label, total, hours, desc, neg }) => (
                       <div key={label} className="summary-row">
                         <div className="summary-row-left">
@@ -2792,8 +2810,8 @@ export default function Home() {
                   </div>
                   <div className="summary-total-row">
                     <div className="summary-total-label">
-                      지급액 계{totals.meal > 0 ? ' (식대 포함)' : ''}
-                      {totals.isStaff && <span style={{ fontSize: 12, color: '#1f9d57', fontWeight: 600, marginLeft: 6 }}>= 공제 없음 실수령액</span>}
+                      지급액 계{(totals.meal > 0 || totals.severance > 0) ? ` (${[totals.meal > 0 ? '식대' : null, totals.severance > 0 ? '퇴직금' : null].filter(Boolean).join('·')} 포함)` : ''}
+                      {totals.isStaff && totals.severance === 0 && <span style={{ fontSize: 12, color: '#1f9d57', fontWeight: 600, marginLeft: 6 }}>= 공제 없음 실수령액</span>}
                     </div>
                     <div className="summary-total-val">{fmt(totals.grossPay)}<span className="won-big">원</span></div>
                   </div>
