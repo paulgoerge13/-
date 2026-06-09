@@ -98,14 +98,28 @@ export default function ManagerDashboard({ onBack }) {
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
   function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
 
-  // ── 실제 이체(입금)할 금액 ──
-  // 공제방식이 'none'(공제 없음)이면 세전 지급액(=명세서 grand_total) 그대로 이체.
-  // 공제가 잡혀 있으면 공제 후 실지급액을 이체.
-  function transferAmt(r) {
+  // ── 실제 이체(입금)할 금액 = 명세서 '실지급액' (급여 페이지 calcDeductions 와 동일) ──
+  //   실지급 = 세전지급액(grand_total) + 식대(비과세) − 공제총액
+  //   공제총액은 직원/알바 구분이 아니라 각 직원에 설정된 deduction_type 기준:
+  //     'none' → 공제 0 / '4대' → 4대보험+소득세+지방세 / '3.3' → 사업소득 3.3%
+  function recDeductionTotal(r) {
     const dt = r.deduction_type || 'none'
-    if (dt === 'none') return fixGrand(r)
-    return recNet(r)
+    const gross = fixGrand(r)              // 과세 기준(식대 제외)
+    if (dt === '4대') {
+      const pension    = Math.floor(gross * 0.0475 / 10) * 10
+      const health     = Math.floor(gross * 0.03595 / 10) * 10
+      const care       = Math.floor(health * 0.1314 / 10) * 10
+      const employment = Math.floor(gross * 0.009 / 10) * 10
+      const incomeTax  = r.income_tax || 0
+      const localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
+      return pension + health + care + employment + incomeTax + localTax
+    }
+    if (dt === '3.3') {
+      return Math.round(gross * 0.03) + Math.round(gross * 0.003)   // 3.3%
+    }
+    return 0   // 'none' = 공제 없음 (세전 전액 지급)
   }
+  function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeductionTotal(r) }
 
   // ── 이체 상태 (작성중 → 수정중 → 확정 → 이체완료 순환) ──
   const STATUS_ORDER = ['작성중', '수정중', '확정', '이체완료']
@@ -120,23 +134,51 @@ export default function ManagerDashboard({ onBack }) {
 
   function txStatus(r) { return statusMap[r.id] || '작성중' }
 
-  async function cycleStatus(r) {
-    const cur = txStatus(r)
-    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(cur) + 1) % STATUS_ORDER.length]
-    setStatusMap(m => ({ ...m, [r.id]: next }))
-    const { error } = await supabase.from('payroll').update({ transfer_status: next }).eq('id', r.id)
-    if (error) {
-      // transfer_status 컬럼이 아직 없으면 안내 (값은 화면에는 유지)
-      setTxUnavailable(true)
+  // ── 같은 계좌 = 한 번의 이체로 묶기 ──
+  //   한 사람을 직원분 + 별도분(예: 김현준 / 김현준p3)으로 나눠 입력한 경우,
+  //   같은 계좌번호면 한 줄로 합쳐 총 이체금액을 보여준다.
+  function buildUnits(list) {
+    const units = []
+    const byAcct = {}
+    for (const r of list) {
+      const acct = (r.account_number || '').trim()
+      if (acct) {
+        if (!byAcct[acct]) { byAcct[acct] = { key: 'a:' + acct, recs: [], account: acct }; units.push(byAcct[acct]) }
+        byAcct[acct].recs.push(r)
+      } else {
+        units.push({ key: 'r:' + r.id, recs: [r], account: '' })   // 계좌 미입력은 합치지 않음
+      }
+    }
+    return units
+  }
+  function unitNames(u) {
+    const names = [...new Set(u.recs.map(r => r.emp_name))]
+    return names.join(' + ')
+  }
+  function unitAmt(u) { return u.recs.reduce((s, r) => s + transferAmt(r), 0) }
+  function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
+  function unitMixed(u) { return u.recs.length > 1 }
+  // 유닛 상태 = 가장 덜 진행된 레코드 기준 (모두 이체완료여야 '이체완료')
+  function unitStatus(u) {
+    let idx = STATUS_ORDER.length - 1
+    for (const r of u.recs) idx = Math.min(idx, STATUS_ORDER.indexOf(txStatus(r)))
+    return STATUS_ORDER[idx < 0 ? 0 : idx]
+  }
+
+  async function cycleUnit(u) {
+    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(unitStatus(u)) + 1) % STATUS_ORDER.length]
+    setStatusMap(m => { const n = { ...m }; for (const r of u.recs) n[r.id] = next; return n })
+    for (const r of u.recs) {
+      const { error } = await supabase.from('payroll').update({ transfer_status: next }).eq('id', r.id)
+      if (error) setTxUnavailable(true)
     }
   }
 
-  async function copyAcct(r) {
-    const text = r.account_number || ''
+  async function copyAcct(u) {
     try {
-      await navigator.clipboard.writeText(text)
-      setCopiedId(r.id)
-      setTimeout(() => setCopiedId(c => (c === r.id ? null : c)), 1500)
+      await navigator.clipboard.writeText(u.account || '')
+      setCopiedId(u.key)
+      setTimeout(() => setCopiedId(c => (c === u.key ? null : c)), 1500)
     } catch (e) {
       // 클립보드 권한이 없으면 무시
     }
@@ -418,9 +460,10 @@ export default function ManagerDashboard({ onBack }) {
     .tx-status.이체완료 { background: #57c98a; color: #fff; }
     .tx-status:hover { filter: brightness(0.96); transform: translateY(-1px); }
 
-    .tx-name-wrap { flex: none; width: 78px; display: flex; align-items: center; gap: 5px; }
+    .tx-name-wrap { flex: none; width: 120px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .tx-name { font-size: 14px; font-weight: 700; color: #1a1a1a; }
-    .tx-pt { font-size: 9px; font-weight: 700; color: #9c7f44; background: #ece0c9; padding: 1px 5px; border-radius: 10px; }
+    .tx-pt { font-size: 9px; font-weight: 700; color: #9c7f44; background: #ece0c9; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
+    .tx-pt.merge { color: #2b6cb0; background: #dbeafe; }
 
     .tx-acct-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; }
     .tx-acct { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -485,16 +528,17 @@ export default function ManagerDashboard({ onBack }) {
         ) : view === 'transfer' ? (
           /* ───────── 이체 처리 화면 ───────── */
           (() => {
-            const rows = records
-              .filter(r => !onlyPending || txStatus(r) !== '이체완료')
-            const doneCount = records.filter(r => txStatus(r) === '이체완료').length
-            const doneAmt = records.filter(r => txStatus(r) === '이체완료').reduce((s, r) => s + transferAmt(r), 0)
-            const totalAmt = records.reduce((s, r) => s + transferAmt(r), 0)
-            const remainAmt = totalAmt - doneAmt
-            // 지점별 그룹 (현재 필터 기준)
+            // 지점별 → 같은 계좌끼리 묶은 '이체 단위(유닛)' 생성
             const groups = (isAll ? BRANCHES : [branch])
-              .map(b => ({ branch: b, list: rows.filter(r => r.branch === b) }))
-              .filter(g => g.list.length > 0)
+              .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
+              .filter(g => g.units.length > 0)
+            const allUnits = groups.flatMap(g => g.units)
+            const doneUnits = allUnits.filter(u => unitStatus(u) === '이체완료')
+            const doneCount = doneUnits.length
+            const doneAmt = doneUnits.reduce((s, u) => s + unitAmt(u), 0)
+            const totalAmt = allUnits.reduce((s, u) => s + unitAmt(u), 0)
+            const remainAmt = totalAmt - doneAmt
+            const totalUnits = allUnits.length
 
             return (
               <>
@@ -502,9 +546,9 @@ export default function ManagerDashboard({ onBack }) {
                 <div className="tx-summary">
                   <div className="tx-sum-main">
                     <div className="tx-sum-k">이체 진행</div>
-                    <div className="tx-sum-v">{doneCount}<small>/{records.length}명 완료</small></div>
+                    <div className="tx-sum-v">{doneCount}<small>/{totalUnits}건 완료</small></div>
                     <div className="tx-sum-bar">
-                      <div className="tx-sum-fill" style={{ width: `${records.length ? Math.round(doneCount / records.length * 100) : 0}%` }} />
+                      <div className="tx-sum-fill" style={{ width: `${totalUnits ? Math.round(doneCount / totalUnits * 100) : 0}%` }} />
                     </div>
                   </div>
                   <div className="tx-sum-amts">
@@ -537,42 +581,45 @@ export default function ManagerDashboard({ onBack }) {
                   </label>
                 </div>
 
-                <div className="tx-hint">상태 박스를 누르면 작성중 → 수정중 → 확정 → 이체완료 순서로 바뀝니다.</div>
+                <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 수정중 → 확정 → 이체완료 순으로 바뀝니다.</div>
                 {txUnavailable && (
-                  <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요. (아래 안내)</div>
+                  <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
                 )}
 
-                {groups.length === 0 ? (
+                {groups.every(g => g.units.filter(u => !onlyPending || unitStatus(u) !== '이체완료').length === 0) ? (
                   <p className="md-empty">{onlyPending ? '미완료 건이 없습니다. 모두 이체 완료!' : '해당 월의 데이터가 없습니다.'}</p>
                 ) : groups.map(g => {
-                  const gTotal = g.list.reduce((s, r) => s + transferAmt(r), 0)
-                  const gDone = g.list.filter(r => txStatus(r) === '이체완료').length
+                  const shown = g.units.filter(u => !onlyPending || unitStatus(u) !== '이체완료')
+                  if (shown.length === 0) return null
+                  const gTotal = g.units.reduce((s, u) => s + unitAmt(u), 0)
+                  const gDone = g.units.filter(u => unitStatus(u) === '이체완료').length
                   return (
                     <div key={g.branch} className="tx-group">
                       <div className="tx-group-head">
                         <span className="tx-group-name">{g.branch}</span>
-                        <span className="tx-group-meta">{gDone}/{g.list.length}명 · {fmt(gTotal)}원</span>
+                        <span className="tx-group-meta">{gDone}/{g.units.length}건 · {fmt(gTotal)}원</span>
                       </div>
-                      {g.list.map(r => {
-                        const st = txStatus(r)
+                      {shown.map(u => {
+                        const st = unitStatus(u)
                         return (
-                          <div key={r.id} className={`tx-row st-${st}`}>
-                            <button className={`tx-status ${st}`} onClick={() => cycleStatus(r)}>
+                          <div key={u.key} className={`tx-row st-${st}`}>
+                            <button className={`tx-status ${st}`} onClick={() => cycleUnit(u)}>
                               {STATUS_LABEL[st]}
                             </button>
                             <div className="tx-name-wrap">
-                              <span className="tx-name">{r.emp_name}</span>
-                              {r.emp_type !== '직원' && <span className="tx-pt">알바</span>}
+                              <span className="tx-name">{unitNames(u)}</span>
+                              {unitMixed(u) ? <span className="tx-pt merge">합산</span>
+                                : unitIsAlba(u) ? <span className="tx-pt">알바</span> : null}
                             </div>
                             <div className="tx-acct-wrap">
-                              <span className="tx-acct">{r.account_number || '계좌 미입력'}</span>
-                              {r.account_number && (
-                                <button className="tx-copy" onClick={() => copyAcct(r)}>
-                                  {copiedId === r.id ? '복사됨 ✓' : '복사'}
+                              <span className="tx-acct">{u.account || '계좌 미입력'}</span>
+                              {u.account && (
+                                <button className="tx-copy" onClick={() => copyAcct(u)}>
+                                  {copiedId === u.key ? '복사됨 ✓' : '복사'}
                                 </button>
                               )}
                             </div>
-                            <div className="tx-amt">{fmt(transferAmt(r))}<small>원</small></div>
+                            <div className="tx-amt">{fmt(unitAmt(u))}<small>원</small></div>
                           </div>
                         )
                       })}
