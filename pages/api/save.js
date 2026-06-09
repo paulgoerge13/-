@@ -29,6 +29,7 @@ export default async function handler(req, res) {
     deduction_type,
     income_tax,
     meal_allowance,
+    severance_pay,
   } = req.body
 
   if (!branch || !emp_name) {
@@ -70,6 +71,7 @@ export default async function handler(req, res) {
     deduction_type: deduction_type || 'none',
     income_tax:     Number(income_tax) || 0,
     meal_allowance: Number(meal_allowance) || 0,
+    severance_pay:  Number(severance_pay) || 0,
   }
 
   const opts = { onConflict: 'branch,emp_name,year,month' }

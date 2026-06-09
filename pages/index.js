@@ -1067,6 +1067,7 @@ export default function Home() {
       deduction_type: emp.deductionType || 'none',
       income_tax:     emp.manualIncomeTax || 0,
       meal_allowance: emp.mealAllowance || 0,
+      severance_pay:  emp.severancePay || 0,
     }
     try {
       const res = await fetch('/api/save', {
@@ -1131,7 +1132,7 @@ export default function Home() {
         deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
         manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
         mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
-        severancePay:    pick(undefined, s.severancePay, 0),   // DB 컬럼 없음 → 브라우저 저장값만 사용
+        severancePay:    pick(r.severance_pay, s.severancePay, 0),   // DB 우선 + 브라우저 저장값 보조 (여러 기기 공유)
       }
       // 퇴사일이 있으면 그 범위 밖 근무표도 정리
       emp.workData = pruneWorkDataToEmployment(emp.workData, emp.hireDate, emp.resignDate)

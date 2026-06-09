@@ -115,12 +115,14 @@ export default function ManagerDashboard({ onBack }) {
   }
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
   function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
+  // 퇴직금: 4대보험·근로소득세 공제 대상이 아니며(퇴직소득세 별도), 입력된 금액 그대로 이체액에 더한다.
+  function recSeverance(r) { return Number(r.severance_pay) || 0 }
 
-  // ── 실제 이체(입금)할 금액 = 명세서 '실지급액' ──
-  //   실지급 = 세전지급액(grand_total) + 식대(비과세) − 공제총액
+  // ── 실제 이체(입금)할 금액 = 명세서 '실지급액' (+ 퇴직금) ──
+  //   실지급 = 세전지급액(grand_total) + 식대(비과세) − 공제총액 + 퇴직금
   //   공제는 직원 = 4대보험(+소득세·지방세) / 알바 = 3.3% 기준 (요약 화면과 동일하게 통일).
   //   → recDeduction(r) 이 직원/알바 구분으로 공제를 계산하므로 그대로 사용한다.
-  function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
+  function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) + recSeverance(r) }
 
   // ── 이체 상태 (작성중 → 확정 → 이체완료 → 보류 순환) ──
   const STATUS_ORDER = ['작성중', '확정', '이체완료', '보류']
@@ -208,6 +210,8 @@ export default function ManagerDashboard({ onBack }) {
     return names.join(' + ')
   }
   function unitAmt(u) { return u.recs.reduce((s, r) => s + transferAmt(r), 0) }
+  function unitSeverance(u) { return u.recs.reduce((s, r) => s + recSeverance(r), 0) }          // 퇴직금 합계
+  function unitWageNet(u) { return u.recs.reduce((s, r) => s + transferAmt(r) - recSeverance(r), 0) } // 퇴직금 뺀 월급 실수령
   // 유닛에 포함된 공제방식들(중복 제거). 직원=4대보험 / 알바=3.3% 로 표시.
   const DED_LABEL = { '4대': '4대보험', '3.3': '3.3%', 'none': '공제없음' }
   function unitDedTypes(u) { return [...new Set(u.recs.map(r => (r.emp_type === '직원' ? '4대' : '3.3')))] }
@@ -641,6 +645,9 @@ export default function ManagerDashboard({ onBack }) {
     .tx-row.st-확정   { border-left-color: #e0bf6a; }
     .tx-row.st-이체완료 { border-left-color: #5cc189; background: #f7fbf8; }
     .tx-row.st-보류 { border-left-color: #b89ce0; background: #faf8fd; }
+    /* 퇴직금 포함 행 = 살짝 강조 (따뜻한 금색 배경 + 안쪽 라인) */
+    .tx-row.has-sev { background: #fff9ec; box-shadow: inset 0 0 0 1px #f0e0b8; }
+    .tx-row.st-이체완료.has-sev { background: #f4f8ee; }
 
     .tx-status {
       flex: none; width: 82px; padding: 7px 20px 7px 8px; border-radius: 7px;
@@ -662,6 +669,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-name { font-size: 14px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tx-pt { flex: none; font-size: 9px; font-weight: 700; color: #847e73; background: #efede8; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
     .tx-pt.merge { color: #5e6b78; background: #eaeef2; }
+    .tx-pt.sev { color: #fff; background: #d9a441; box-shadow: 0 1px 2px rgba(180,140,40,0.35); }   /* 퇴직금 포함 = 금색 배지 */
 
     /* 공제 배지: 한 줄 고정 폭 (직원=공제없음+4대보험 2개도 한 줄에) */
     .tx-ded-wrap { flex: none; width: 128px; display: flex; flex-wrap: nowrap; gap: 4px; }
@@ -685,6 +693,9 @@ export default function ManagerDashboard({ onBack }) {
     /* 금액: 고정 폭으로 오른쪽 정렬 (비고 칸 왼쪽에 위치) */
     .tx-amt { flex: none; width: 96px; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
+    /* 퇴직금 포함 금액칸: 분해 줄을 담기 위해 폭을 넓힌다 */
+    .tx-amt.has-sev { width: auto; min-width: 150px; }
+    .tx-amt-break { margin-top: 2px; font-size: 10px; font-weight: 600; color: #b08a2e; white-space: nowrap; letter-spacing: 0; }
 
     /* 비고: 담당자가 메모를 적는 칸 (행 오른쪽 끝) */
     .tx-note { flex: none; width: 150px; }
@@ -963,8 +974,9 @@ export default function ManagerDashboard({ onBack }) {
                       </div>
                       {shown.map(u => {
                         const st = unitStatus(u)
+                        const sev = unitSeverance(u)
                         return (
-                          <div key={u.key} className={`tx-row st-${st}`}>
+                          <div key={u.key} className={`tx-row st-${st} ${sev > 0 ? 'has-sev' : ''}`}>
                             <select
                               className={`tx-status ${st}`}
                               value={st}
@@ -977,6 +989,7 @@ export default function ManagerDashboard({ onBack }) {
                               <span className="tx-name">{unitNames(u)}</span>
                               {unitMixed(u) ? <span className="tx-pt merge">합산</span>
                                 : unitIsAlba(u) ? <span className="tx-pt">알바</span> : null}
+                              {sev > 0 && <span className="tx-pt sev">＋퇴직금</span>}
                             </div>
                             <div className="tx-ded-wrap">
                               {unitDedTypes(u).map(dt => (
@@ -1015,7 +1028,12 @@ export default function ManagerDashboard({ onBack }) {
                                 </>
                               )}
                             </div>
-                            <div className="tx-amt">{fmt(unitAmt(u))}<small>원</small></div>
+                            <div className={`tx-amt ${sev > 0 ? 'has-sev' : ''}`}>
+                              {fmt(unitAmt(u))}<small>원</small>
+                              {sev > 0 && (
+                                <div className="tx-amt-break">월급 {fmt(unitWageNet(u))} + 퇴직금 {fmt(sev)}</div>
+                              )}
+                            </div>
                             <div className="tx-note">
                               <input
                                 className="tx-note-input"
