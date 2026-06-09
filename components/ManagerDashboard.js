@@ -320,8 +320,7 @@ export default function ManagerDashboard({ onBack }) {
   }
 
   const css = `
-    .md-wrap { max-width: 760px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
-    .md-wrap.wide { max-width: 1080px; }
+    .md-wrap { max-width: 920px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
 
     .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
     .md-back:hover { border-color: #1a1a1a; color: #1a1a1a; }
@@ -349,24 +348,24 @@ export default function ManagerDashboard({ onBack }) {
     }
     .md-refresh:hover { border-color: #1a1a1a; color: #1a1a1a; }
 
-    /* 히어로(월급/공제 요약) */
-    .md-hero { background: linear-gradient(135deg, #1a1a1a, #2c2c2c); border-radius: 14px; padding: 20px; margin-bottom: 12px; }
-    .md-hero-label { font-size: 11px; letter-spacing: 0.13em; color: #c9b78c; margin-bottom: 6px; }
-    .md-hero-val { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
-    .md-hero-val small { font-size: 13px; font-weight: 500; color: #c9b78c; margin-left: 3px; }
+    /* 히어로(월급/공제 요약) — 밝은 크림/골드 톤 */
+    .md-hero { background: #fff; border: 1px solid #ebe9e4; border-radius: 14px; padding: 22px 24px; margin-bottom: 12px; }
+    .md-hero-label { font-size: 11px; letter-spacing: 0.1em; color: #999; margin-bottom: 6px; }
+    .md-hero-val { font-size: 30px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
+    .md-hero-val small { font-size: 14px; font-weight: 500; color: #b8954a; margin-left: 3px; }
     /* 공제 구분 (월급/4대보험/원천세/실지급) */
-    .md-breakdown { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 16px; background: rgba(201,183,140,0.18); border-radius: 10px; overflow: hidden; }
-    .md-bd-item { background: #232323; padding: 11px 12px; }
-    .md-bd-k { font-size: 10.5px; color: #9c8e6a; margin-bottom: 3px; }
-    .md-bd-v { font-size: 15px; font-weight: 700; color: #e6d6ab; }
-    .md-net { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(201,183,140,0.18); }
-    .md-net-k { font-size: 12px; color: #c9b78c; }
-    .md-net-v { font-size: 19px; font-weight: 700; color: #fff; }
+    .md-breakdown { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    .md-bd-item { background: #faf8f3; border: 1px solid #efeadd; border-radius: 10px; padding: 12px 14px; }
+    .md-bd-k { font-size: 11px; color: #999; margin-bottom: 4px; }
+    .md-bd-v { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+    .md-net { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; padding-top: 14px; border-top: 1px solid #f0ede8; }
+    .md-net-k { font-size: 12px; color: #999; }
+    .md-net-v { font-size: 21px; font-weight: 700; color: #b8954a; }
     .md-split { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
-    .md-split span { font-size: 11.5px; color: #cfc09a; display: flex; align-items: center; }
+    .md-split span { font-size: 11.5px; color: #777; display: flex; align-items: center; }
     .md-split .dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; display: inline-block; flex: none; }
-    .md-split .dot.staff { background: #e7c98a; }
-    .md-split .dot.alba { background: #8a8a8a; }
+    .md-split .dot.staff { background: #b8954a; }
+    .md-split .dot.alba { background: #c4c0b8; }
 
     /* 보조 KPI 2개 */
     .md-kpi-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
@@ -468,7 +467,7 @@ export default function ManagerDashboard({ onBack }) {
       cursor: pointer; font-family: 'Pretendard', 'DM Sans', sans-serif; transition: all 0.15s;
     }
     .md-tab:hover { border-color: #b8954a; color: #1a1a1a; }
-    .md-tab.on { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+    .md-tab.on { background: #b8954a; border-color: #b8954a; color: #fff; }
 
     /* ───── 이체 처리 ───── */
     .tx-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -604,10 +603,17 @@ export default function ManagerDashboard({ onBack }) {
 
   const isAll = branch === ALL
 
+  // 직원을 위, 알바를 아래로 정렬 (그 안에서는 이름순)
+  const empRank = r => (r.emp_type === '직원' ? 0 : 1)
+  const sortByType = (a, b) => empRank(a) - empRank(b) || String(a.emp_name).localeCompare(String(b.emp_name), 'ko')
+  const sortedRecords = [...records].sort(sortByType)
+  // 이체 유닛도 직원 포함 유닛을 위로
+  const unitRank = u => (u.recs.some(r => r.emp_type === '직원') ? 0 : 1)
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className={`md-wrap ${view === 'transfer' ? 'wide' : ''}`}>
+      <div className="md-wrap">
 
         {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
 
@@ -768,6 +774,7 @@ export default function ManagerDashboard({ onBack }) {
                   <p className="md-empty">{onlyPending ? '미완료 건이 없습니다. 모두 이체 완료!' : '해당 월의 데이터가 없습니다.'}</p>
                 ) : groups.map(g => {
                   const shown = g.units.filter(u => !onlyPending || unitStatus(u) !== '이체완료')
+                    .sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko'))
                   if (shown.length === 0) return null
                   const gTotal = g.units.reduce((s, u) => s + unitAmt(u), 0)
                   const gDone = g.units.filter(u => unitStatus(u) === '이체완료').length
@@ -947,7 +954,7 @@ export default function ManagerDashboard({ onBack }) {
             {records.length === 0 ? (
               <p className="md-empty">해당 월의 데이터가 없습니다.</p>
             ) : (
-              records.map(r => (
+              sortedRecords.map(r => (
                 <div key={r.id} className="md-emp">
                   <button className="md-del" onClick={() => deleteRecord(r.id, r.emp_name)}>✕</button>
 
