@@ -352,7 +352,7 @@ export default function ManagerDashboard({ onBack }) {
     /* 필터 */
     .md-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
     .md-select {
-      flex: 1; min-width: 100px;
+      flex: 0 0 auto; max-width: 240px;
       background: #fff; border: 1px solid #d0ccc5; color: #1a1a1a;
       border-radius: 8px; padding: 10px 12px; font-size: 13px;
       font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none;
