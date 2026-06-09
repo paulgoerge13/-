@@ -505,19 +505,10 @@ export default function ManagerDashboard({ onBack }) {
       color: #6b6760; background: #fff; border: 1.5px solid #e7e3da; border-radius: 999px;
       padding: 8px 14px; cursor: pointer; transition: all .15s; }
     .tx-fchip:hover { border-color: #d8cba3; }
-    .tx-fchip em { font-style: normal; font-size: 12px; font-weight: 700; color: #b8954a;
-      background: #f6efdd; border-radius: 999px; padding: 1px 7px; }
-    .tx-fchip .tx-chip { margin-right: 0; }
-    .tx-fchip.on { color: #fff; background: #b8954a; border-color: #b8954a; }
-    .tx-fchip.on em { color: #fff; background: rgba(255,255,255,0.25); }
-    .tx-fchip.on .tx-chip { border-color: rgba(255,255,255,0.6); }
-    .tx-chip { width: 12px; height: 12px; border-radius: 4px; margin-right: 5px; display: inline-block; border: 1px solid rgba(0,0,0,0.08); }
-
-    /* 상태별 색상 칩 (작성중=주황 / 수정중=흰색 / 확정=노랑 / 이체완료=초록) */
-    .tx-chip.작성중 { background: #f6b26b; }
-    .tx-chip.수정중 { background: #ffffff; }
-    .tx-chip.확정   { background: #ffe066; }
-    .tx-chip.이체완료 { background: #57c98a; }
+    .tx-fchip em { font-style: normal; font-size: 12px; font-weight: 700; color: #6b6760;
+      background: #f0eee9; border-radius: 999px; padding: 1px 7px; }
+    .tx-fchip.on { color: #fff; background: #6b6760; border-color: #6b6760; }
+    .tx-fchip.on em { color: #fff; background: rgba(255,255,255,0.22); }
 
     .tx-hint { font-size: 11.5px; color: #aaa; margin: 4px 2px 12px; }
     .tx-warn { font-size: 12px; color: #b06a1a; background: #fdf3e6; border: 1px solid #f0d8b8; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
@@ -533,37 +524,37 @@ export default function ManagerDashboard({ onBack }) {
       background: #fff; border: 1px solid #ebe9e4; border-left-width: 5px;
       border-radius: 10px; padding: 11px 13px; margin-bottom: 7px;
     }
-    /* 행 왼쪽 컬러 바 = 상태색 */
-    .tx-row.st-작성중 { border-left-color: #f6b26b; }
-    .tx-row.st-수정중 { border-left-color: #d8d4cc; }
-    .tx-row.st-확정   { border-left-color: #ffe066; }
-    .tx-row.st-이체완료 { border-left-color: #57c98a; background: #f4fbf6; }
+    /* 행 왼쪽 바 = 상태 (차분한 톤) */
+    .tx-row.st-작성중 { border-left-color: #d6d2ca; }
+    .tx-row.st-수정중 { border-left-color: #b9c3cf; }
+    .tx-row.st-확정   { border-left-color: #d4be86; }
+    .tx-row.st-이체완료 { border-left-color: #a3c6b1; background: #fafcfb; }
 
     .tx-status {
       flex: none; width: 70px; padding: 7px 0; border-radius: 7px;
       font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit;
-      border: 1px solid rgba(0,0,0,0.08); transition: all 0.12s;
+      border: 1px solid transparent; transition: all 0.12s;
     }
-    .tx-status.작성중 { background: #f6b26b; color: #6b3d12; }
-    .tx-status.수정중 { background: #ffffff; color: #777; }
-    .tx-status.확정   { background: #ffe066; color: #7a6512; }
-    .tx-status.이체완료 { background: #57c98a; color: #fff; }
-    .tx-status:hover { filter: brightness(0.96); transform: translateY(-1px); }
+    .tx-status.작성중 { background: #efede8; color: #847e73; border-color: #e2ded5; }
+    .tx-status.수정중 { background: #eaeef2; color: #5e6b78; border-color: #d8dee6; }
+    .tx-status.확정   { background: #f4ecd6; color: #8a6d22; border-color: #e6d8b0; }
+    .tx-status.이체완료 { background: #e6f0e9; color: #3d7152; border-color: #cce0d3; }
+    .tx-status:hover { filter: brightness(0.97); transform: translateY(-1px); }
 
     .tx-name-wrap { flex: none; width: 120px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .tx-name { font-size: 14px; font-weight: 700; color: #1a1a1a; }
-    .tx-pt { font-size: 9px; font-weight: 700; color: #9c7f44; background: #ece0c9; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
-    .tx-pt.merge { color: #2b6cb0; background: #dbeafe; }
+    .tx-pt { font-size: 9px; font-weight: 700; color: #847e73; background: #efede8; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
+    .tx-pt.merge { color: #5e6b78; background: #eaeef2; }
 
     .tx-ded-wrap { flex: none; width: 92px; display: flex; flex-wrap: wrap; gap: 4px; }
-    .tx-ded { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; border: 1px solid transparent; }
-    .tx-ded.four { color: #2b6cb0; background: #dbeafe; }      /* 4대보험 = 파랑 */
-    .tx-ded.three { color: #0a7a6b; background: #cffaf0; }     /* 3.3% = 청록 */
-    .tx-ded.none { color: #c0392b; background: #fdecea; border-color: #f5c6c0; }  /* 공제없음 = 빨강(주의) */
+    .tx-ded { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; border: 1px solid #e2ded5; color: #6b6760; background: #f4f2ed; }
+    .tx-ded.four { color: #5b6675; background: #eef1f4; border-color: #dde3ea; }   /* 4대보험 */
+    .tx-ded.three { color: #6f6a60; background: #f1efe9; border-color: #e4e0d7; }   /* 3.3% */
+    .tx-ded.none { color: #9a5b50; background: #f5ece9; border-color: #e6d5d0; }    /* 공제없음 */
 
     .tx-acct-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; }
     .tx-acct { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .tx-acct.empty { color: #c0392b; font-style: italic; }
+    .tx-acct.empty { color: #a8794a; }
     .tx-copy { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 10.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; }
     .tx-copy:hover { border-color: #b8954a; color: #b8954a; }
     .tx-acct-edit { flex: none; background: #fff; border: 1px solid #d8cba3; color: #b8954a; font-size: 10.5px; font-weight: 700; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-family: inherit; }
@@ -771,7 +762,7 @@ export default function ManagerDashboard({ onBack }) {
                       className={`tx-fchip ${s} ${statusFilter === s ? 'on' : ''}`}
                       onClick={() => setStatusFilter(s)}
                     >
-                      <b className={`tx-chip ${s}`} />{s} <em>{statusCounts[s]}</em>
+                      {s} <em>{statusCounts[s]}</em>
                     </button>
                   ))}
                 </div>
