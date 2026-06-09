@@ -107,28 +107,11 @@ export default function ManagerDashboard({ onBack }) {
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
   function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
 
-  // ── 실제 이체(입금)할 금액 = 명세서 '실지급액' (급여 페이지 calcDeductions 와 동일) ──
+  // ── 실제 이체(입금)할 금액 = 명세서 '실지급액' ──
   //   실지급 = 세전지급액(grand_total) + 식대(비과세) − 공제총액
-  //   공제총액은 직원/알바 구분이 아니라 각 직원에 설정된 deduction_type 기준:
-  //     'none' → 공제 0 / '4대' → 4대보험+소득세+지방세 / '3.3' → 사업소득 3.3%
-  function recDeductionTotal(r) {
-    const dt = r.deduction_type || 'none'
-    const gross = fixGrand(r)              // 과세 기준(식대 제외)
-    if (dt === '4대') {
-      const pension    = Math.floor(gross * 0.0475 / 10) * 10
-      const health     = Math.floor(gross * 0.03595 / 10) * 10
-      const care       = Math.floor(health * 0.1314 / 10) * 10
-      const employment = Math.floor(gross * 0.009 / 10) * 10
-      const incomeTax  = r.income_tax || 0
-      const localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
-      return pension + health + care + employment + incomeTax + localTax
-    }
-    if (dt === '3.3') {
-      return Math.round(gross * 0.03) + Math.round(gross * 0.003)   // 3.3%
-    }
-    return 0   // 'none' = 공제 없음 (세전 전액 지급)
-  }
-  function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeductionTotal(r) }
+  //   공제는 직원 = 4대보험(+소득세·지방세) / 알바 = 3.3% 기준 (요약 화면과 동일하게 통일).
+  //   → recDeduction(r) 이 직원/알바 구분으로 공제를 계산하므로 그대로 사용한다.
+  function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
 
   // ── 이체 상태 (작성중 → 수정중 → 확정 → 이체완료 순환) ──
   const STATUS_ORDER = ['작성중', '수정중', '확정', '이체완료']
@@ -165,9 +148,9 @@ export default function ManagerDashboard({ onBack }) {
     return names.join(' + ')
   }
   function unitAmt(u) { return u.recs.reduce((s, r) => s + transferAmt(r), 0) }
-  // 유닛에 포함된 공제방식들(중복 제거). 한 사람을 4대+3.3 둘로 나눈 경우 둘 다 표시.
+  // 유닛에 포함된 공제방식들(중복 제거). 직원=4대보험 / 알바=3.3% 로 표시.
   const DED_LABEL = { '4대': '4대보험', '3.3': '3.3%', 'none': '공제없음' }
-  function unitDedTypes(u) { return [...new Set(u.recs.map(r => r.deduction_type || 'none'))] }
+  function unitDedTypes(u) { return [...new Set(u.recs.map(r => (r.emp_type === '직원' ? '4대' : '3.3')))] }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
   function unitMixed(u) { return u.recs.length > 1 }
   // 유닛 상태 = 가장 덜 진행된 레코드 기준 (모두 이체완료여야 '이체완료')
