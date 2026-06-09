@@ -1700,9 +1700,7 @@ export default function Home() {
       background: #f3e9d2; border-radius: 15px;
     }
     .admin-entry-texts { flex: 1; min-width: 0; }
-    .admin-entry-title { font-size: 24px; font-weight: 700; color: #1a1a1a; margin-bottom: 5px; line-height: 1.2; }
-    .admin-entry-title span { font-size: 15px; font-weight: 600; color: #b8954a; margin-left: 4px; }
-    .admin-entry-sub { font-size: 13.5px; color: #9a9286; }
+    .admin-entry-title { font-size: 30px; font-weight: 800; color: #1a1a1a; line-height: 1.2; letter-spacing: -0.01em; }
     .admin-entry-cta {
       flex: none; background: #b8954a; color: #fff; font-size: 15px; font-weight: 700;
       padding: 13px 24px; border-radius: 12px; white-space: nowrap;
@@ -2171,8 +2169,7 @@ export default function Home() {
                 <div className="admin-entry" onClick={() => { setStep('adminLogin'); setPw(''); setPwError(false) }}>
                   <div className="admin-entry-icon">📊</div>
                   <div className="admin-entry-texts">
-                    <div className="admin-entry-title">전지점 관리 <span>(관리자 페이지)</span></div>
-                    <div className="admin-entry-sub">모든 지점 인건비 · 이체 · 퇴직금을 한눈에 (관리자 전용)</div>
+                    <div className="admin-entry-title">관리자 전용 페이지</div>
                   </div>
                   <div className="admin-entry-cta">입장하기 →</div>
                 </div>
