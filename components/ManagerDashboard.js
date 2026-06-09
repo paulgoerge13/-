@@ -15,6 +15,7 @@ export default function ManagerDashboard({ onBack }) {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [view, setView] = useState('summary')      // summary | transfer
+  const [branchMetric, setBranchMetric] = useState('wage')  // 지점별 보기: wage(월급) | major(4대보험) | withhold(원천세)
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
   const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료 | 보류
@@ -374,6 +375,11 @@ export default function ManagerDashboard({ onBack }) {
       albaTotal: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0),
       staffNet: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + recNet(r), 0),
       albaNet: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + recNet(r), 0),
+      // 지점별 공제 (직원=4대보험, 알바=공제없음 / 원천세는 직원 소득세·지방세 + 알바 3.3%)
+      major: rs.reduce((s, r) => s + recMajorIns(r), 0),                                          // 4대보험 (직원만)
+      withhold: rs.reduce((s, r) => s + recWithholding(r), 0),                                    // 원천세
+      staffWithhold: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + recWithholding(r), 0),
+      albaWithhold: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + recWithholding(r), 0),
       finalCount: rs.filter(r => r.status === 'final').length,
     }
   })
@@ -387,6 +393,14 @@ export default function ManagerDashboard({ onBack }) {
   const withholdAll = records.reduce((s, r) => s + recWithholding(r), 0) // 원천세 공제 합계
   const totalPeople = byBranch.reduce((s, x) => s + x.count, 0)
   const totalFinal = byBranch.reduce((s, x) => s + x.finalCount, 0)
+
+  // ── 지점별 현황: 보기 전환 (월급 / 4대보험 / 원천세) ──
+  const METRICS = {
+    wage:     { label: '월급(세전)', amount: x => x.total,    staff: x => x.staffTotal,   alba: x => x.albaTotal,     all: grandAll },
+    major:    { label: '4대보험',    amount: x => x.major,    staff: x => x.major,        alba: x => 0,               all: majorAll, note: '직원만 부과' },
+    withhold: { label: '원천세',     amount: x => x.withhold, staff: x => x.staffWithhold, alba: x => x.albaWithhold, all: withholdAll, note: '직원 소득세+지방세 / 알바 3.3%' },
+  }
+  const metric = METRICS[branchMetric] || METRICS.wage
 
   // 현재(단일 지점) 집계
   const totalGrand = records.reduce((s, r) => s + fixGrand(r), 0)
@@ -403,14 +417,14 @@ export default function ManagerDashboard({ onBack }) {
   // ── 전 지점 요약 엑셀(CSV) 내보내기 — 보고용 ──
   function downloadSummary() {
     const BOM = '﻿'
-    const head = ['지점', '총인원', '직원수', '알바수', '직원지급액', '직원실지급', '알바지급액', '알바실지급', '세전인건비', '실지급합계', '마감완료', '전체대비']
+    const head = ['지점', '총인원', '직원수', '알바수', '세전인건비', '4대보험', '원천세', '직원지급액', '직원실지급', '알바지급액', '알바실지급', '실지급합계', '마감완료', '전체대비']
     const lines = byBranch.map(x =>
-      [x.branch, x.count, x.staff, x.alba, x.staffTotal, x.staffNet, x.albaTotal, x.albaNet, x.total, x.staffNet + x.albaNet, `${x.finalCount}/${x.count}`,
+      [x.branch, x.count, x.staff, x.alba, x.total, x.major, x.withhold, x.staffTotal, x.staffNet, x.albaTotal, x.albaNet, x.staffNet + x.albaNet, `${x.finalCount}/${x.count}`,
        x.count > 0 ? `${Math.round(x.finalCount / x.count * 100)}%` : '-']
         .map(v => `"${v}"`).join(','))
     const totalLine = ['전체 합계', totalPeople,
       byBranch.reduce((s, x) => s + x.staff, 0), byBranch.reduce((s, x) => s + x.alba, 0),
-      staffAll, staffNetAll, albaAll, albaNetAll, grandAll, netAll, `${totalFinal}/${totalPeople}`,
+      grandAll, majorAll, withholdAll, staffAll, staffNetAll, albaAll, albaNetAll, netAll, `${totalFinal}/${totalPeople}`,
       totalPeople > 0 ? `${Math.round(totalFinal / totalPeople * 100)}%` : '-']
       .map(v => `"${v}"`).join(',')
     const csv = BOM + [
@@ -496,6 +510,19 @@ export default function ManagerDashboard({ onBack }) {
     }
     .md-export:hover { background: #a07f3a; }
 
+    /* 지점별 보기 전환 탭 (월급 / 4대보험 / 원천세) */
+    .md-metric-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 11px; }
+    .md-metric-tab {
+      background: #f4f2ed; border: 1px solid #e4e0d6; border-radius: 999px;
+      padding: 7px 16px; font-size: 12.5px; font-weight: 700; color: #8a8377;
+      cursor: pointer; font-family: 'Pretendard', sans-serif; transition: all 0.13s;
+    }
+    .md-metric-tab:hover { border-color: #cdb87f; color: #a07f3a; }
+    .md-metric-tab.on { background: #b8954a; border-color: #b8954a; color: #fff; box-shadow: 0 2px 6px rgba(184,149,74,0.3); }
+    .md-metric-sum { margin-left: auto; font-size: 12px; color: #888; }
+    .md-metric-sum b { color: #1a1a1a; font-weight: 700; margin-left: 2px; }
+    .md-metric-sum em { font-style: normal; color: #b09a6a; margin-left: 5px; font-size: 11px; }
+
     /* 지점별 비교 행 */
     .md-branch-row {
       background: #fff; border: 1px solid #ebe9e4; border-radius: 12px;
@@ -509,6 +536,7 @@ export default function ManagerDashboard({ onBack }) {
     .md-br-meta { font-size: 11.5px; color: #999; }
     .md-br-right { text-align: right; }
     .md-br-amt { font-size: 16px; font-weight: 700; color: #b8954a; letter-spacing: -0.01em; }
+    .md-br-amt.ded { color: #c0504a; }   /* 공제(4대보험·원천세) = 붉은 계열로 비용 강조 */
     .md-br-amt small { font-size: 11px; color: #bbb; font-weight: 500; }
     .md-br-split { font-size: 10.5px; color: #aaa; margin-top: 3px; }
     .md-br-prog { margin-top: 5px; display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
@@ -1122,6 +1150,23 @@ export default function ManagerDashboard({ onBack }) {
               <button className="md-export" onClick={downloadSummary}>요약 엑셀 ↓</button>
             </div>
 
+            {/* 지점별로 무엇을 볼지 전환: 월급 / 4대보험 / 원천세 */}
+            <div className="md-metric-tabs">
+              {Object.keys(METRICS).map(k => (
+                <button
+                  key={k}
+                  className={`md-metric-tab ${branchMetric === k ? 'on' : ''}`}
+                  onClick={() => setBranchMetric(k)}
+                >
+                  {METRICS[k].label}
+                </button>
+              ))}
+              <div className="md-metric-sum">
+                전 지점 {metric.label} 합계 <b>{fmt(metric.all)}원</b>
+                {metric.note && <em>· {metric.note}</em>}
+              </div>
+            </div>
+
             {byBranch.map(x => (
               <div key={x.branch} className={`md-branch-row ${x.count === 0 ? 'empty' : ''}`}
                    onClick={() => setBranch(x.branch)}>
@@ -1132,10 +1177,16 @@ export default function ManagerDashboard({ onBack }) {
                   </div>
                 </div>
                 <div className="md-br-right">
-                  <div className="md-br-amt">{fmt(x.total)}<small> 원</small></div>
+                  <div className={`md-br-amt ${branchMetric !== 'wage' ? 'ded' : ''}`}>
+                    {fmt(metric.amount(x))}<small> 원</small>
+                  </div>
                   {x.count > 0 && (
                     <>
-                      <div className="md-br-split">직원 {fmt(x.staffTotal)} · 알바 {fmt(x.albaTotal)}</div>
+                      <div className="md-br-split">
+                        {branchMetric === 'major'
+                          ? `직원 ${x.staff}명분 (알바 해당없음)`
+                          : `직원 ${fmt(metric.staff(x))} · 알바 ${fmt(metric.alba(x))}`}
+                      </div>
                       <div className="md-br-prog">
                         <div className="md-br-prog-bar">
                           <div className="md-br-prog-fill" style={{ width: `${Math.round(x.finalCount / x.count * 100)}%` }} />
