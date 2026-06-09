@@ -20,6 +20,7 @@ export default function ManagerDashboard({ onBack }) {
   const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료 | 보류
   const [noteMap, setNoteMap] = useState({})        // { [recId]: '비고 메모' }
   const [noteUnavailable, setNoteUnavailable] = useState(false)
+  const [txMemo, setTxMemo] = useState('')          // 이체 화면 우측 자유 메모 (월별, 브라우저 저장)
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   const [editAcctKey, setEditAcctKey] = useState(null)  // 계좌 편집 중인 유닛 key
@@ -131,6 +132,16 @@ export default function ManagerDashboard({ onBack }) {
   }, [records])
 
   function txStatus(r) { return statusMap[r.id] || '작성중' }
+
+  // ── 이체 화면 우측 자유 메모 (월별, 이 브라우저에만 저장) ──
+  const memoKey = `payroll_txmemo_${year}_${month}`
+  useEffect(() => {
+    try { setTxMemo(localStorage.getItem(memoKey) || '') } catch (e) { setTxMemo('') }
+  }, [memoKey])
+  function saveTxMemo(val) {
+    setTxMemo(val)
+    try { localStorage.setItem(memoKey, val) } catch (e) {}
+  }
 
   // ── 같은 계좌 = 한 번의 이체로 묶기 ──
   //   한 사람을 직원분 + 별도분(예: 김현준 / 김현준p3)으로 나눠 입력한 경우,
@@ -631,6 +642,27 @@ export default function ManagerDashboard({ onBack }) {
     .tx-note-input:focus { border-color: #b8954a; background: #fff; }
     .tx-note-input::placeholder { color: #c4bfb6; }
 
+    /* 우측 빈 공간 자유 메모 박스 (넓은 화면에서만 표시) */
+    .tx-memo { display: none; }
+    @media (min-width: 1400px) {
+      .tx-memo {
+        display: block; position: fixed; top: 132px; right: 28px; width: 270px;
+        background: #fffdf7; border: 1px solid #ece4cf; border-radius: 14px;
+        box-shadow: 0 6px 20px rgba(120,100,50,0.08); padding: 14px 14px 10px;
+      }
+    }
+    .tx-memo-head { font-size: 13px; font-weight: 700; color: #8a6a1e; margin-bottom: 9px; display: flex; align-items: center; gap: 6px; }
+    .tx-memo-head span { font-size: 11px; font-weight: 600; color: #b3a98e; background: #f5efdd; padding: 2px 8px; border-radius: 999px; }
+    .tx-memo-area {
+      width: 100%; height: 230px; resize: vertical; box-sizing: border-box;
+      font-size: 13px; line-height: 1.6; color: #3a3530; font-family: inherit;
+      border: 1px solid #ece4cf; border-radius: 9px; padding: 10px 11px;
+      background: #fff; outline: none;
+    }
+    .tx-memo-area:focus { border-color: #d8b860; }
+    .tx-memo-area::placeholder { color: #c8c0ad; }
+    .tx-memo-foot { font-size: 10.5px; color: #bdb499; text-align: right; margin-top: 6px; }
+
     /* ───── 퇴직금 계산기 (떠있는 버튼 + 팝업) ───── */
     .sev-fab {
       position: fixed; right: 24px; bottom: 24px; z-index: 50;
@@ -933,6 +965,18 @@ export default function ManagerDashboard({ onBack }) {
                     </div>
                   )
                 })}
+
+                {/* 우측 빈 공간에 띄우는 자유 메모 박스 (월별, 이 브라우저에만 저장) */}
+                <aside className="tx-memo">
+                  <div className="tx-memo-head">📝 메모 <span>{year}년 {month}월</span></div>
+                  <textarea
+                    className="tx-memo-area"
+                    value={txMemo}
+                    onChange={e => saveTxMemo(e.target.value)}
+                    placeholder="이체 관련 메모를 자유롭게 적어두세요.&#10;(예: 퇴직금 별도 처리, 보류 사유 등)"
+                  />
+                  <div className="tx-memo-foot">이 메모는 이 컴퓨터에만 저장됩니다</div>
+                </aside>
               </>
             )
           })()
