@@ -21,6 +21,8 @@ export default function ManagerDashboard({ onBack }) {
   const [noteMap, setNoteMap] = useState({})        // { [recId]: '비고 메모' }
   const [noteUnavailable, setNoteUnavailable] = useState(false)
   const [txMemo, setTxMemo] = useState('')          // 이체 화면 우측 자유 메모 (월별, 브라우저 저장)
+  const [memoDirty, setMemoDirty] = useState(false) // 저장 안 된 변경 있음
+  const [memoSaved, setMemoSaved] = useState(false) // 방금 저장됨 표시
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   const [editAcctKey, setEditAcctKey] = useState(null)  // 계좌 편집 중인 유닛 key
@@ -137,10 +139,22 @@ export default function ManagerDashboard({ onBack }) {
   const memoKey = `payroll_txmemo_${year}_${month}`
   useEffect(() => {
     try { setTxMemo(localStorage.getItem(memoKey) || '') } catch (e) { setTxMemo('') }
+    setMemoDirty(false); setMemoSaved(false)
   }, [memoKey])
-  function saveTxMemo(val) {
+  function changeTxMemo(val) {
     setTxMemo(val)
-    try { localStorage.setItem(memoKey, val) } catch (e) {}
+    setMemoDirty(true)
+    setMemoSaved(false)
+  }
+  function saveTxMemo() {
+    try {
+      localStorage.setItem(memoKey, txMemo)
+      setMemoDirty(false)
+      setMemoSaved(true)
+      setTimeout(() => setMemoSaved(false), 2000)
+    } catch (e) {
+      alert('메모 저장에 실패했습니다. 브라우저 설정(시크릿 모드 등)을 확인해 주세요.')
+    }
   }
 
   // ── 같은 계좌 = 한 번의 이체로 묶기 ──
@@ -662,7 +676,17 @@ export default function ManagerDashboard({ onBack }) {
     }
     .tx-memo-area:focus { border-color: #d8b860; }
     .tx-memo-area::placeholder { color: #c8c0ad; }
-    .tx-memo-foot { font-size: 10.5px; color: #bdb499; text-align: right; margin-top: 8px; flex: none; }
+    .tx-memo-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex: none; }
+    .tx-memo-state { font-size: 11.5px; color: #bdb499; margin-right: auto; }
+    .tx-memo-state.dirty { color: #c0504a; font-weight: 600; }
+    .tx-memo-state.ok { color: #1f9d57; font-weight: 600; }
+    .tx-memo-save {
+      flex: none; background: #b8954a; border: none; color: #fff;
+      font-size: 13px; font-weight: 700; padding: 9px 22px; border-radius: 8px;
+      cursor: pointer; font-family: inherit; transition: background .12s;
+    }
+    .tx-memo-save:hover { background: #a07f38; }
+    .tx-memo-save:disabled { background: #ddd6c5; cursor: default; }
 
     /* ───── 퇴직금 계산기 (떠있는 버튼 + 팝업) ───── */
     .sev-fab {
@@ -973,10 +997,16 @@ export default function ManagerDashboard({ onBack }) {
                   <textarea
                     className="tx-memo-area"
                     value={txMemo}
-                    onChange={e => saveTxMemo(e.target.value)}
+                    onChange={e => changeTxMemo(e.target.value)}
+                    onBlur={saveTxMemo}
                     placeholder="이체 관련 메모를 자유롭게 적어두세요.&#10;(예: 퇴직금 별도 처리, 보류 사유 등)"
                   />
-                  <div className="tx-memo-foot">이 메모는 이 컴퓨터에만 저장됩니다</div>
+                  <div className="tx-memo-foot">
+                    <span className={`tx-memo-state ${memoSaved ? 'ok' : memoDirty ? 'dirty' : ''}`}>
+                      {memoSaved ? '저장됨 ✓' : memoDirty ? '저장 안 됨' : '이 컴퓨터에 저장됩니다'}
+                    </span>
+                    <button className="tx-memo-save" onClick={saveTxMemo} disabled={!memoDirty}>저장</button>
+                  </div>
                 </aside>
               </>
             )
