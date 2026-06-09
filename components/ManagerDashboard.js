@@ -642,26 +642,27 @@ export default function ManagerDashboard({ onBack }) {
     .tx-note-input:focus { border-color: #b8954a; background: #fff; }
     .tx-note-input::placeholder { color: #c4bfb6; }
 
-    /* 우측 빈 공간 자유 메모 박스 (넓은 화면에서만 표시) */
+    /* 우측 빈 공간 자유 메모 박스 (넓은 화면에서만 표시, 오른쪽 여백을 가로로 꽉 채움) */
     .tx-memo { display: none; }
-    @media (min-width: 1400px) {
+    @media (min-width: 1300px) {
       .tx-memo {
-        display: block; position: fixed; top: 132px; right: 28px; width: 270px;
+        display: flex; flex-direction: column; position: fixed;
+        top: 120px; bottom: 24px; right: 24px; left: calc(50% + 478px);
         background: #fffdf7; border: 1px solid #ece4cf; border-radius: 14px;
-        box-shadow: 0 6px 20px rgba(120,100,50,0.08); padding: 14px 14px 10px;
+        box-shadow: 0 6px 20px rgba(120,100,50,0.08); padding: 16px 16px 12px;
       }
     }
-    .tx-memo-head { font-size: 13px; font-weight: 700; color: #8a6a1e; margin-bottom: 9px; display: flex; align-items: center; gap: 6px; }
+    .tx-memo-head { font-size: 14px; font-weight: 700; color: #8a6a1e; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; flex: none; }
     .tx-memo-head span { font-size: 11px; font-weight: 600; color: #b3a98e; background: #f5efdd; padding: 2px 8px; border-radius: 999px; }
     .tx-memo-area {
-      width: 100%; height: 230px; resize: vertical; box-sizing: border-box;
-      font-size: 13px; line-height: 1.6; color: #3a3530; font-family: inherit;
-      border: 1px solid #ece4cf; border-radius: 9px; padding: 10px 11px;
+      flex: 1; width: 100%; resize: none; box-sizing: border-box;
+      font-size: 14px; line-height: 1.7; color: #3a3530; font-family: inherit;
+      border: 1px solid #ece4cf; border-radius: 9px; padding: 12px 13px;
       background: #fff; outline: none;
     }
     .tx-memo-area:focus { border-color: #d8b860; }
     .tx-memo-area::placeholder { color: #c8c0ad; }
-    .tx-memo-foot { font-size: 10.5px; color: #bdb499; text-align: right; margin-top: 6px; }
+    .tx-memo-foot { font-size: 10.5px; color: #bdb499; text-align: right; margin-top: 8px; flex: none; }
 
     /* ───── 퇴직금 계산기 (떠있는 버튼 + 팝업) ───── */
     .sev-fab {
