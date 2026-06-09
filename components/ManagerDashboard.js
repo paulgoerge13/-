@@ -253,6 +253,7 @@ export default function ManagerDashboard({ onBack }) {
 
   const css = `
     .md-wrap { max-width: 760px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
+    .md-wrap.wide { max-width: 1080px; }
 
     .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
     .md-back:hover { border-color: #1a1a1a; color: #1a1a1a; }
@@ -402,19 +403,16 @@ export default function ManagerDashboard({ onBack }) {
     .md-tab.on { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
 
     /* ───── 이체 처리 ───── */
-    .tx-summary { background: linear-gradient(135deg, #1a1a1a, #2c2c2c); border-radius: 14px; padding: 18px 20px; margin-bottom: 12px; }
-    .tx-sum-main { margin-bottom: 14px; }
-    .tx-sum-k { font-size: 11px; letter-spacing: 0.13em; color: #c9b78c; margin-bottom: 5px; }
-    .tx-sum-v { font-size: 26px; font-weight: 700; color: #fff; }
-    .tx-sum-v small { font-size: 13px; font-weight: 500; color: #c9b78c; margin-left: 4px; }
-    .tx-sum-bar { margin-top: 10px; height: 7px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; }
-    .tx-sum-fill { height: 100%; background: #2ecc71; border-radius: 4px; transition: width 0.3s; }
-    .tx-sum-amts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: rgba(201,183,140,0.18); border-radius: 10px; overflow: hidden; }
-    .tx-sum-amt { background: #232323; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px; }
-    .tx-sum-amt-k { font-size: 10.5px; color: #9c8e6a; }
-    .tx-sum-amt-v { font-size: 15px; font-weight: 700; color: #e6d6ab; }
-    .tx-sum-amt-v.done { color: #6ee7a0; }
-    .tx-sum-amt-v.remain { color: #f5c560; }
+    .tx-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    .tx-stat { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 16px 18px; }
+    .tx-stat-k { font-size: 11px; letter-spacing: 0.06em; color: #999; margin-bottom: 7px; }
+    .tx-stat-v { font-size: 22px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
+    .tx-stat-v small { font-size: 12px; font-weight: 500; color: #aaa; margin-left: 3px; }
+    .tx-stat-v.done { color: #1f9d57; }
+    .tx-stat-v.remain { color: #d99021; }
+    .tx-stat-v.gold { color: #b8954a; }
+    .tx-stat-bar { margin-top: 10px; height: 6px; border-radius: 4px; background: #eee; overflow: hidden; }
+    .tx-stat-fill { height: 100%; background: #2ecc71; border-radius: 4px; transition: width 0.3s; }
 
     .tx-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; padding: 0 2px; }
     .tx-legend { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -473,8 +471,10 @@ export default function ManagerDashboard({ onBack }) {
     .tx-amt { flex: none; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; min-width: 84px; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
 
+    @media (max-width: 720px) {
+      .tx-stats { grid-template-columns: 1fr 1fr; }
+    }
     @media (max-width: 560px) {
-      .tx-sum-amts { grid-template-columns: 1fr; }
       .tx-row { flex-wrap: wrap; }
       .tx-acct-wrap { order: 3; width: 100%; flex-basis: 100%; }
       .tx-name-wrap { width: auto; flex: 1; }
@@ -492,7 +492,7 @@ export default function ManagerDashboard({ onBack }) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className="md-wrap">
+      <div className={`md-wrap ${view === 'transfer' ? 'wide' : ''}`}>
 
         {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
 
@@ -542,28 +542,26 @@ export default function ManagerDashboard({ onBack }) {
 
             return (
               <>
-                {/* 진행 요약 */}
-                <div className="tx-summary">
-                  <div className="tx-sum-main">
-                    <div className="tx-sum-k">이체 진행</div>
-                    <div className="tx-sum-v">{doneCount}<small>/{totalUnits}건 완료</small></div>
-                    <div className="tx-sum-bar">
-                      <div className="tx-sum-fill" style={{ width: `${totalUnits ? Math.round(doneCount / totalUnits * 100) : 0}%` }} />
+                {/* 진행 요약 (밝은 카드) */}
+                <div className="tx-stats">
+                  <div className="tx-stat">
+                    <div className="tx-stat-k">이체 진행</div>
+                    <div className="tx-stat-v">{doneCount}<small>/{totalUnits}건</small></div>
+                    <div className="tx-stat-bar">
+                      <div className="tx-stat-fill" style={{ width: `${totalUnits ? Math.round(doneCount / totalUnits * 100) : 0}%` }} />
                     </div>
                   </div>
-                  <div className="tx-sum-amts">
-                    <div className="tx-sum-amt">
-                      <span className="tx-sum-amt-k">완료 금액</span>
-                      <span className="tx-sum-amt-v done">{fmt(doneAmt)}원</span>
-                    </div>
-                    <div className="tx-sum-amt">
-                      <span className="tx-sum-amt-k">남은 금액</span>
-                      <span className="tx-sum-amt-v remain">{fmt(remainAmt)}원</span>
-                    </div>
-                    <div className="tx-sum-amt">
-                      <span className="tx-sum-amt-k">총 이체액</span>
-                      <span className="tx-sum-amt-v">{fmt(totalAmt)}원</span>
-                    </div>
+                  <div className="tx-stat">
+                    <div className="tx-stat-k">완료 금액</div>
+                    <div className="tx-stat-v done">{fmt(doneAmt)}<small>원</small></div>
+                  </div>
+                  <div className="tx-stat">
+                    <div className="tx-stat-k">남은 금액</div>
+                    <div className="tx-stat-v remain">{fmt(remainAmt)}<small>원</small></div>
+                  </div>
+                  <div className="tx-stat">
+                    <div className="tx-stat-k">총 이체액</div>
+                    <div className="tx-stat-v gold">{fmt(totalAmt)}<small>원</small></div>
                   </div>
                 </div>
 
