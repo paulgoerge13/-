@@ -14,11 +14,19 @@ export default function ManagerDashboard({ onBack }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
-  const [view, setView] = useState('summary')      // summary | transfer
+  const [view, setView] = useState('summary')      // summary | transfer | severance
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료' }
   const [onlyPending, setOnlyPending] = useState(false)
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
+  // 퇴직금 계산
+  const [sevBranch, setSevBranch] = useState('')
+  const [sevEmps, setSevEmps] = useState([])        // [{name, hire, resign}]
+  const [sevEmp, setSevEmp] = useState('')
+  const [sevHire, setSevHire] = useState('')
+  const [sevResign, setSevResign] = useState('')
+  const [sevResult, setSevResult] = useState(null)
+  const [sevLoading, setSevLoading] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -184,6 +192,63 @@ export default function ManagerDashboard({ onBack }) {
       setTimeout(() => setCopiedId(c => (c === u.key ? null : c)), 1500)
     } catch (e) {
       // 클립보드 권한이 없으면 무시
+    }
+  }
+
+  // ── 퇴직금 계산 ──
+  // 선택 지점의 직원 목록 + 저장된 입·퇴사일 불러오기
+  async function loadSevEmps(b) {
+    setSevEmps([]); setSevEmp(''); setSevHire(''); setSevResign(''); setSevResult(null)
+    if (!b) return
+    const { data } = await supabase
+      .from('payroll').select('emp_name, hire_date, resign_date, year, month')
+      .eq('branch', b).order('year', { ascending: false }).order('month', { ascending: false })
+    const map = {}
+    for (const r of (data || [])) {
+      if (!map[r.emp_name]) map[r.emp_name] = { name: r.emp_name, hire: r.hire_date || '', resign: r.resign_date || '' }
+      else {
+        if (!map[r.emp_name].hire && r.hire_date) map[r.emp_name].hire = r.hire_date
+        if (!map[r.emp_name].resign && r.resign_date) map[r.emp_name].resign = r.resign_date
+      }
+    }
+    setSevEmps(Object.values(map))
+  }
+  function pickSevEmp(name) {
+    setSevEmp(name); setSevResult(null)
+    const e = sevEmps.find(x => x.name === name)
+    setSevHire(e?.hire || ''); setSevResign(e?.resign || '')
+  }
+  async function calcSeverance() {
+    if (!sevBranch || !sevEmp || !sevHire) { alert('지점·직원·입사일을 확인해 주세요.'); return }
+    setSevLoading(true); setSevResult(null)
+    try {
+      const { data } = await supabase
+        .from('payroll').select('*').eq('branch', sevBranch).eq('emp_name', sevEmp)
+        .order('year', { ascending: false }).order('month', { ascending: false })
+      const recs = data || []
+      if (recs.length === 0) { alert('해당 직원의 급여 데이터가 없어 계산할 수 없습니다.'); setSevLoading(false); return }
+      // 퇴사일(없으면 오늘) 기준 직전 3개월(퇴사월 제외)
+      const resignD = sevResign ? new Date(sevResign) : new Date()
+      const rY = resignD.getFullYear(), rM = resignD.getMonth() + 1
+      const wanted = []
+      let y = rY, m = rM - 1
+      for (let i = 0; i < 3; i++) { if (m < 1) { m = 12; y-- } wanted.push({ y, m }); m-- }
+      let used = wanted.map(w => recs.find(r => r.year === w.y && r.month === w.m)).filter(Boolean)
+      if (used.length < 3) {   // 직전 3개월 데이터가 부족하면 가장 최근 급여로 채움
+        const extra = recs.filter(r => !used.includes(r)).slice(0, 3 - used.length)
+        used = [...used, ...extra]
+      }
+      const wageSum = used.reduce((s, r) => s + fixGrand(r) + (r.meal_allowance || 0), 0)
+      const daysSum = used.reduce((s, r) => s + new Date(r.year, r.month, 0).getDate(), 0)
+      const avgDaily = daysSum > 0 ? wageSum / daysSum : 0
+      const hireD = new Date(sevHire)
+      const serviceDays = Math.max(0, Math.floor((resignD - hireD) / 86400000))
+      const severance = avgDaily * 30 * (serviceDays / 365)
+      setSevResult({ used, wageSum, daysSum, avgDaily, serviceDays, severance, eligible: serviceDays >= 365 })
+    } catch (e) {
+      alert('계산 오류: ' + e.message)
+    } finally {
+      setSevLoading(false)
     }
   }
 
@@ -480,6 +545,47 @@ export default function ManagerDashboard({ onBack }) {
     .tx-amt { flex: none; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; min-width: 84px; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
 
+    /* ───── 퇴직금 계산 ───── */
+    .sv-wrap { max-width: 620px; }
+    .sv-form { background: #fff; border: 1px solid #ebe9e4; border-radius: 14px; padding: 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+    .sv-field { display: flex; flex-direction: column; gap: 5px; }
+    .sv-field label { font-size: 11px; font-weight: 600; color: #999; letter-spacing: 0.04em; }
+    .sv-field select, .sv-field input {
+      border: 1px solid #d0ccc5; border-radius: 8px; padding: 10px 12px; font-size: 13px;
+      font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; background: #fff; outline: none;
+    }
+    .sv-field select:focus, .sv-field input:focus { border-color: #b8954a; }
+    .sv-field select:disabled { background: #f5f4f1; color: #bbb; }
+    .sv-calc {
+      grid-column: 1 / -1; margin-top: 4px; background: #b8954a; border: none; color: #fff;
+      border-radius: 9px; padding: 13px; font-size: 14px; font-weight: 700; cursor: pointer;
+      font-family: 'Pretendard', sans-serif; letter-spacing: 0.03em;
+    }
+    .sv-calc:hover { background: #a07f3a; }
+    .sv-calc:disabled { background: #cfc7b5; cursor: default; }
+
+    .sv-note { font-size: 11.5px; color: #999; line-height: 1.6; margin: 12px 4px; padding: 11px 13px; background: #faf8f3; border: 1px solid #efeadd; border-radius: 9px; }
+    .sv-note b { color: #b06a1a; }
+
+    .sv-result { background: #fff; border: 1px solid #ebe9e4; border-radius: 14px; padding: 20px; margin-top: 6px; }
+    .sv-warn { font-size: 12px; color: #c0392b; background: #fdecea; border: 1px solid #f5c6c0; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.5; }
+    .sv-big { text-align: center; padding: 8px 0 18px; border-bottom: 1px solid #f0ede8; margin-bottom: 14px; }
+    .sv-big-k { font-size: 12px; letter-spacing: 0.1em; color: #999; margin-bottom: 6px; }
+    .sv-big-v { font-size: 34px; font-weight: 700; color: #b8954a; letter-spacing: -0.01em; }
+    .sv-big-v small { font-size: 15px; font-weight: 500; color: #c9b78c; margin-left: 4px; }
+    .sv-rows { display: flex; flex-direction: column; gap: 1px; background: #f0ede8; border-radius: 10px; overflow: hidden; }
+    .sv-r { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 11px 14px; }
+    .sv-r span { font-size: 12.5px; color: #777; }
+    .sv-r b { font-size: 14px; font-weight: 700; color: #1a1a1a; }
+    .sv-formula { font-size: 11.5px; color: #aaa; text-align: center; margin: 12px 0; font-family: 'DM Sans', monospace; }
+    .sv-used { border-top: 1px solid #f0ede8; padding-top: 14px; }
+    .sv-used-h { font-size: 11px; font-weight: 600; color: #999; letter-spacing: 0.04em; margin-bottom: 8px; }
+    .sv-used-r { display: flex; justify-content: space-between; padding: 6px 2px; font-size: 12.5px; }
+    .sv-used-r span { color: #777; }
+    .sv-used-r b { color: #1a1a1a; font-weight: 600; }
+
+    @media (max-width: 560px) { .sv-form { grid-template-columns: 1fr; } }
+
     @media (max-width: 720px) {
       .tx-stats { grid-template-columns: 1fr 1fr; }
     }
@@ -530,9 +636,74 @@ export default function ManagerDashboard({ onBack }) {
         <div className="md-tabs">
           <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
           <button className={`md-tab ${view === 'transfer' ? 'on' : ''}`} onClick={() => setView('transfer')}>💸 이체 처리</button>
+          <button className={`md-tab ${view === 'severance' ? 'on' : ''}`} onClick={() => setView('severance')}>🧮 퇴직금</button>
         </div>
 
-        {loading ? (
+        {view === 'severance' ? (
+          /* ───────── 퇴직금 계산 ───────── */
+          <div className="sv-wrap">
+            <div className="sv-form">
+              <div className="sv-field">
+                <label>지점</label>
+                <select value={sevBranch} onChange={e => { setSevBranch(e.target.value); loadSevEmps(e.target.value) }}>
+                  <option value="">지점 선택</option>
+                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div className="sv-field">
+                <label>직원</label>
+                <select value={sevEmp} onChange={e => pickSevEmp(e.target.value)} disabled={!sevBranch}>
+                  <option value="">{sevBranch ? '직원 선택' : '지점 먼저 선택'}</option>
+                  {sevEmps.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
+                </select>
+              </div>
+              <div className="sv-field">
+                <label>입사일</label>
+                <input type="date" value={sevHire} onChange={e => setSevHire(e.target.value)} />
+              </div>
+              <div className="sv-field">
+                <label>퇴사일</label>
+                <input type="date" value={sevResign} onChange={e => setSevResign(e.target.value)} />
+              </div>
+              <button className="sv-calc" onClick={calcSeverance} disabled={sevLoading}>
+                {sevLoading ? '계산 중…' : '퇴직금 계산'}
+              </button>
+            </div>
+
+            <div className="sv-note">
+              ※ 퇴사일 직전 3개월 급여로 1일 평균임금을 구해 계산한 <b>추정치</b>입니다.
+              연차수당·상여금 등 일부 항목과 통상임금 보정은 반영되지 않으니, 실제 지급 전 <b>노무사 확인</b>을 권합니다.
+            </div>
+
+            {sevResult && (
+              <div className="sv-result">
+                {!sevResult.eligible && (
+                  <div className="sv-warn">⚠ 재직일수가 1년(365일) 미만입니다 — 법정 퇴직금 대상이 아닐 수 있습니다. (아래는 참고용 계산값)</div>
+                )}
+                <div className="sv-big">
+                  <div className="sv-big-k">예상 퇴직금</div>
+                  <div className="sv-big-v">{fmt(sevResult.severance)}<small>원</small></div>
+                </div>
+                <div className="sv-rows">
+                  <div className="sv-r"><span>1일 평균임금</span><b>{fmt(sevResult.avgDaily)}원</b></div>
+                  <div className="sv-r"><span>3개월 임금총액</span><b>{fmt(sevResult.wageSum)}원</b></div>
+                  <div className="sv-r"><span>산정기간 일수</span><b>{sevResult.daysSum}일</b></div>
+                  <div className="sv-r"><span>총 재직일수</span><b>{sevResult.serviceDays}일 ({(sevResult.serviceDays / 365).toFixed(2)}년)</b></div>
+                </div>
+                <div className="sv-formula">계산식 : {fmt(sevResult.avgDaily)} × 30일 × ({sevResult.serviceDays} ÷ 365)</div>
+                <div className="sv-used">
+                  <div className="sv-used-h">평균임금 산정에 사용한 급여 (식대 포함)</div>
+                  {sevResult.used.map(r => (
+                    <div key={r.id} className="sv-used-r">
+                      <span>{r.year}년 {r.month}월</span>
+                      <b>{fmt(fixGrand(r) + (r.meal_allowance || 0))}원</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : loading ? (
           <p className="md-loading">LOADING...</p>
         ) : view === 'transfer' ? (
           /* ───────── 이체 처리 화면 ───────── */
