@@ -118,8 +118,8 @@ export default function ManagerDashboard({ onBack }) {
   //   → recDeduction(r) 이 직원/알바 구분으로 공제를 계산하므로 그대로 사용한다.
   function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
 
-  // ── 이체 상태 (작성중 → 수정중 → 확정 → 이체완료 순환) ──
-  const STATUS_ORDER = ['작성중', '수정중', '확정', '이체완료', '보류']
+  // ── 이체 상태 (작성중 → 확정 → 이체완료 → 보류 순환) ──
+  const STATUS_ORDER = ['작성중', '확정', '이체완료', '보류']
   const STATUS_LABEL = { '작성중': '작성중', '수정중': '수정중', '확정': '확정', '이체완료': '이체완료', '보류': '보류' }
 
   // records 가 바뀌면 DB 의 transfer_status / transfer_note 로 상태·비고맵 초기화
@@ -366,9 +366,9 @@ export default function ManagerDashboard({ onBack }) {
     .md-title span { color: #b8954a; }
 
     /* 필터 */
-    .md-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .md-filter { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin-bottom: 16px; }
     .md-select {
-      flex: 0 0 auto; max-width: 240px;
+      flex: 1 1 0; min-width: 110px;
       background: #fff; border: 1px solid #d0ccc5; color: #1a1a1a;
       border-radius: 8px; padding: 10px 30px 10px 12px; font-size: 13px;
       font-family: 'Pretendard', 'DM Sans', sans-serif; outline: none;
@@ -809,7 +809,7 @@ export default function ManagerDashboard({ onBack }) {
                   ))}
                 </div>
 
-                <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 수정중 → 확정 → 이체완료 → 보류 순으로 바뀝니다. 오른쪽 비고 칸에 메모를 적을 수 있습니다.</div>
+                <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 확정 → 이체완료 → 보류 순으로 바뀝니다. 오른쪽 비고 칸에 메모를 적을 수 있습니다.</div>
                 {txUnavailable && (
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
                 )}
