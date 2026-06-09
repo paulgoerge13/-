@@ -166,13 +166,23 @@ export default function ManagerDashboard({ onBack }) {
     return STATUS_ORDER[idx < 0 ? 0 : idx]
   }
 
-  async function cycleUnit(u) {
-    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(unitStatus(u)) + 1) % STATUS_ORDER.length]
+  // 유닛 상태를 선택한 값으로 바로 변경 (드롭다운에서 선택)
+  async function setUnitStatus(u, next) {
     setStatusMap(m => { const n = { ...m }; for (const r of u.recs) n[r.id] = next; return n })
     for (const r of u.recs) {
       const { error } = await supabase.from('payroll').update({ transfer_status: next }).eq('id', r.id)
       if (error) setTxUnavailable(true)
     }
+  }
+
+  // 한 지점(현재 필터로 보이는 행 전체)을 한 번에 같은 상태로 변경
+  async function setUnitsStatus(units, next) {
+    const ids = []
+    for (const u of units) for (const r of u.recs) ids.push(r.id)
+    if (ids.length === 0) return
+    setStatusMap(m => { const n = { ...m }; for (const id of ids) n[id] = next; return n })
+    const { error } = await supabase.from('payroll').update({ transfer_status: next }).in('id', ids)
+    if (error) setTxUnavailable(true)
   }
 
   function unitNote(u) { return noteMap[u.recs[0]?.id] || '' }
@@ -545,9 +555,19 @@ export default function ManagerDashboard({ onBack }) {
     .tx-warn b { font-family: monospace; }
 
     .tx-group { margin-bottom: 16px; }
-    .tx-group-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 7px; }
+    .tx-group-head { display: flex; align-items: center; gap: 10px; padding: 0 4px 7px; }
     .tx-group-name { font-size: 13px; font-weight: 700; color: #1a1a1a; }
-    .tx-group-meta { font-size: 11.5px; color: #999; }
+    .tx-group-meta { font-size: 11.5px; color: #999; margin-left: auto; }
+    /* 지점 일괄 변경 드롭다운 */
+    .tx-bulk {
+      flex: none; font-size: 11.5px; font-weight: 600; color: #7a756c;
+      background: #f7f5f0; border: 1px solid #e2ded5; border-radius: 7px;
+      padding: 5px 26px 5px 10px; cursor: pointer; font-family: inherit; outline: none;
+      -webkit-appearance: none; -moz-appearance: none; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center;
+    }
+    .tx-bulk:hover { border-color: #b8954a; color: #b8954a; }
 
     .tx-row {
       display: flex; align-items: center; gap: 10px;
@@ -562,16 +582,19 @@ export default function ManagerDashboard({ onBack }) {
     .tx-row.st-보류 { border-left-color: #b89ce0; background: #faf8fd; }
 
     .tx-status {
-      flex: none; width: 70px; padding: 7px 0; border-radius: 7px;
+      flex: none; width: 82px; padding: 7px 20px 7px 8px; border-radius: 7px;
       font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit;
-      border: 1px solid transparent; transition: all 0.12s;
+      border: 1px solid transparent; transition: all 0.12s; outline: none;
+      text-align: center; text-align-last: center;
+      -webkit-appearance: none; -moz-appearance: none; appearance: none;
+      background-repeat: no-repeat; background-position: right 6px center; background-size: 11px;
     }
-    .tx-status.작성중 { background: #f1f0ec; color: #6b6560; border-color: #e2ded5; }
-    .tx-status.수정중 { background: #e8f0fb; color: #2f6bbf; border-color: #cfe0f5; }
-    .tx-status.확정   { background: #fbf0d6; color: #a9781a; border-color: #f0dca8; }
-    .tx-status.이체완료 { background: #e3f4ea; color: #1f9d57; border-color: #c3e6d1; }
-    .tx-status.보류 { background: #f0eafa; color: #7a4cb8; border-color: #e0d2f2; }
-    .tx-status:hover { filter: brightness(0.97); transform: translateY(-1px); }
+    .tx-status.작성중 { background-color: #f1f0ec; color: #6b6560; border-color: #e2ded5; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6560' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
+    .tx-status.수정중 { background-color: #e8f0fb; color: #2f6bbf; border-color: #cfe0f5; }
+    .tx-status.확정   { background-color: #fbf0d6; color: #a9781a; border-color: #f0dca8; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a9781a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
+    .tx-status.이체완료 { background-color: #e3f4ea; color: #1f9d57; border-color: #c3e6d1; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231f9d57' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
+    .tx-status.보류 { background-color: #f0eafa; color: #7a4cb8; border-color: #e0d2f2; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a4cb8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
+    .tx-status:hover { filter: brightness(0.97); }
 
     /* 이름: 한 줄 고정 (줄바꿈 방지로 행 높이 일정하게) */
     .tx-name-wrap { flex: none; width: 108px; display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
@@ -830,14 +853,28 @@ export default function ManagerDashboard({ onBack }) {
                       <div className="tx-group-head">
                         <span className="tx-group-name">{g.branch}</span>
                         <span className="tx-group-meta">{gDone}/{g.units.length}건 · {fmt(gTotal)}원</span>
+                        <select
+                          className="tx-bulk"
+                          value=""
+                          onChange={e => { if (e.target.value) { setUnitsStatus(shown, e.target.value); e.target.value = '' } }}
+                          title="이 지점에 보이는 전체를 한 번에 변경"
+                        >
+                          <option value="">전체 변경…</option>
+                          {STATUS_ORDER.map(s => <option key={s} value={s}>전체 → {s}</option>)}
+                        </select>
                       </div>
                       {shown.map(u => {
                         const st = unitStatus(u)
                         return (
                           <div key={u.key} className={`tx-row st-${st}`}>
-                            <button className={`tx-status ${st}`} onClick={() => cycleUnit(u)}>
-                              {STATUS_LABEL[st]}
-                            </button>
+                            <select
+                              className={`tx-status ${st}`}
+                              value={st}
+                              onChange={e => setUnitStatus(u, e.target.value)}
+                              title="상태 선택"
+                            >
+                              {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                            </select>
                             <div className="tx-name-wrap">
                               <span className="tx-name">{unitNames(u)}</span>
                               {unitMixed(u) ? <span className="tx-pt merge">합산</span>
