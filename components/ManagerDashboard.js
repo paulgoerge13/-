@@ -215,7 +215,13 @@ export default function ManagerDashboard({ onBack }) {
   function unitWageNet(u) { return u.recs.reduce((s, r) => s + transferAmt(r) - recSeverance(r), 0) } // 퇴직금 뺀 월급 실수령
   // 유닛에 포함된 공제방식들(중복 제거). 직원=4대보험 / 알바=3.3% 로 표시.
   const DED_LABEL = { '4대': '4대보험', '3.3': '3.3%', 'none': '공제없음' }
-  function unitDedTypes(u) { return [...new Set(u.recs.map(r => (r.emp_type === '직원' ? '4대' : '3.3')))] }
+  function unitDedTypes(u) {
+    const types = [...new Set(u.recs.map(r => (r.emp_type === '직원' ? '4대' : '3.3')))]
+    // 한 사람을 직원분 + 별도분(예: 김현준 / 김현준p3)으로 나눠 합친 경우,
+    // 4대보험(직원)·3.3%를 함께 띄우면 지급 담당자가 헷갈리므로 4대보험 하나로만 표시한다.
+    if (types.includes('4대')) return ['4대']
+    return types
+  }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
   function unitMixed(u) { return u.recs.length > 1 }
   // 유닛 상태 = 가장 덜 진행된 레코드 기준 (모두 이체완료여야 '이체완료')
@@ -727,8 +733,11 @@ export default function ManagerDashboard({ onBack }) {
 
     /* 비고: 담당자가 메모를 적는 칸 (행 오른쪽 끝) */
     .tx-note { flex: none; width: 150px; }
-    .tx-note-input { width: 100%; font-size: 12px; color: #444; padding: 6px 9px; border: 1px solid #e7e3da; border-radius: 7px; font-family: inherit; outline: none; background: #fcfbf9; transition: border-color .12s; }
-    .tx-note-input:focus { border-color: #b8954a; background: #fff; }
+    /* 비고: 비어 있을 때도 눈에 띄게(점선 테두리), 내용이 있으면 노란색으로 확실히 강조 */
+    .tx-note-input { width: 100%; font-size: 12px; color: #444; padding: 7px 9px; border: 1.5px dashed #d8cfa8; border-radius: 7px; font-family: inherit; outline: none; background: #fffdf3; transition: all .12s; }
+    .tx-note-input::placeholder { color: #b0a570; font-weight: 600; }
+    .tx-note-input:focus { border-style: solid; border-color: #b8954a; background: #fff; box-shadow: 0 0 0 3px rgba(184,149,74,0.15); }
+    .tx-note-input.has-note { border-style: solid; border-color: #e6b93f; background: #fff5d6; color: #7a5712; font-weight: 700; box-shadow: 0 1px 4px rgba(214,170,50,0.25); }
     .tx-note-input::placeholder { color: #c4bfb6; }
 
     /* 자유 메모 박스 — 오른쪽 끝에 고정되어 스크롤을 따라다니는 큰 창 */
@@ -1064,11 +1073,11 @@ export default function ManagerDashboard({ onBack }) {
                             </div>
                             <div className="tx-note">
                               <input
-                                className="tx-note-input"
+                                className={`tx-note-input ${unitNote(u) ? 'has-note' : ''}`}
                                 value={unitNote(u)}
                                 onChange={e => setUnitNoteLocal(u, e.target.value)}
                                 onBlur={() => saveNote(u)}
-                                placeholder="비고"
+                                placeholder="✏ 비고"
                               />
                             </div>
                           </div>
