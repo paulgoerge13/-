@@ -14,6 +14,11 @@ export default function ManagerDashboard({ onBack }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
+  const [view, setView] = useState('summary')      // summary | transfer
+  const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료' }
+  const [onlyPending, setOnlyPending] = useState(false)
+  const [txUnavailable, setTxUnavailable] = useState(false)
+  const [copiedId, setCopiedId] = useState(null)
 
   async function load() {
     setLoading(true)
@@ -92,6 +97,50 @@ export default function ManagerDashboard({ onBack }) {
   }
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
   function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
+
+  // ── 실제 이체(입금)할 금액 ──
+  // 공제방식이 'none'(공제 없음)이면 세전 지급액(=명세서 grand_total) 그대로 이체.
+  // 공제가 잡혀 있으면 공제 후 실지급액을 이체.
+  function transferAmt(r) {
+    const dt = r.deduction_type || 'none'
+    if (dt === 'none') return fixGrand(r)
+    return recNet(r)
+  }
+
+  // ── 이체 상태 (작성중 → 수정중 → 확정 → 이체완료 순환) ──
+  const STATUS_ORDER = ['작성중', '수정중', '확정', '이체완료']
+  const STATUS_LABEL = { '작성중': '작성중', '수정중': '수정중', '확정': '확정', '이체완료': '이체완료' }
+
+  // records 가 바뀌면 DB 의 transfer_status 로 상태맵 초기화
+  useEffect(() => {
+    const m = {}
+    for (const r of records) m[r.id] = r.transfer_status || '작성중'
+    setStatusMap(m)
+  }, [records])
+
+  function txStatus(r) { return statusMap[r.id] || '작성중' }
+
+  async function cycleStatus(r) {
+    const cur = txStatus(r)
+    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(cur) + 1) % STATUS_ORDER.length]
+    setStatusMap(m => ({ ...m, [r.id]: next }))
+    const { error } = await supabase.from('payroll').update({ transfer_status: next }).eq('id', r.id)
+    if (error) {
+      // transfer_status 컬럼이 아직 없으면 안내 (값은 화면에는 유지)
+      setTxUnavailable(true)
+    }
+  }
+
+  async function copyAcct(r) {
+    const text = r.account_number || ''
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedId(r.id)
+      setTimeout(() => setCopiedId(c => (c === r.id ? null : c)), 1500)
+    } catch (e) {
+      // 클립보드 권한이 없으면 무시
+    }
+  }
 
   // ── 전 지점 집계 ──
   const byBranch = BRANCHES.map(b => {
@@ -300,6 +349,94 @@ export default function ManagerDashboard({ onBack }) {
     .md-empty { text-align: center; color: #bbb; padding: 40px 0; font-size: 13px; letter-spacing: 0.05em; }
     .md-loading { text-align: center; color: #bbb; padding: 40px 0; font-size: 12px; letter-spacing: 0.1em; }
 
+    /* 보기 전환 탭 */
+    .md-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .md-tab {
+      flex: 1; background: #fff; border: 1px solid #e0ddd6; color: #888;
+      border-radius: 10px; padding: 11px 12px; font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: 'Pretendard', 'DM Sans', sans-serif; transition: all 0.15s;
+    }
+    .md-tab:hover { border-color: #b8954a; color: #1a1a1a; }
+    .md-tab.on { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+
+    /* ───── 이체 처리 ───── */
+    .tx-summary { background: linear-gradient(135deg, #1a1a1a, #2c2c2c); border-radius: 14px; padding: 18px 20px; margin-bottom: 12px; }
+    .tx-sum-main { margin-bottom: 14px; }
+    .tx-sum-k { font-size: 11px; letter-spacing: 0.13em; color: #c9b78c; margin-bottom: 5px; }
+    .tx-sum-v { font-size: 26px; font-weight: 700; color: #fff; }
+    .tx-sum-v small { font-size: 13px; font-weight: 500; color: #c9b78c; margin-left: 4px; }
+    .tx-sum-bar { margin-top: 10px; height: 7px; border-radius: 4px; background: rgba(255,255,255,0.12); overflow: hidden; }
+    .tx-sum-fill { height: 100%; background: #2ecc71; border-radius: 4px; transition: width 0.3s; }
+    .tx-sum-amts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: rgba(201,183,140,0.18); border-radius: 10px; overflow: hidden; }
+    .tx-sum-amt { background: #232323; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px; }
+    .tx-sum-amt-k { font-size: 10.5px; color: #9c8e6a; }
+    .tx-sum-amt-v { font-size: 15px; font-weight: 700; color: #e6d6ab; }
+    .tx-sum-amt-v.done { color: #6ee7a0; }
+    .tx-sum-amt-v.remain { color: #f5c560; }
+
+    .tx-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; padding: 0 2px; }
+    .tx-legend { display: flex; flex-wrap: wrap; gap: 12px; }
+    .tx-leg { font-size: 11.5px; color: #777; display: flex; align-items: center; }
+    .tx-chip { width: 12px; height: 12px; border-radius: 4px; margin-right: 5px; display: inline-block; border: 1px solid rgba(0,0,0,0.08); }
+    .tx-toggle { font-size: 12px; color: #666; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+    .tx-toggle input { width: 15px; height: 15px; accent-color: #b8954a; cursor: pointer; }
+
+    /* 상태별 색상 칩 (작성중=주황 / 수정중=흰색 / 확정=노랑 / 이체완료=초록) */
+    .tx-chip.작성중 { background: #f6b26b; }
+    .tx-chip.수정중 { background: #ffffff; }
+    .tx-chip.확정   { background: #ffe066; }
+    .tx-chip.이체완료 { background: #57c98a; }
+
+    .tx-hint { font-size: 11.5px; color: #aaa; margin: 4px 2px 12px; }
+    .tx-warn { font-size: 12px; color: #b06a1a; background: #fdf3e6; border: 1px solid #f0d8b8; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+    .tx-warn b { font-family: monospace; }
+
+    .tx-group { margin-bottom: 16px; }
+    .tx-group-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 7px; }
+    .tx-group-name { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+    .tx-group-meta { font-size: 11.5px; color: #999; }
+
+    .tx-row {
+      display: flex; align-items: center; gap: 10px;
+      background: #fff; border: 1px solid #ebe9e4; border-left-width: 5px;
+      border-radius: 10px; padding: 11px 13px; margin-bottom: 7px;
+    }
+    /* 행 왼쪽 컬러 바 = 상태색 */
+    .tx-row.st-작성중 { border-left-color: #f6b26b; }
+    .tx-row.st-수정중 { border-left-color: #d8d4cc; }
+    .tx-row.st-확정   { border-left-color: #ffe066; }
+    .tx-row.st-이체완료 { border-left-color: #57c98a; background: #f4fbf6; }
+
+    .tx-status {
+      flex: none; width: 70px; padding: 7px 0; border-radius: 7px;
+      font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+      border: 1px solid rgba(0,0,0,0.08); transition: all 0.12s;
+    }
+    .tx-status.작성중 { background: #f6b26b; color: #6b3d12; }
+    .tx-status.수정중 { background: #ffffff; color: #777; }
+    .tx-status.확정   { background: #ffe066; color: #7a6512; }
+    .tx-status.이체완료 { background: #57c98a; color: #fff; }
+    .tx-status:hover { filter: brightness(0.96); transform: translateY(-1px); }
+
+    .tx-name-wrap { flex: none; width: 78px; display: flex; align-items: center; gap: 5px; }
+    .tx-name { font-size: 14px; font-weight: 700; color: #1a1a1a; }
+    .tx-pt { font-size: 9px; font-weight: 700; color: #9c7f44; background: #ece0c9; padding: 1px 5px; border-radius: 10px; }
+
+    .tx-acct-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; }
+    .tx-acct { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tx-copy { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 10.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+    .tx-copy:hover { border-color: #b8954a; color: #b8954a; }
+
+    .tx-amt { flex: none; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; min-width: 84px; }
+    .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
+
+    @media (max-width: 560px) {
+      .tx-sum-amts { grid-template-columns: 1fr; }
+      .tx-row { flex-wrap: wrap; }
+      .tx-acct-wrap { order: 3; width: 100%; flex-basis: 100%; }
+      .tx-name-wrap { width: auto; flex: 1; }
+    }
+
     @media (max-width: 560px) {
       .md-breakdown { grid-template-columns: 1fr; }
       .md-summary-row { grid-template-columns: 1fr; }
@@ -337,8 +474,114 @@ export default function ManagerDashboard({ onBack }) {
           <button className="md-refresh" onClick={load}>🔄</button>
         </div>
 
+        {/* 보기 전환 탭: 인건비 요약 / 이체 처리 */}
+        <div className="md-tabs">
+          <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
+          <button className={`md-tab ${view === 'transfer' ? 'on' : ''}`} onClick={() => setView('transfer')}>💸 이체 처리</button>
+        </div>
+
         {loading ? (
           <p className="md-loading">LOADING...</p>
+        ) : view === 'transfer' ? (
+          /* ───────── 이체 처리 화면 ───────── */
+          (() => {
+            const rows = records
+              .filter(r => !onlyPending || txStatus(r) !== '이체완료')
+            const doneCount = records.filter(r => txStatus(r) === '이체완료').length
+            const doneAmt = records.filter(r => txStatus(r) === '이체완료').reduce((s, r) => s + transferAmt(r), 0)
+            const totalAmt = records.reduce((s, r) => s + transferAmt(r), 0)
+            const remainAmt = totalAmt - doneAmt
+            // 지점별 그룹 (현재 필터 기준)
+            const groups = (isAll ? BRANCHES : [branch])
+              .map(b => ({ branch: b, list: rows.filter(r => r.branch === b) }))
+              .filter(g => g.list.length > 0)
+
+            return (
+              <>
+                {/* 진행 요약 */}
+                <div className="tx-summary">
+                  <div className="tx-sum-main">
+                    <div className="tx-sum-k">이체 진행</div>
+                    <div className="tx-sum-v">{doneCount}<small>/{records.length}명 완료</small></div>
+                    <div className="tx-sum-bar">
+                      <div className="tx-sum-fill" style={{ width: `${records.length ? Math.round(doneCount / records.length * 100) : 0}%` }} />
+                    </div>
+                  </div>
+                  <div className="tx-sum-amts">
+                    <div className="tx-sum-amt">
+                      <span className="tx-sum-amt-k">완료 금액</span>
+                      <span className="tx-sum-amt-v done">{fmt(doneAmt)}원</span>
+                    </div>
+                    <div className="tx-sum-amt">
+                      <span className="tx-sum-amt-k">남은 금액</span>
+                      <span className="tx-sum-amt-v remain">{fmt(remainAmt)}원</span>
+                    </div>
+                    <div className="tx-sum-amt">
+                      <span className="tx-sum-amt-k">총 이체액</span>
+                      <span className="tx-sum-amt-v">{fmt(totalAmt)}원</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 상태 범례 + 필터 */}
+                <div className="tx-bar">
+                  <div className="tx-legend">
+                    <span className="tx-leg"><b className="tx-chip 작성중" />작성중</span>
+                    <span className="tx-leg"><b className="tx-chip 수정중" />수정중</span>
+                    <span className="tx-leg"><b className="tx-chip 확정" />확정</span>
+                    <span className="tx-leg"><b className="tx-chip 이체완료" />이체완료</span>
+                  </div>
+                  <label className="tx-toggle">
+                    <input type="checkbox" checked={onlyPending} onChange={e => setOnlyPending(e.target.checked)} />
+                    미완료만 보기
+                  </label>
+                </div>
+
+                <div className="tx-hint">상태 박스를 누르면 작성중 → 수정중 → 확정 → 이체완료 순서로 바뀝니다.</div>
+                {txUnavailable && (
+                  <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요. (아래 안내)</div>
+                )}
+
+                {groups.length === 0 ? (
+                  <p className="md-empty">{onlyPending ? '미완료 건이 없습니다. 모두 이체 완료!' : '해당 월의 데이터가 없습니다.'}</p>
+                ) : groups.map(g => {
+                  const gTotal = g.list.reduce((s, r) => s + transferAmt(r), 0)
+                  const gDone = g.list.filter(r => txStatus(r) === '이체완료').length
+                  return (
+                    <div key={g.branch} className="tx-group">
+                      <div className="tx-group-head">
+                        <span className="tx-group-name">{g.branch}</span>
+                        <span className="tx-group-meta">{gDone}/{g.list.length}명 · {fmt(gTotal)}원</span>
+                      </div>
+                      {g.list.map(r => {
+                        const st = txStatus(r)
+                        return (
+                          <div key={r.id} className={`tx-row st-${st}`}>
+                            <button className={`tx-status ${st}`} onClick={() => cycleStatus(r)}>
+                              {STATUS_LABEL[st]}
+                            </button>
+                            <div className="tx-name-wrap">
+                              <span className="tx-name">{r.emp_name}</span>
+                              {r.emp_type !== '직원' && <span className="tx-pt">알바</span>}
+                            </div>
+                            <div className="tx-acct-wrap">
+                              <span className="tx-acct">{r.account_number || '계좌 미입력'}</span>
+                              {r.account_number && (
+                                <button className="tx-copy" onClick={() => copyAcct(r)}>
+                                  {copiedId === r.id ? '복사됨 ✓' : '복사'}
+                                </button>
+                              )}
+                            </div>
+                            <div className="tx-amt">{fmt(transferAmt(r))}<small>원</small></div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </>
+            )
+          })()
         ) : isAll ? (
           /* ───────── 전 지점 통합 대시보드 ───────── */
           <>
