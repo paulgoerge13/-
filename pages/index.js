@@ -1663,20 +1663,21 @@ export default function Home() {
     .branch-num { font-size: 12px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 16px; font-weight: 500; }
     .branch-name { font-size: 21px; font-weight: 600; color: #1a1a1a; }
 
-    /* 6개 지점 아래 — 전 지점 통합 관리자 진입 */
+    /* 6개 지점 아래 — 전 지점 통합 관리자 진입 (골드 강조) */
     .admin-entry {
       max-width: 900px; margin: 20px auto 0; cursor: pointer;
       display: flex; align-items: center; gap: 16px;
-      background: linear-gradient(135deg, #1a1a1a, #2c2c2c);
+      background: linear-gradient(135deg, #cdaa5d, #b8954a);
       border-radius: 16px; padding: 20px 24px;
+      box-shadow: 0 4px 18px rgba(184,149,74,0.28);
       transition: transform 0.15s, box-shadow 0.15s;
     }
-    .admin-entry:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,0.18); }
+    .admin-entry:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(184,149,74,0.4); }
     .admin-entry-icon { font-size: 24px; line-height: 1; }
     .admin-entry-texts { flex: 1; min-width: 0; }
     .admin-entry-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 3px; }
-    .admin-entry-sub { font-size: 12px; color: #c9b78c; }
-    .admin-entry-chev { font-size: 22px; color: #8a8a8a; }
+    .admin-entry-sub { font-size: 12px; color: #fbf3e0; }
+    .admin-entry-chev { font-size: 22px; color: rgba(255,255,255,0.8); }
 
     .login-wrap { display: flex; justify-content: center; align-items: center; min-height: 60vh; }
     .login-box {
