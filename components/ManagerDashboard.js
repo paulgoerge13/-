@@ -156,6 +156,9 @@ export default function ManagerDashboard({ onBack }) {
     return names.join(' + ')
   }
   function unitAmt(u) { return u.recs.reduce((s, r) => s + transferAmt(r), 0) }
+  // 유닛에 포함된 공제방식들(중복 제거). 한 사람을 4대+3.3 둘로 나눈 경우 둘 다 표시.
+  const DED_LABEL = { '4대': '4대보험', '3.3': '3.3%', 'none': '공제없음' }
+  function unitDedTypes(u) { return [...new Set(u.recs.map(r => r.deduction_type || 'none'))] }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
   function unitMixed(u) { return u.recs.length > 1 }
   // 유닛 상태 = 가장 덜 진행된 레코드 기준 (모두 이체완료여야 '이체완료')
@@ -463,6 +466,12 @@ export default function ManagerDashboard({ onBack }) {
     .tx-pt { font-size: 9px; font-weight: 700; color: #9c7f44; background: #ece0c9; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
     .tx-pt.merge { color: #2b6cb0; background: #dbeafe; }
 
+    .tx-ded-wrap { flex: none; width: 92px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .tx-ded { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; border: 1px solid transparent; }
+    .tx-ded.four { color: #2b6cb0; background: #dbeafe; }      /* 4대보험 = 파랑 */
+    .tx-ded.three { color: #0a7a6b; background: #cffaf0; }     /* 3.3% = 청록 */
+    .tx-ded.none { color: #c0392b; background: #fdecea; border-color: #f5c6c0; }  /* 공제없음 = 빨강(주의) */
+
     .tx-acct-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; }
     .tx-acct { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tx-copy { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 10.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; }
@@ -608,6 +617,13 @@ export default function ManagerDashboard({ onBack }) {
                               <span className="tx-name">{unitNames(u)}</span>
                               {unitMixed(u) ? <span className="tx-pt merge">합산</span>
                                 : unitIsAlba(u) ? <span className="tx-pt">알바</span> : null}
+                            </div>
+                            <div className="tx-ded-wrap">
+                              {unitDedTypes(u).map(dt => (
+                                <span key={dt} className={`tx-ded ${dt === 'none' ? 'none' : dt === '4대' ? 'four' : 'three'}`}>
+                                  {DED_LABEL[dt] || dt}
+                                </span>
+                              ))}
                             </div>
                             <div className="tx-acct-wrap">
                               <span className="tx-acct">{u.account || '계좌 미입력'}</span>
