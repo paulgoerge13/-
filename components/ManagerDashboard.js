@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES } from '../lib/branches'
 
@@ -21,7 +22,6 @@ export default function ManagerDashboard({ onBack }) {
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
   const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료 | 보류
-  const [txLayout, setTxLayout] = useState('detail')       // detail(상세) | board(한눈에)
   const [noteMap, setNoteMap] = useState({})        // { [recId]: '비고 메모' }
   const [noteUnavailable, setNoteUnavailable] = useState(false)
   const [txMemo, setTxMemo] = useState('')          // 이체 화면 우측 자유 메모 (월별, 브라우저 저장)
@@ -476,6 +476,85 @@ export default function ManagerDashboard({ onBack }) {
     URL.revokeObjectURL(url)
   }
 
+  // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
+  function downloadTransferXlsx() {
+    const groups = BRANCHES
+      .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
+      .filter(g => g.units.length > 0)
+      .map(g => ({
+        branch: g.branch,
+        count: g.units.length,
+        sorted: [...g.units].sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko')),
+        total: g.units.reduce((s, u) => s + unitAmt(u), 0),
+      }))
+    if (groups.length === 0) { alert('이 달에 이체할 데이터가 없습니다.'); return }
+
+    const FILL = { '작성중': 'FDE9D0', '수정중': 'FFFFFF', '확정': 'FFF27A', '이체완료': 'C6F0C6', '보류': 'ECDCFA' }
+    const COLS = 5, GAP = 1, PER_BAND = 4, BLOCK = COLS + GAP
+    const bd = { style: 'thin', color: { rgb: 'D9D2C5' } }
+    const allBd = { top: bd, bottom: bd, left: bd, right: bd }
+    const ws = {}, merges = []
+    let maxR = 0, maxC = 0
+    const put = (r, c, v, s) => {
+      const t = typeof v === 'number' ? 'n' : 's'
+      ws[XLSX.utils.encode_cell({ r, c })] = { v: (v === undefined || v === null) ? '' : v, t, s: s || {} }
+      if (r > maxR) maxR = r
+      if (c > maxC) maxC = c
+    }
+
+    put(0, 0, `${year}년 ${month}월 이체 명세 (전 지점)`, { font: { bold: true, sz: 14 } })
+
+    let bandTop = 2
+    for (let bi = 0; bi < groups.length; bi += PER_BAND) {
+      const band = groups.slice(bi, bi + PER_BAND)
+      let bandRows = 0
+      band.forEach((g, k) => {
+        const c0 = k * BLOCK
+        let r = bandTop
+        put(r, c0, `${g.branch}  (${g.count}명)`, { font: { bold: true, sz: 12 }, fill: { fgColor: { rgb: 'F0EAD9' } } })
+        for (let cc = 1; cc < COLS; cc++) put(r, c0 + cc, '', { fill: { fgColor: { rgb: 'F0EAD9' } } })
+        merges.push({ s: { r, c: c0 }, e: { r, c: c0 + COLS - 1 } })
+        r++
+        ;['구분', '이름', '금액', '은행', '계좌'].forEach((h, ci) =>
+          put(r, c0 + ci, h, { font: { bold: true, sz: 10, color: { rgb: '8A8170' } }, fill: { fgColor: { rgb: 'FAF8F3' } }, border: allBd }))
+        r++
+        g.sorted.forEach(u => {
+          const st = unitStatus(u)
+          const a = splitAcct(u.account)
+          const fill = { fgColor: { rgb: FILL[st] || 'FFFFFF' } }
+          put(r, c0 + 0, unitIsAlba(u) ? 'pt' : '', { fill, alignment: { horizontal: 'center' }, font: { bold: true, sz: 10, color: { rgb: 'B07A1E' } }, border: allBd })
+          put(r, c0 + 1, unitNames(u), { fill, font: { sz: 11, bold: true }, border: allBd })
+          put(r, c0 + 2, unitAmt(u), { fill, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { sz: 11, bold: true }, border: allBd })
+          put(r, c0 + 3, a.bank, { fill, font: { sz: 10 }, border: allBd })
+          put(r, c0 + 4, a.num, { fill, font: { sz: 10 }, border: allBd })
+          r++
+        })
+        const tf = { fgColor: { rgb: 'FAF8F3' } }
+        put(r, c0 + 0, '', { fill: tf, border: allBd })
+        put(r, c0 + 1, '합계', { fill: tf, font: { bold: true, sz: 10 }, border: allBd })
+        put(r, c0 + 2, g.total, { fill: tf, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { bold: true, sz: 11 }, border: allBd })
+        put(r, c0 + 3, '', { fill: tf, border: allBd })
+        put(r, c0 + 4, '', { fill: tf, border: allBd })
+        const used = (r - bandTop) + 1
+        if (used > bandRows) bandRows = used
+      })
+      bandTop += bandRows + 1
+    }
+
+    const cols = []
+    for (let c = 0; c <= maxC; c++) {
+      const w = c % BLOCK
+      cols.push({ wch: w === 0 ? 5 : w === 1 ? 10 : w === 2 ? 12 : w === 3 ? 9 : w === 4 ? 20 : 2 })
+    }
+    ws['!cols'] = cols
+    ws['!merges'] = merges
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, `${month}월 이체`)
+    XLSX.writeFile(wb, `이체명세_전지점_${year}년${month}월.xlsx`)
+  }
+
   const css = `
     .md-wrap { max-width: 920px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
     /* 이체 처리 화면: 가독성 위해 폭을 넓게 쓴다 (오른쪽 고정 메모와 겹치지 않게) */
@@ -719,9 +798,15 @@ export default function ManagerDashboard({ onBack }) {
     .tx-lbtn { font-size: 13px; font-weight: 700; color: #6b6760; background: #fff; border: 1.5px solid #e2ddd2; border-radius: 999px; padding: 8px 16px; cursor: pointer; transition: all .15s; }
     .tx-lbtn:hover { border-color: #c2a45e; color: #1a1a1a; }
     .tx-lbtn.on { color: #fff; background: #5a8a6a; border-color: #5a8a6a; box-shadow: 0 2px 6px rgba(90,138,106,0.3); }
-    .tx-legend { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 6px; }
+    .tx-legend { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
     .tx-lg { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; border: 1px solid #e2ded5; color: #3a352e; }
     .tx-lg-note { font-size: 11px; color: #9a9286; margin-left: 4px; }
+
+    /* 보드 상단 바: 색상 안내 + 엑셀 다운로드 */
+    .tx-board-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .tx-xlsx { margin-left: auto; font-size: 13px; font-weight: 800; color: #fff; background: #1d7044; border: none; border-radius: 999px; padding: 9px 18px; cursor: pointer; box-shadow: 0 2px 6px rgba(29,112,68,0.3); transition: background .15s; }
+    .tx-xlsx:hover { background: #155634; }
+    .tx-board-note { font-size: 12px; color: #9a9286; margin: 0 2px 14px; }
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
     .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; margin-bottom: 20px; }
@@ -737,7 +822,10 @@ export default function ManagerDashboard({ onBack }) {
     .bd-name { font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bd-amt { font-size: 13px; font-weight: 800; color: #111; text-align: right; letter-spacing: -0.02em; }
     .bd-bank { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; }
-    .bd-acct { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; }
+    .bd-acct { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; cursor: pointer; border-radius: 4px; padding: 1px 3px; }
+    .bd-acct:hover { background: rgba(0,0,0,0.06); text-decoration: underline; }
+    .bd-acct.empty { color: #b9b3a6; cursor: default; font-style: italic; }
+    .bd-acct.empty:hover { background: none; text-decoration: none; }
     /* 상태별 배경색 (스프레드시트와 동일 규칙) */
     .bd-row.st-작성중,  .tx-lg.st-작성중  { background: #fde9d0; }
     .bd-row.st-수정중,  .tx-lg.st-수정중  { background: #ffffff; }
@@ -916,6 +1004,13 @@ export default function ManagerDashboard({ onBack }) {
     .tx-memo-save:hover { background: #a07f38; }
     .tx-memo-save:disabled { background: #ddd6c5; cursor: default; }
 
+    /* 자유 메모 박스 — 전체 폭, 보드 하단 (고정 아님) */
+    .tx-memo-bottom {
+      display: flex; flex-direction: column; margin-top: 24px;
+      background: #fffdf7; border: 1px solid #ece4cf; border-radius: 14px;
+      box-shadow: 0 6px 20px rgba(120,100,50,0.08); padding: 16px 16px 12px;
+    }
+
     /* ───── 퇴직금 계산기 (떠있는 버튼 + 팝업) ───── */
     .sev-fab {
       position: fixed; right: 24px; bottom: 24px; z-index: 50;
@@ -1018,7 +1113,7 @@ export default function ManagerDashboard({ onBack }) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className={`md-wrap ${view === 'transfer' ? 'tx-mode' : ''} ${view === 'transfer' && txLayout === 'board' ? 'tx-board' : ''}`}>
+      <div className={`md-wrap ${view === 'transfer' ? 'tx-mode tx-board' : ''}`}>
 
         {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
 
@@ -1118,63 +1213,18 @@ export default function ManagerDashboard({ onBack }) {
                   </div>
                 </div>
 
-                {/* 보기 방식: 상세 / 한눈에(전 지점 압축) */}
-                <div className="tx-layout">
-                  <button className={`tx-lbtn ${txLayout === 'detail' ? 'on' : ''}`} onClick={() => setTxLayout('detail')}>📋 상세 보기</button>
-                  <button className={`tx-lbtn ${txLayout === 'board' ? 'on' : ''}`} onClick={() => setTxLayout('board')}>🗂 한눈에 보기</button>
-                  {txLayout === 'board' && (
-                    <span className="tx-legend">
-                      <span className="tx-lg st-작성중">작성중</span>
-                      <span className="tx-lg st-확정">확정</span>
-                      <span className="tx-lg st-이체완료">이체완료</span>
-                      <span className="tx-lg st-보류">보류</span>
-                      <span className="tx-lg-note">칸을 누르면 상태가 바뀝니다 · pt=알바</span>
-                    </span>
-                  )}
+                {/* 색상 안내 + 엑셀 다운로드 (토글 없이 항상 한 페이지 보드로 표시) */}
+                <div className="tx-board-bar">
+                  <span className="tx-legend">
+                    <span className="tx-lg st-작성중">작성중</span>
+                    <span className="tx-lg st-확정">확정</span>
+                    <span className="tx-lg st-이체완료">이체완료</span>
+                    <span className="tx-lg st-보류">보류</span>
+                  </span>
+                  <button className="tx-xlsx" onClick={downloadTransferXlsx}>⬇ 엑셀 다운로드</button>
                 </div>
+                <div className="tx-board-note">칸을 누르면 상태가 바뀝니다 (작성중 → 확정 → 이체완료 → 보류) · 계좌를 누르면 복사됩니다 · pt = 알바</div>
 
-                {txLayout === 'detail' && (<>
-                {/* 지점 선택 칩: 전 지점 ↔ 특정 지점만 골라보기 */}
-                <div className="tx-branchbar">
-                  <span className="tx-branchbar-label">지점</span>
-                  <button
-                    className={`tx-bchip ${isAll ? 'on' : ''}`}
-                    onClick={() => setBranch(ALL)}
-                  >
-                    전체 지점
-                  </button>
-                  {BRANCHES.filter(b => records.some(r => r.branch === b)).map(b => (
-                    <button
-                      key={b}
-                      className={`tx-bchip ${branch === b ? 'on' : ''}`}
-                      onClick={() => setBranch(b)}
-                    >
-                      {b}
-                    </button>
-                  ))}
-                </div>
-
-                {/* 상태 필터 칩: 전 지점을 상태별로 모아보기 */}
-                <div className="tx-filter">
-                  <button
-                    className={`tx-fchip all ${statusFilter === 'all' ? 'on' : ''}`}
-                    onClick={() => setStatusFilter('all')}
-                  >
-                    전체 <em>{totalUnits}</em>
-                  </button>
-                  {STATUS_ORDER.map(s => (
-                    <button
-                      key={s}
-                      className={`tx-fchip ${s} ${statusFilter === s ? 'on' : ''}`}
-                      onClick={() => setStatusFilter(s)}
-                    >
-                      {s} <em>{statusCounts[s]}</em>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 확정 → 이체완료 → 보류 순으로 바뀝니다. 오른쪽 비고 칸에 메모를 적을 수 있습니다.</div>
-                </>)}
                 {txUnavailable && (
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
                 )}
@@ -1182,13 +1232,17 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="tx-warn">ℹ 비고는 이 컴퓨터에는 저장되지만, 다른 기기와 공유되지 않습니다. 공유하려면 Supabase 에 <b>transfer_note</b> 컬럼을 추가해 주세요.</div>
                 )}
 
-                {/* ── 한눈에 보기: 전 지점을 압축한 보드(스프레드시트 스타일) ── */}
-                {txLayout === 'board' && (
+                {/* ── 전 지점을 한 페이지에 압축한 보드(스프레드시트 스타일) ── */}
+                {(() => {
+                  const boardGroups = BRANCHES
+                    .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
+                    .filter(g => g.units.length > 0)
+                  if (boardGroups.length === 0) {
+                    return <p className="md-empty">해당 월의 데이터가 없습니다.</p>
+                  }
+                  return (
                   <div className="bd-grid">
-                    {BRANCHES
-                      .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
-                      .filter(g => g.units.length > 0)
-                      .map(g => {
+                    {boardGroups.map(g => {
                         const sorted = [...g.units].sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko'))
                         const gTotal = g.units.reduce((s, u) => s + unitAmt(u), 0)
                         const gDone = g.units.filter(u => unitStatus(u) === '이체완료').length
@@ -1213,7 +1267,13 @@ export default function ManagerDashboard({ onBack }) {
                                     <span className="bd-name">{unitNames(u)}</span>
                                     <span className="bd-amt">{fmt(unitAmt(u))}</span>
                                     <span className="bd-bank">{a.bank}</span>
-                                    <span className="bd-acct">{a.num || '계좌 미입력'}</span>
+                                    <span
+                                      className={`bd-acct ${u.account ? '' : 'empty'}`}
+                                      onClick={e => { e.stopPropagation(); if (u.account) copyAcct(u) }}
+                                      title={u.account ? '누르면 계좌가 복사됩니다' : ''}
+                                    >
+                                      {copiedId === u.key ? '복사됨 ✓' : (a.num || '계좌 미입력')}
+                                    </span>
                                   </div>
                                 )
                               })}
@@ -1223,111 +1283,11 @@ export default function ManagerDashboard({ onBack }) {
                         )
                       })}
                   </div>
-                )}
-
-                {txLayout === 'detail' && (groups.every(g => g.units.filter(matchFilter).length === 0) ? (
-                  <p className="md-empty">{statusFilter === 'all' ? '해당 월의 데이터가 없습니다.' : `'${statusFilter}' 상태인 건이 없습니다.`}</p>
-                ) : groups.map(g => {
-                  const shown = g.units.filter(matchFilter)
-                    .sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko'))
-                  if (shown.length === 0) return null
-                  const gTotal = g.units.reduce((s, u) => s + unitAmt(u), 0)
-                  const gDone = g.units.filter(u => unitStatus(u) === '이체완료').length
-                  return (
-                    <div key={g.branch} className="tx-group">
-                      <div className="tx-group-head">
-                        <span className="tx-group-name">{g.branch}</span>
-                        <span className="tx-group-meta">{gDone}/{g.units.length}건 · {fmt(gTotal)}원</span>
-                        <select
-                          className="tx-bulk"
-                          value=""
-                          onChange={e => { if (e.target.value) { setUnitsStatus(shown, e.target.value); e.target.value = '' } }}
-                          title="이 지점에 보이는 전체를 한 번에 변경"
-                        >
-                          <option value="">전체 변경…</option>
-                          {STATUS_ORDER.map(s => <option key={s} value={s}>전체 → {s}</option>)}
-                        </select>
-                      </div>
-                      {shown.map(u => {
-                        const st = unitStatus(u)
-                        const sev = unitSeverance(u)
-                        return (
-                          <div key={u.key} className={`tx-row st-${st} ${sev > 0 ? 'has-sev' : ''}`}>
-                            <select
-                              className={`tx-status ${st}`}
-                              value={st}
-                              onChange={e => setUnitStatus(u, e.target.value)}
-                              title="상태 선택"
-                            >
-                              {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-                            </select>
-                            <div className="tx-name-wrap">
-                              <span className="tx-name">{unitNames(u)}</span>
-                              {unitIsAlba(u)
-                                ? <span className="tx-pt alba">알바</span>
-                                : <span className="tx-pt staff">직원</span>}
-                              {unitMixed(u) && <span className="tx-pt merge">합산</span>}
-                              {sev > 0 && <span className="tx-pt sev">＋퇴직금</span>}
-                            </div>
-                            <div className="tx-acct-wrap">
-                              {editAcctKey === u.key ? (
-                                <>
-                                  <input
-                                    className="tx-acct-input"
-                                    value={acctDraft}
-                                    onChange={e => setAcctDraft(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') saveAcct(u); if (e.key === 'Escape') cancelEditAcct() }}
-                                    placeholder="예: 기업은행 117-161493-01-011"
-                                    autoFocus
-                                  />
-                                  <button className="tx-acct-save" disabled={acctSaving} onClick={() => saveAcct(u)}>
-                                    {acctSaving ? '저장중…' : '저장'}
-                                  </button>
-                                  <button className="tx-acct-cancel" onClick={cancelEditAcct}>취소</button>
-                                </>
-                              ) : (
-                                <>
-                                  <span className={`tx-acct ${u.account ? '' : 'empty'}`}>{u.account || '계좌 미입력'}</span>
-                                  <button className="tx-acct-edit" onClick={() => startEditAcct(u)}>
-                                    {u.account ? '수정' : '계좌 입력'}
-                                  </button>
-                                  {u.account && (
-                                    <button className="tx-copy" onClick={() => copyAcct(u)}>
-                                      {copiedId === u.key ? '복사됨 ✓' : '복사'}
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                            <div className="tx-amt has-sev">
-                              <div className="tx-amt-label">💸 이체금액</div>
-                              <div className="tx-amt-num">{fmt(unitAmt(u))}<small>원</small></div>
-                              <div className={`tx-amt-break ded ${unitDedLabel(u) === '4대보험' ? 'four' : unitDedLabel(u) === '3.3%' ? 'three' : 'none'}`}>
-                                세전 {fmt(unitGross(u))} − {unitDedLabel(u)} {fmt(unitDeduction(u))}
-                              </div>
-                              {sev > 0 && (
-                                <div className="tx-amt-break">＋ 퇴직금 {fmt(sev)}</div>
-                              )}
-                            </div>
-                            <div className="tx-note">
-                              <input
-                                className={`tx-note-input ${unitNote(u) ? 'has-note' : ''}`}
-                                value={unitNote(u)}
-                                onChange={e => setUnitNoteLocal(u, e.target.value)}
-                                onBlur={() => saveNote(u)}
-                                placeholder="✏ 비고"
-                              />
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
                   )
-                }))}
+                })()}
 
-                {/* 오른쪽 끝에 고정되어 스크롤을 따라다니는 자유 메모 박스 (상세 보기에서만) */}
-                {txLayout === 'detail' && (
-                <aside className="tx-memo">
+                {/* 자유 메모 (전체 폭, 하단) */}
+                <aside className="tx-memo-bottom">
                   <div className="tx-memo-head">📝 메모 <span>{year}년 {month}월</span></div>
                   <textarea
                     className="tx-memo-area"
@@ -1344,7 +1304,6 @@ export default function ManagerDashboard({ onBack }) {
                     </span>
                   </div>
                 </aside>
-                )}
               </>
             )
           })()
