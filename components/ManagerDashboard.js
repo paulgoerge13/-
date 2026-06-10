@@ -559,11 +559,25 @@ export default function ManagerDashboard({ onBack }) {
     .md-summary-val.gold { color: #b8954a; }
     .md-summary-val small { font-size: 11px; color: #aaa; font-weight: 500; }
 
-    /* 단일 지점 공제 구분 */
-    .md-cur-bd { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
-    .md-cur-card { background: #fff; border: 1px solid #ebe9e4; border-radius: 10px; padding: 12px 14px; text-align: center; }
-    .md-cur-k { font-size: 10.5px; color: #999; margin-bottom: 4px; }
-    .md-cur-v { font-size: 15px; font-weight: 700; color: #1a1a1a; }
+    /* 단일 지점: 월급 − 공제 = 실지급 흐름 */
+    .md-flow {
+      display: flex; align-items: stretch; gap: 6px; margin-bottom: 12px;
+      background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 14px 12px;
+    }
+    .md-flow-item { flex: 1; min-width: 0; text-align: center; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
+    .md-flow-k { font-size: 10.5px; color: #999; white-space: nowrap; }
+    .md-flow-v { font-size: 15px; font-weight: 700; color: #1a1a1a; white-space: nowrap; letter-spacing: -0.01em; }
+    .md-flow-v.minus { color: #c0504a; }       /* 공제 = 빠지는 돈, 붉은색 */
+    .md-flow-v.gold { color: #b8954a; }
+    .md-flow-op { flex: none; display: flex; align-items: center; color: #c4bda8; font-size: 18px; font-weight: 700; }
+    .md-flow-item.result { background: #fbf6ea; border-radius: 9px; padding: 8px 6px; }
+    .md-flow-item.result .md-flow-k { color: #a98a3e; font-weight: 700; }
+    .md-flow-item.result .md-flow-v { font-size: 17px; }
+    @media (max-width: 640px) {
+      .md-flow { flex-wrap: wrap; }
+      .md-flow-item { flex: 1 1 40%; }
+      .md-flow-op { flex: 1 1 100%; justify-content: center; }
+    }
 
     /* 직원/알바 금액 분리 (단일 지점) */
     .md-split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
@@ -1224,25 +1238,33 @@ export default function ManagerDashboard({ onBack }) {
                 <div className="md-summary-val">{curFinal}<small>/{records.length}명</small></div>
               </div>
               <div className="md-summary-card">
-                <div className="md-summary-label">세전 인건비(월급)</div>
-                <div className="md-summary-val gold">{fmt(totalGrand)}<small>원</small></div>
+                <div className="md-summary-label">실지급 합계 (통장 출금액)</div>
+                <div className="md-summary-val gold">{fmt(curStaffNet + curAlbaNet)}<small>원</small></div>
               </div>
             </div>
 
             {records.length > 0 && (
               <>
-                <div className="md-cur-bd">
-                  <div className="md-cur-card">
-                    <div className="md-cur-k">월급 (세전)</div>
-                    <div className="md-cur-v">{fmt(totalGrand)}원</div>
+                {/* 월급 − 4대보험 − 원천세 = 실지급 흐름 (계산 과정을 한눈에) */}
+                <div className="md-flow">
+                  <div className="md-flow-item">
+                    <div className="md-flow-k">월급 (세전)</div>
+                    <div className="md-flow-v">{fmt(totalGrand)}원</div>
                   </div>
-                  <div className="md-cur-card">
-                    <div className="md-cur-k">4대보험 공제</div>
-                    <div className="md-cur-v">{fmt(curMajor)}원</div>
+                  <div className="md-flow-op">−</div>
+                  <div className="md-flow-item">
+                    <div className="md-flow-k">4대보험 공제</div>
+                    <div className="md-flow-v minus">{fmt(curMajor)}원</div>
                   </div>
-                  <div className="md-cur-card">
-                    <div className="md-cur-k">원천세 공제</div>
-                    <div className="md-cur-v">{fmt(curWithhold)}원</div>
+                  <div className="md-flow-op">−</div>
+                  <div className="md-flow-item">
+                    <div className="md-flow-k">원천세 공제</div>
+                    <div className="md-flow-v minus">{fmt(curWithhold)}원</div>
+                  </div>
+                  <div className="md-flow-op">=</div>
+                  <div className="md-flow-item result">
+                    <div className="md-flow-k">실지급 합계</div>
+                    <div className="md-flow-v gold">{fmt(curStaffNet + curAlbaNet)}원</div>
                   </div>
                 </div>
 
