@@ -825,30 +825,30 @@ export default function ManagerDashboard({ onBack }) {
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
     /* 칸 너비를 카드 전체에 고정 → 모든 줄이 세로로 딱 맞게 정렬(엑셀 느낌) */
-    .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; align-items: start; margin-bottom: 20px; }
-    .bd-card { background: #fff; border: 1px solid #d8d3c8; border-radius: 10px; overflow: hidden; }
-    .bd-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
-    .bd-bname { font-size: 14px; font-weight: 800; color: #1a1a1a; }
-    .bd-bcount { margin-left: auto; font-size: 11.5px; font-weight: 700; color: #8a8170; }
-    .bd-allbtn { font-size: 11px; font-weight: 800; color: #fff; background: #2f7d54; border: none; border-radius: 7px; padding: 5px 10px; cursor: pointer; white-space: nowrap; transition: background .12s; }
+    .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; align-items: start; margin-bottom: 20px; }
+    .bd-card { background: #fff; border: 1px solid #d8d3c8; border-radius: 9px; overflow: hidden; }
+    .bd-head { display: flex; align-items: center; gap: 7px; padding: 5px 10px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
+    .bd-bname { font-size: 12.5px; font-weight: 800; color: #1a1a1a; }
+    .bd-bcount { margin-left: auto; font-size: 10.5px; font-weight: 700; color: #8a8170; }
+    .bd-allbtn { font-size: 10px; font-weight: 700; color: #fff; background: #2f7d54; border: none; border-radius: 6px; padding: 3px 8px; cursor: pointer; white-space: nowrap; transition: background .12s; }
     .bd-allbtn:hover { background: #245f40; }
     .bd-allbtn.done { background: #fff; color: #2f7d54; border: 1px solid #bcd9c8; }
     .bd-allbtn.done:hover { background: #f0f7f2; }
     .bd-rows { display: flex; flex-direction: column; }
-    /* 고정 칸: [pt/직원 44px] [이름 1fr] [금액 96px] [은행 64px] [계좌 1.4fr] */
-    .bd-row { display: grid; grid-template-columns: 44px minmax(52px, 1fr) 96px 64px minmax(116px, 1.4fr);
-      align-items: center; column-gap: 8px;
-      padding: 0 10px; height: 34px; border-bottom: 1px solid #e6e6e0; cursor: pointer; transition: filter .1s; }
+    /* 고정 칸: [pt/직원 38px] [이름 1fr] [금액 82px] [은행 58px] [계좌 1.4fr] */
+    .bd-row { display: grid; grid-template-columns: 38px minmax(46px, 1fr) 82px 58px minmax(104px, 1.4fr);
+      align-items: center; column-gap: 6px;
+      padding: 0 8px; height: 24px; border-bottom: 1px solid #ececec; cursor: pointer; transition: filter .1s; }
     .bd-row:last-child { border-bottom: none; }
     .bd-row:hover { filter: brightness(0.95); }
-    .bd-pt { font-size: 10px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; }
+    .bd-pt { font-size: 9px; font-weight: 700; text-align: center; border-radius: 3px; padding: 1px 0; }
     .bd-pt.alba { color: #fff; background: #c79026; }
     .bd-pt.staff { color: #6b7785; background: #e7ecf2; }
-    .bd-name { font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bd-amt { font-size: 13px; font-weight: 800; color: #111; text-align: right; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-    .bd-bank { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bd-acct { font-size: 11.5px; font-weight: 600; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      cursor: pointer; border-radius: 4px; padding: 1px 3px; font-variant-numeric: tabular-nums; }
+    .bd-name { font-size: 11.5px; font-weight: 500; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bd-amt { font-size: 11.5px; font-weight: 500; color: #111; text-align: right; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .bd-bank { font-size: 10px; font-weight: 500; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bd-acct { font-size: 10.5px; font-weight: 500; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: pointer; border-radius: 3px; padding: 1px 2px; font-variant-numeric: tabular-nums; }
     .bd-acct:hover { background: rgba(0,0,0,0.08); text-decoration: underline; }
     .bd-acct.empty { color: #b9b3a6; cursor: default; font-style: italic; }
     .bd-acct.empty:hover { background: none; text-decoration: none; }
@@ -859,10 +859,10 @@ export default function ManagerDashboard({ onBack }) {
     .bd-row.st-이체완료, .tx-lg.st-이체완료 { background: #aef0ae; }
     .bd-row.st-보류,    .tx-lg.st-보류    { background: #ecdcfa; }
     /* 합계 줄도 같은 칸 격자에 맞춰 금액이 위와 정렬되도록 */
-    .bd-total { display: grid; grid-template-columns: 44px minmax(52px, 1fr) 96px 64px minmax(116px, 1.4fr);
-      align-items: center; column-gap: 8px; padding: 0 10px; height: 36px; background: #f3efe6; border-top: 2px solid #d8d3c8; }
-    .bd-total .bd-total-k { grid-column: 1 / 3; font-size: 12px; font-weight: 800; color: #8a8170; }
-    .bd-total .bd-total-v { grid-column: 3 / 4; text-align: right; font-size: 13.5px; font-weight: 800; color: #1a1a1a; font-variant-numeric: tabular-nums; }
+    .bd-total { display: grid; grid-template-columns: 38px minmax(46px, 1fr) 82px 58px minmax(104px, 1.4fr);
+      align-items: center; column-gap: 6px; padding: 0 8px; height: 26px; background: #f3efe6; border-top: 2px solid #d8d3c8; }
+    .bd-total .bd-total-k { grid-column: 1 / 3; font-size: 10.5px; font-weight: 700; color: #8a8170; }
+    .bd-total .bd-total-v { grid-column: 3 / 4; text-align: right; font-size: 11.5px; font-weight: 800; color: #1a1a1a; font-variant-numeric: tabular-nums; }
 
     /* 지점 선택 바 */
     .tx-branchbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px 12px; background: #faf8f3; border: 1px solid #ece6da; border-radius: 12px; }
