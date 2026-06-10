@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점', '인천주안점', '하남점']
+const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점', '인천주안점', '하남점', '시흥집', '한잎꼬마김밥']
 const ALL = '전체 지점'
 
 // ── 전 지점 통합 관리 대시보드 (재사용 컴포넌트) ──

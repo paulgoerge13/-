@@ -13,6 +13,8 @@ const BRANCHES = [
   { id: 'iksan',  name: '익산점',       password: 'iksan08' },
   { id: 'juan',   name: '인천주안점',   password: 'juan00' },
   { id: 'hanam',  name: '하남점',       password: 'hanam77' },
+  { id: 'siheung', name: '시흥집',       password: 'siheung01' },
+  { id: 'hanip',  name: '한잎꼬마김밥',  password: 'hanip01' },
 ]
 
 function calcBasic(h, w)        { return Math.round(h * w) }
