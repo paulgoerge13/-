@@ -16,7 +16,7 @@ export default function ManagerDashboard({ onBack }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
-  const [view, setView] = useState('summary')      // summary | transfer
+  const [view, setView] = useState('transfer')      // transfer | summary (이체 처리를 첫 화면으로)
   const [branchMetric, setBranchMetric] = useState('wage')  // 지점별 보기: wage(월급) | major(4대보험) | withhold(원천세)
   const [showPw, setShowPw] = useState(false)       // 지점 비밀번호 표 보기/숨기기
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
@@ -565,9 +565,11 @@ export default function ManagerDashboard({ onBack }) {
     .md-wrap { max-width: 920px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
     /* 이체 처리 화면: 가독성 위해 폭을 넓게 쓴다 (오른쪽 고정 메모와 겹치지 않게) */
     .md-wrap.tx-mode { max-width: 1180px; }
+    .md-wrap.sm-wide { max-width: 1180px; }   /* 인건비 요약도 가로 넓게 */
     @media (min-width: 1200px) {
       .md-wrap.tx-mode { max-width: none; margin: 0; padding-left: 28px; padding-right: 360px; }
       .md-wrap.tx-board { padding-left: 12px; padding-right: 12px; }   /* 한눈에 보기: 양옆 여백 최소화, 전체 폭 사용 */
+      .md-wrap.sm-wide { max-width: none; margin: 0; padding-left: 12px; padding-right: 12px; }
     }
 
     .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
@@ -576,7 +578,8 @@ export default function ManagerDashboard({ onBack }) {
     /* 헤더 */
     .md-header { margin-bottom: 18px; }
     .md-brand { font-size: 10px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 4px; }
-    .md-title { font-weight: 700; font-size: 20px; color: #1a1a1a; }
+    .md-title-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    .md-title { font-weight: 800; font-size: 30px; color: #1a1a1a; letter-spacing: -0.01em; }
     .md-title span { color: #b8954a; }
 
     /* 필터 */
@@ -787,16 +790,14 @@ export default function ManagerDashboard({ onBack }) {
     @media (max-width: 640px) { .md-pw-grid { grid-template-columns: 1fr; } }
 
     /* ───── 이체 처리 ───── */
-    .tx-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    .tx-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
     .tx-stat { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 16px 18px; }
     .tx-stat-k { font-size: 11px; letter-spacing: 0.06em; color: #999; margin-bottom: 7px; }
-    .tx-stat-v { font-size: 22px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
+    .tx-stat-v { font-size: 22px; font-weight: 800; color: #1a1a1a; letter-spacing: -0.01em; }
     .tx-stat-v small { font-size: 12px; font-weight: 500; color: #aaa; margin-left: 3px; }
-    .tx-stat-v.done { color: #1f9d57; }
-    .tx-stat-v.remain { color: #d99021; }
-    .tx-stat-v.gold { color: #b8954a; }
+    .tx-stat-v.done { color: #2f7d54; }   /* 완료 금액: 차분한 초록 */
     .tx-stat-bar { margin-top: 10px; height: 6px; border-radius: 4px; background: #eee; overflow: hidden; }
-    .tx-stat-fill { height: 100%; background: #2ecc71; border-radius: 4px; transition: width 0.3s; }
+    .tx-stat-fill { height: 100%; background: #6fae87; border-radius: 4px; transition: width 0.3s; }
 
     /* 상태 필터 칩: 전 지점을 상태별로 모아보기 */
     /* 보기 방식 토글 (상세 / 한눈에) */
@@ -1128,14 +1129,32 @@ export default function ManagerDashboard({ onBack }) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className={`md-wrap ${view === 'transfer' ? 'tx-mode tx-board' : ''}`}>
+      <div className={`md-wrap ${view === 'transfer' ? 'tx-mode tx-board' : 'sm-wide'}`}>
 
         {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
 
         {/* 헤더 */}
         <div className="md-header">
           <div className="md-brand">THE COMMA' LOUNGE</div>
-          <h1 className="md-title">{isAll ? '전 지점' : branch} <span>급여 관리 현황</span></h1>
+          <div className="md-title-row">
+            <h1 className="md-title">{isAll ? '전 지점' : branch} <span>급여 관리 현황</span></h1>
+            <button className="md-pw-toggle" onClick={() => setShowPw(v => !v)}>
+              🔑 지점 비밀번호 {showPw ? '숨기기 ▲' : '보기 ▼'}
+            </button>
+          </div>
+          {showPw && (
+            <div className="md-pw-body">
+              <div className="md-pw-note">급여 페이지 로그인 비밀번호입니다. 이 화면은 관리자(마스터 비밀번호)만 볼 수 있어요.</div>
+              <div className="md-pw-grid">
+                {BRANCH_LIST.map(b => (
+                  <div key={b.id} className="md-pw-item">
+                    <span className="md-pw-name">{b.name}</span>
+                    <code className="md-pw-code">{b.password}</code>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 필터 */}
@@ -1153,30 +1172,10 @@ export default function ManagerDashboard({ onBack }) {
           <button className="md-refresh" onClick={load}>🔄</button>
         </div>
 
-        {/* 보기 전환 탭: 인건비 요약 / 이체 처리 */}
+        {/* 보기 전환 탭: 이체 처리 / 인건비 요약 (이체 처리가 먼저) */}
         <div className="md-tabs">
-          <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
           <button className={`md-tab ${view === 'transfer' ? 'on' : ''}`} onClick={() => setView('transfer')}>💸 이체 처리</button>
-        </div>
-
-        {/* 지점 비밀번호 모음 (관리자만 보는 화면이라 안전. 평소엔 숨김) */}
-        <div className="md-pw">
-          <button className="md-pw-toggle" onClick={() => setShowPw(v => !v)}>
-            🔑 지점 비밀번호 {showPw ? '숨기기 ▲' : '보기 ▼'}
-          </button>
-          {showPw && (
-            <div className="md-pw-body">
-              <div className="md-pw-note">급여 페이지 로그인 비밀번호입니다. 이 화면은 관리자(마스터 비밀번호)만 볼 수 있어요.</div>
-              <div className="md-pw-grid">
-                {BRANCH_LIST.map(b => (
-                  <div key={b.id} className="md-pw-item">
-                    <span className="md-pw-name">{b.name}</span>
-                    <code className="md-pw-code">{b.password}</code>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
         </div>
 
         {loading ? (
@@ -1205,7 +1204,7 @@ export default function ManagerDashboard({ onBack }) {
 
             return (
               <>
-                {/* 진행 요약 (밝은 카드) */}
+                {/* 진행 요약 — 총 이체 필요액 → 완료 금액 (색은 차분하게) */}
                 <div className="tx-stats">
                   <div className="tx-stat">
                     <div className="tx-stat-k">이체 진행</div>
@@ -1215,16 +1214,12 @@ export default function ManagerDashboard({ onBack }) {
                     </div>
                   </div>
                   <div className="tx-stat">
+                    <div className="tx-stat-k">총 이체 필요액</div>
+                    <div className="tx-stat-v">{fmt(totalAmt)}<small>원</small></div>
+                  </div>
+                  <div className="tx-stat">
                     <div className="tx-stat-k">완료 금액</div>
                     <div className="tx-stat-v done">{fmt(doneAmt)}<small>원</small></div>
-                  </div>
-                  <div className="tx-stat">
-                    <div className="tx-stat-k">남은 금액</div>
-                    <div className="tx-stat-v remain">{fmt(remainAmt)}<small>원</small></div>
-                  </div>
-                  <div className="tx-stat">
-                    <div className="tx-stat-k">총 이체액</div>
-                    <div className="tx-stat-v gold">{fmt(totalAmt)}<small>원</small></div>
                   </div>
                 </div>
 
@@ -1506,89 +1501,6 @@ export default function ManagerDashboard({ onBack }) {
           </>
         )}
       </div>
-
-      {/* ── 우측 하단 떠있는 퇴직금 계산기 버튼 ── */}
-      <button className="sev-fab" onClick={() => setSevOpen(true)} title="퇴직금 계산기">
-        <span className="sev-fab-ico">🧮</span>
-        <span className="sev-fab-txt">퇴직금<br/>계산기</span>
-      </button>
-
-      {/* ── 퇴직금 계산기 팝업 ── */}
-      {sevOpen && (
-        <div className="sev-overlay" onClick={() => setSevOpen(false)}>
-          <div className="sev-panel" onClick={e => e.stopPropagation()}>
-            <div className="sev-head">
-              <div>
-                <div className="sev-head-ico">🧮</div>
-                <h2 className="sev-head-title">퇴직금 계산기</h2>
-                <p className="sev-head-sub">직원을 고르면 입·퇴사일과 직전 3개월 급여로 자동 계산해요.</p>
-              </div>
-              <button className="sev-close" onClick={() => setSevOpen(false)}>✕</button>
-            </div>
-
-            <div className="sv-form">
-              <div className="sv-field">
-                <label>지점</label>
-                <select value={sevBranch} onChange={e => { setSevBranch(e.target.value); loadSevEmps(e.target.value) }}>
-                  <option value="">지점 선택</option>
-                  {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
-              </div>
-              <div className="sv-field">
-                <label>직원</label>
-                <select value={sevEmp} onChange={e => pickSevEmp(e.target.value)} disabled={!sevBranch}>
-                  <option value="">{sevBranch ? '직원 선택' : '지점 먼저 선택'}</option>
-                  {sevEmps.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
-                </select>
-              </div>
-              <div className="sv-field">
-                <label>입사일</label>
-                <input type="date" value={sevHire} onChange={e => setSevHire(e.target.value)} />
-              </div>
-              <div className="sv-field">
-                <label>퇴사일</label>
-                <input type="date" value={sevResign} onChange={e => setSevResign(e.target.value)} />
-              </div>
-              <button className="sv-calc" onClick={calcSeverance} disabled={sevLoading}>
-                {sevLoading ? '계산 중…' : '퇴직금 계산'}
-              </button>
-            </div>
-
-            <div className="sv-note">
-              ※ 퇴사일 직전 3개월 급여로 1일 평균임금을 구해 계산한 <b>추정치</b>입니다.
-              연차수당·상여금 등 일부 항목과 통상임금 보정은 반영되지 않으니, 실제 지급 전 <b>노무사 확인</b>을 권합니다.
-            </div>
-
-            {sevResult && (
-              <div className="sv-result">
-                {!sevResult.eligible && (
-                  <div className="sv-warn">⚠ 재직일수가 1년(365일) 미만입니다 — 법정 퇴직금 대상이 아닐 수 있습니다. (아래는 참고용 계산값)</div>
-                )}
-                <div className="sv-big">
-                  <div className="sv-big-k">예상 퇴직금</div>
-                  <div className="sv-big-v">{fmt(sevResult.severance)}<small>원</small></div>
-                </div>
-                <div className="sv-rows">
-                  <div className="sv-r"><span>1일 평균임금</span><b>{fmt(sevResult.avgDaily)}원</b></div>
-                  <div className="sv-r"><span>3개월 임금총액</span><b>{fmt(sevResult.wageSum)}원</b></div>
-                  <div className="sv-r"><span>산정기간 일수</span><b>{sevResult.daysSum}일</b></div>
-                  <div className="sv-r"><span>총 재직일수</span><b>{sevResult.serviceDays}일 ({(sevResult.serviceDays / 365).toFixed(2)}년)</b></div>
-                </div>
-                <div className="sv-formula">계산식 : {fmt(sevResult.avgDaily)} × 30일 × ({sevResult.serviceDays} ÷ 365)</div>
-                <div className="sv-used">
-                  <div className="sv-used-h">평균임금 산정에 사용한 급여 (식대 포함)</div>
-                  {sevResult.used.map(r => (
-                    <div key={r.id} className="sv-used-r">
-                      <span>{r.year}년 {r.month}월</span>
-                      <b>{fmt(fixGrand(r) + (r.meal_allowance || 0))}원</b>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </>
   )
 }
