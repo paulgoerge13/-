@@ -491,68 +491,65 @@ export default function ManagerDashboard({ onBack }) {
 
     // 상태별 옅은 배경색(보기 편하라고만, 색 자체는 중요치 않음)
     const FILL = { '작성중': 'FDE9D0', '수정중': 'FFFFFF', '확정': 'FFF27A', '이체완료': 'C6F0C6', '보류': 'ECDCFA' }
-    // ── 5월 시트 양식: [지점명(세로 병합) · pt · 이름 · 금액 · 은행 · 계좌] 블록을 가로 4개씩 ──
-    const COLS = 6, GAP = 1, PER_BAND = 4, STRIDE = COLS + GAP   // 블록 폭 6칸 + 사이 1칸
+    // ── 지점별 세로 정렬: 한 지점씩 위→아래로, 각 표는 [구분·이름·금액·은행·계좌] 5칸 ──
+    const COLS = 5
     const bd = { style: 'thin', color: { rgb: 'D9D2C5' } }
     const allBd = { top: bd, bottom: bd, left: bd, right: bd }
     const ws = {}, merges = []
-    let maxR = 0, maxC = 0
+    let maxR = 0, maxC = COLS - 1
     const put = (r, c, v, s) => {
       const t = typeof v === 'number' ? 'n' : 's'
       ws[XLSX.utils.encode_cell({ r, c })] = { v: (v === undefined || v === null) ? '' : v, t, s: s || {} }
       if (r > maxR) maxR = r
       if (c > maxC) maxC = c
     }
+    const row5 = (r, vals, base) => vals.forEach((v, c) => put(r, c, v, typeof base === 'function' ? base(c) : base))
 
-    put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)`, { font: { bold: true, sz: 14 } })
+    // 제목
+    put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)`, { font: { bold: true, sz: 16 } })
 
-    let bandTop = 2
-    for (let bi = 0; bi < groups.length; bi += PER_BAND) {
-      const band = groups.slice(bi, bi + PER_BAND)
-      let bandRows = 0
-      band.forEach((g, k) => {
-        const c0 = k * STRIDE
-        const top = bandTop
-        let r = bandTop
-        // 지점명: 왼쪽 한 칸에 세로 병합 (사람 줄 + 합계 줄 전체)
-        put(top, c0, g.branch, {
-          font: { bold: true, sz: 12 },
-          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-          fill: { fgColor: { rgb: 'F0EAD9' } }, border: allBd,
-        })
-        // 사람 줄: pt · 이름 · 금액 · 은행 · 계좌
-        g.sorted.forEach(u => {
-          const st = unitStatus(u)
-          const a = splitAcct(u.account)
-          const fill = { fgColor: { rgb: FILL[st] || 'FFFFFF' } }
-          put(r, c0 + 1, unitIsAlba(u) ? 'pt' : '', { fill, alignment: { horizontal: 'center' }, font: { sz: 10, color: { rgb: 'B07A1E' } }, border: allBd })
-          put(r, c0 + 2, unitNames(u), { fill, font: { sz: 11, bold: true }, border: allBd })
-          put(r, c0 + 3, unitAmt(u), { fill, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { sz: 11, bold: true }, border: allBd })
-          put(r, c0 + 4, a.bank, { fill, font: { sz: 10 }, border: allBd })
-          put(r, c0 + 5, a.num, { fill, font: { sz: 10 }, border: allBd })
-          r++
-        })
-        // 합계 줄
-        const tf = { fgColor: { rgb: 'FAF8F3' } }
-        put(r, c0 + 1, '', { fill: tf, border: allBd })
-        put(r, c0 + 2, '합계', { fill: tf, font: { bold: true, sz: 10 }, border: allBd })
-        put(r, c0 + 3, g.total, { fill: tf, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { bold: true, sz: 11 }, border: allBd })
-        put(r, c0 + 4, '', { fill: tf, border: allBd })
-        put(r, c0 + 5, '', { fill: tf, border: allBd })
-        // 지점명 칸을 사람 줄 + 합계 줄까지 세로 병합
-        merges.push({ s: { r: top, c: c0 }, e: { r, c: c0 } })
-        const used = (r - bandTop) + 1
-        if (used > bandRows) bandRows = used
+    let r = 2
+    groups.forEach((g, gi) => {
+      if (gi > 0) r++   // 지점 사이 한 줄 띄움
+      // 지점 제목 줄 (5칸 가로 병합)
+      put(r, 0, `${g.branch}  (${g.count}명)`, {
+        font: { bold: true, sz: 13, color: { rgb: 'FFFFFF' } },
+        alignment: { horizontal: 'left', vertical: 'center' },
+        fill: { fgColor: { rgb: '8A8170' } }, border: allBd,
       })
-      bandTop += bandRows + 1
-    }
+      for (let c = 1; c < COLS; c++) put(r, c, '', { fill: { fgColor: { rgb: '8A8170' } }, border: allBd })
+      merges.push({ s: { r, c: 0 }, e: { r, c: COLS - 1 } })
+      r++
+      // 칸 제목(헤더) 줄
+      row5(r, ['구분', '이름', '금액', '은행', '계좌'], c => ({
+        font: { bold: true, sz: 10, color: { rgb: '5A5346' } },
+        alignment: { horizontal: c === 2 ? 'right' : c === 0 ? 'center' : 'left' },
+        fill: { fgColor: { rgb: 'F0EAD9' } }, border: allBd,
+      }))
+      r++
+      // 사람 줄
+      g.sorted.forEach(u => {
+        const st = unitStatus(u)
+        const a = splitAcct(u.account)
+        const fill = { fgColor: { rgb: FILL[st] || 'FFFFFF' } }
+        put(r, 0, unitIsAlba(u) ? 'pt' : '직원', { fill, alignment: { horizontal: 'center' }, font: { sz: 10, color: { rgb: unitIsAlba(u) ? 'B07A1E' : '6B7785' } }, border: allBd })
+        put(r, 1, unitNames(u), { fill, font: { sz: 11, bold: true }, border: allBd })
+        put(r, 2, unitAmt(u), { fill, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { sz: 11, bold: true }, border: allBd })
+        put(r, 3, a.bank, { fill, font: { sz: 10 }, border: allBd })
+        put(r, 4, a.num, { fill, font: { sz: 10 }, border: allBd })
+        r++
+      })
+      // 합계 줄
+      const tf = { fgColor: { rgb: 'F0EAD9' } }
+      put(r, 0, '', { fill: tf, border: allBd })
+      put(r, 1, '합계', { fill: tf, font: { bold: true, sz: 11 }, border: allBd })
+      put(r, 2, g.total, { fill: tf, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { bold: true, sz: 11 }, border: allBd })
+      put(r, 3, '', { fill: tf, border: allBd })
+      put(r, 4, '', { fill: tf, border: allBd })
+      r++
+    })
 
-    const cols = []
-    for (let c = 0; c <= maxC; c++) {
-      const w = c % STRIDE
-      cols.push({ wch: w === 0 ? 11 : w === 1 ? 4 : w === 2 ? 10 : w === 3 ? 12 : w === 4 ? 9 : w === 5 ? 20 : 2 })
-    }
-    ws['!cols'] = cols
+    ws['!cols'] = [{ wch: 7 }, { wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 26 }]
     ws['!merges'] = merges
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
 
