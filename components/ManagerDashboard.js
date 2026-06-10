@@ -226,6 +226,16 @@ export default function ManagerDashboard({ onBack }) {
   }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
   function unitMixed(u) { return u.recs.length > 1 }
+  // ── 이체자가 "공제 전(세전) → 공제 → 실제 이체액" 을 한눈에 확인할 수 있도록 ──
+  function unitGross(u) { return u.recs.reduce((s, r) => s + fixGrand(r) + (r.meal_allowance || 0), 0) } // 공제 전(세전+식대)
+  function unitDeduction(u) { return u.recs.reduce((s, r) => s + recDeduction(r), 0) }                   // 공제 합계
+  // 이 유닛의 공제 방식 이름 (4대보험 / 3.3% / 공제없음) — 배지와 동일 기준
+  function unitDedLabel(u) {
+    const t = unitDedTypes(u)
+    if (t.includes('4대')) return '4대보험'
+    if (t.includes('3.3')) return '3.3%'
+    return '공제없음'
+  }
   // 유닛 상태 = 가장 덜 진행된 레코드 기준 (모두 이체완료여야 '이체완료')
   function unitStatus(u) {
     let idx = STATUS_ORDER.length - 1
@@ -782,9 +792,14 @@ export default function ManagerDashboard({ onBack }) {
     /* 금액: 고정 폭으로 오른쪽 정렬 (비고 칸 왼쪽에 위치) */
     .tx-amt { flex: none; width: 96px; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
-    /* 퇴직금 포함 금액칸: 분해 줄을 담기 위해 폭을 넓힌다 */
-    .tx-amt.has-sev { width: auto; min-width: 150px; }
+    /* 분해 줄(세전 − 공제)을 담기 위해 폭을 넓힌다 */
+    .tx-amt.has-sev { width: auto; min-width: 168px; }
     .tx-amt-break { margin-top: 2px; font-size: 10px; font-weight: 600; color: #b08a2e; white-space: nowrap; letter-spacing: 0; }
+    /* 공제 분해 줄: 4대보험=파랑 / 3.3%=호박색 / 공제없음=적색 (배지와 같은 색으로 확실히 구분) */
+    .tx-amt-break.ded { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 6px; font-weight: 700; border: 1px solid #e2ded5; }
+    .tx-amt-break.ded.four  { color: #2f6bbf; background: #eaf2fc; border-color: #cfe0f5; }
+    .tx-amt-break.ded.three { color: #b07a1e; background: #fbf3e2; border-color: #f0e0bd; }
+    .tx-amt-break.ded.none  { color: #c0504a; background: #fbecea; border-color: #f3d4d0; }
 
     /* 비고: 담당자가 메모를 적는 칸 (행 오른쪽 끝) */
     .tx-note { flex: none; width: 130px; }
@@ -1140,10 +1155,13 @@ export default function ManagerDashboard({ onBack }) {
                                 </>
                               )}
                             </div>
-                            <div className={`tx-amt ${sev > 0 ? 'has-sev' : ''}`}>
+                            <div className="tx-amt has-sev">
                               {fmt(unitAmt(u))}<small>원</small>
+                              <div className={`tx-amt-break ded ${unitDedLabel(u) === '4대보험' ? 'four' : unitDedLabel(u) === '3.3%' ? 'three' : 'none'}`}>
+                                세전 {fmt(unitGross(u))} − {unitDedLabel(u)} {fmt(unitDeduction(u))}
+                              </div>
                               {sev > 0 && (
-                                <div className="tx-amt-break">월급 {fmt(unitWageNet(u))} + 퇴직금 {fmt(sev)}</div>
+                                <div className="tx-amt-break">＋ 퇴직금 {fmt(sev)}</div>
                               )}
                             </div>
                             <div className="tx-note">
