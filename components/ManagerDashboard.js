@@ -567,7 +567,7 @@ export default function ManagerDashboard({ onBack }) {
     .md-wrap.tx-mode { max-width: 1180px; }
     @media (min-width: 1200px) {
       .md-wrap.tx-mode { max-width: none; margin: 0; padding-left: 28px; padding-right: 360px; }
-      .md-wrap.tx-board { padding-right: 28px; }   /* 한눈에 보기: 메모창 없으니 전체 폭 사용 */
+      .md-wrap.tx-board { padding-left: 12px; padding-right: 12px; }   /* 한눈에 보기: 양옆 여백 최소화, 전체 폭 사용 */
     }
 
     .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
@@ -815,21 +815,28 @@ export default function ManagerDashboard({ onBack }) {
     .tx-board-note { font-size: 12px; color: #9a9286; margin: 0 2px 14px; }
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
-    .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; margin-bottom: 20px; }
-    .bd-card { background: #fff; border: 1px solid #e6e2d9; border-radius: 12px; overflow: hidden; }
-    .bd-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #f3efe6; border-bottom: 1px solid #e6e2d9; }
+    /* 칸 너비를 카드 전체에 고정 → 모든 줄이 세로로 딱 맞게 정렬(엑셀 느낌) */
+    .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; align-items: start; margin-bottom: 20px; }
+    .bd-card { background: #fff; border: 1px solid #d8d3c8; border-radius: 10px; overflow: hidden; }
+    .bd-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
     .bd-bname { font-size: 14px; font-weight: 800; color: #1a1a1a; }
     .bd-bcount { font-size: 11.5px; font-weight: 700; color: #8a8170; }
     .bd-rows { display: flex; flex-direction: column; }
-    .bd-row { display: grid; grid-template-columns: 22px minmax(48px, 1fr) auto 38px auto; align-items: center; gap: 6px;
-      padding: 5px 10px; border-bottom: 1px solid #eef0ec; cursor: pointer; transition: filter .1s; }
-    .bd-row:hover { filter: brightness(0.96); }
-    .bd-pt { font-size: 9.5px; font-weight: 800; color: #b07a1e; text-align: center; }
+    /* 고정 칸: [pt/직원 44px] [이름 1fr] [금액 96px] [은행 64px] [계좌 1.4fr] */
+    .bd-row { display: grid; grid-template-columns: 44px minmax(52px, 1fr) 96px 64px minmax(116px, 1.4fr);
+      align-items: center; column-gap: 8px;
+      padding: 0 10px; height: 34px; border-bottom: 1px solid #e6e6e0; cursor: pointer; transition: filter .1s; }
+    .bd-row:last-child { border-bottom: none; }
+    .bd-row:hover { filter: brightness(0.95); }
+    .bd-pt { font-size: 10px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; }
+    .bd-pt.alba { color: #fff; background: #c79026; }
+    .bd-pt.staff { color: #6b7785; background: #e7ecf2; }
     .bd-name { font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bd-amt { font-size: 13px; font-weight: 800; color: #111; text-align: right; letter-spacing: -0.02em; }
-    .bd-bank { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; }
-    .bd-acct { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; cursor: pointer; border-radius: 4px; padding: 1px 3px; }
-    .bd-acct:hover { background: rgba(0,0,0,0.06); text-decoration: underline; }
+    .bd-amt { font-size: 13px; font-weight: 800; color: #111; text-align: right; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .bd-bank { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bd-acct { font-size: 11.5px; font-weight: 600; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: pointer; border-radius: 4px; padding: 1px 3px; font-variant-numeric: tabular-nums; }
+    .bd-acct:hover { background: rgba(0,0,0,0.08); text-decoration: underline; }
     .bd-acct.empty { color: #b9b3a6; cursor: default; font-style: italic; }
     .bd-acct.empty:hover { background: none; text-decoration: none; }
     /* 상태별 배경색 (스프레드시트와 동일 규칙) */
@@ -838,9 +845,11 @@ export default function ManagerDashboard({ onBack }) {
     .bd-row.st-확정,    .tx-lg.st-확정    { background: #fff27a; }
     .bd-row.st-이체완료, .tx-lg.st-이체완료 { background: #aef0ae; }
     .bd-row.st-보류,    .tx-lg.st-보류    { background: #ecdcfa; }
-    .bd-total { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #faf8f3; border-top: 1px solid #e6e2d9; }
-    .bd-total span { font-size: 11.5px; font-weight: 700; color: #8a8170; }
-    .bd-total b { font-size: 14px; font-weight: 800; color: #1a1a1a; }
+    /* 합계 줄도 같은 칸 격자에 맞춰 금액이 위와 정렬되도록 */
+    .bd-total { display: grid; grid-template-columns: 44px minmax(52px, 1fr) 96px 64px minmax(116px, 1.4fr);
+      align-items: center; column-gap: 8px; padding: 0 10px; height: 36px; background: #f3efe6; border-top: 2px solid #d8d3c8; }
+    .bd-total .bd-total-k { grid-column: 1 / 3; font-size: 12px; font-weight: 800; color: #8a8170; }
+    .bd-total .bd-total-v { grid-column: 3 / 4; text-align: right; font-size: 13.5px; font-weight: 800; color: #1a1a1a; font-variant-numeric: tabular-nums; }
 
     /* 지점 선택 바 */
     .tx-branchbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px 12px; background: #faf8f3; border: 1px solid #ece6da; border-radius: 12px; }
@@ -1269,7 +1278,7 @@ export default function ManagerDashboard({ onBack }) {
                                     onClick={() => cycleUnitStatus(u)}
                                     title="누르면 상태가 바뀝니다 (작성중→확정→이체완료→보류)"
                                   >
-                                    <span className="bd-pt">{unitIsAlba(u) ? 'pt' : ''}</span>
+                                    <span className={`bd-pt ${unitIsAlba(u) ? 'alba' : 'staff'}`}>{unitIsAlba(u) ? 'pt' : '직원'}</span>
                                     <span className="bd-name">{unitNames(u)}</span>
                                     <span className="bd-amt">{fmt(unitAmt(u))}</span>
                                     <span className="bd-bank">{a.bank}</span>
@@ -1284,7 +1293,7 @@ export default function ManagerDashboard({ onBack }) {
                                 )
                               })}
                             </div>
-                            <div className="bd-total"><span>합계</span><b>{fmt(gTotal)}원</b></div>
+                            <div className="bd-total"><span className="bd-total-k">합계</span><span className="bd-total-v">{fmt(gTotal)}원</span></div>
                           </div>
                         )
                       })}
