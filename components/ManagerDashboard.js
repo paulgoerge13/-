@@ -128,9 +128,9 @@ export default function ManagerDashboard({ onBack }) {
   //   → recDeduction(r) 이 직원/알바 구분으로 공제를 계산하므로 그대로 사용한다.
   function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) + recSeverance(r) }
 
-  // ── 이체 상태 (작성중 → 확정 → 이체완료 → 보류 순환) ──
-  const STATUS_ORDER = ['작성중', '확정', '이체완료', '보류']
-  const STATUS_LABEL = { '작성중': '작성중', '수정중': '수정중', '확정': '확정', '이체완료': '이체완료', '보류': '보류' }
+  // ── 이체 상태 (확정 → 이체완료 두 가지만 순환) ──
+  const STATUS_ORDER = ['확정', '이체완료']
+  const STATUS_LABEL = { '확정': '확정', '이체완료': '이체완료' }
 
   // records 가 바뀌면 DB 의 transfer_status / transfer_note 로 상태·비고맵 초기화
   // 비고는 이 브라우저(localStorage)에도 저장해, DB 컬럼이 없어도 사라지지 않게 한다
@@ -140,7 +140,7 @@ export default function ManagerDashboard({ onBack }) {
     try { stored = JSON.parse(localStorage.getItem(notesKey) || '{}') } catch (e) { stored = {} }
     const m = {}, nm = {}
     for (const r of records) {
-      m[r.id] = r.transfer_status || '작성중'
+      m[r.id] = (r.transfer_status === '이체완료') ? '이체완료' : '확정'   // 옛 상태(작성중/보류 등)는 확정으로 정규화
       // DB 값이 있으면 우선, 없으면 이 브라우저에 저장된 값 사용
       nm[r.id] = (r.transfer_note != null && r.transfer_note !== '') ? r.transfer_note : (stored[r.id] || '')
     }
@@ -148,7 +148,10 @@ export default function ManagerDashboard({ onBack }) {
     setNoteMap(nm)
   }, [records, notesKey])
 
-  function txStatus(r) { return statusMap[r.id] || '작성중' }
+  function txStatus(r) {
+    const v = statusMap[r.id]
+    return v === '이체완료' ? '이체완료' : '확정'   // 두 상태로만 정규화
+  }
 
   // ── 이체 화면 자유 메모 (월별) ──
   //   1순위: DB(app_kv 테이블) → 모든 컴퓨터에서 공유
@@ -812,7 +815,11 @@ export default function ManagerDashboard({ onBack }) {
 
     /* 보드 상단 바: 색상 안내 + 엑셀 다운로드 */
     .tx-board-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .tx-xlsx { margin-left: auto; font-size: 13px; font-weight: 800; color: #fff; background: #1d7044; border: none; border-radius: 999px; padding: 9px 18px; cursor: pointer; box-shadow: 0 2px 6px rgba(29,112,68,0.3); transition: background .15s; }
+    .tx-progress { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #6b6760; white-space: nowrap; }
+    .tx-progress b { font-size: 14px; font-weight: 800; color: #1a1a1a; }
+    .tx-progress-bar { width: 90px; height: 6px; border-radius: 4px; background: #e8e6e0; overflow: hidden; }
+    .tx-progress-fill { display: block; height: 100%; background: #6fae87; border-radius: 4px; transition: width .3s; }
+    .tx-xlsx { font-size: 13px; font-weight: 800; color: #fff; background: #1d7044; border: none; border-radius: 999px; padding: 9px 18px; cursor: pointer; box-shadow: 0 2px 6px rgba(29,112,68,0.3); transition: background .15s; }
     .tx-xlsx:hover { background: #155634; }
     .tx-board-note { font-size: 12px; color: #9a9286; margin: 0 2px 14px; }
 
@@ -820,9 +827,13 @@ export default function ManagerDashboard({ onBack }) {
     /* 칸 너비를 카드 전체에 고정 → 모든 줄이 세로로 딱 맞게 정렬(엑셀 느낌) */
     .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; align-items: start; margin-bottom: 20px; }
     .bd-card { background: #fff; border: 1px solid #d8d3c8; border-radius: 10px; overflow: hidden; }
-    .bd-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
+    .bd-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
     .bd-bname { font-size: 14px; font-weight: 800; color: #1a1a1a; }
-    .bd-bcount { font-size: 11.5px; font-weight: 700; color: #8a8170; }
+    .bd-bcount { margin-left: auto; font-size: 11.5px; font-weight: 700; color: #8a8170; }
+    .bd-allbtn { font-size: 11px; font-weight: 800; color: #fff; background: #2f7d54; border: none; border-radius: 7px; padding: 5px 10px; cursor: pointer; white-space: nowrap; transition: background .12s; }
+    .bd-allbtn:hover { background: #245f40; }
+    .bd-allbtn.done { background: #fff; color: #2f7d54; border: 1px solid #bcd9c8; }
+    .bd-allbtn.done:hover { background: #f0f7f2; }
     .bd-rows { display: flex; flex-direction: column; }
     /* 고정 칸: [pt/직원 44px] [이름 1fr] [금액 96px] [은행 64px] [계좌 1.4fr] */
     .bd-row { display: grid; grid-template-columns: 44px minmax(52px, 1fr) 96px 64px minmax(116px, 1.4fr);
@@ -1208,13 +1219,6 @@ export default function ManagerDashboard({ onBack }) {
                 {/* 진행 요약 — 총 이체 필요액 → 완료 금액 (색은 차분하게) */}
                 <div className="tx-stats">
                   <div className="tx-stat">
-                    <div className="tx-stat-k">이체 진행</div>
-                    <div className="tx-stat-v">{doneCount}<small>/{totalUnits}건</small></div>
-                    <div className="tx-stat-bar">
-                      <div className="tx-stat-fill" style={{ width: `${totalUnits ? Math.round(doneCount / totalUnits * 100) : 0}%` }} />
-                    </div>
-                  </div>
-                  <div className="tx-stat">
                     <div className="tx-stat-k">총 이체 필요액</div>
                     <div className="tx-stat-v">{fmt(totalAmt)}<small>원</small></div>
                   </div>
@@ -1224,17 +1228,19 @@ export default function ManagerDashboard({ onBack }) {
                   </div>
                 </div>
 
-                {/* 색상 안내 + 엑셀 다운로드 (토글 없이 항상 한 페이지 보드로 표시) */}
+                {/* 색상 안내 + (이체 진행) + 엑셀 다운로드 */}
                 <div className="tx-board-bar">
                   <span className="tx-legend">
-                    <span className="tx-lg st-작성중">작성중</span>
                     <span className="tx-lg st-확정">확정</span>
                     <span className="tx-lg st-이체완료">이체완료</span>
-                    <span className="tx-lg st-보류">보류</span>
+                  </span>
+                  <span className="tx-progress">
+                    이체 진행 <b>{doneCount}</b>/{totalUnits}건
+                    <span className="tx-progress-bar"><span className="tx-progress-fill" style={{ width: `${totalUnits ? Math.round(doneCount / totalUnits * 100) : 0}%` }} /></span>
                   </span>
                   <button className="tx-xlsx" onClick={downloadTransferXlsx}>⬇ 엑셀 다운로드</button>
                 </div>
-                <div className="tx-board-note">칸을 누르면 상태가 바뀝니다 (작성중 → 확정 → 이체완료 → 보류) · 계좌를 누르면 복사됩니다 · pt = 알바</div>
+                <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바</div>
 
                 {txUnavailable && (
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
@@ -1262,6 +1268,19 @@ export default function ManagerDashboard({ onBack }) {
                             <div className="bd-head">
                               <span className="bd-bname">{g.branch}</span>
                               <span className="bd-bcount">{gDone}/{g.units.length}건</span>
+                              {gDone < g.units.length ? (
+                                <button
+                                  className="bd-allbtn"
+                                  onClick={() => { if (confirm(`${g.branch} 전체 ${g.units.length}건을 모두 '이체완료'로 바꿀까요?`)) setUnitsStatus(g.units, '이체완료') }}
+                                  title="이 지점 전체를 한 번에 이체완료"
+                                >전체 이체완료</button>
+                              ) : (
+                                <button
+                                  className="bd-allbtn done"
+                                  onClick={() => { if (confirm(`${g.branch} 전체를 '확정'(이체 전)으로 되돌릴까요?`)) setUnitsStatus(g.units, '확정') }}
+                                  title="이 지점 전체를 확정으로 되돌리기"
+                                >✓ 완료 · 되돌리기</button>
+                              )}
                             </div>
                             <div className="bd-rows">
                               {sorted.map(u => {
@@ -1272,7 +1291,7 @@ export default function ManagerDashboard({ onBack }) {
                                     key={u.key}
                                     className={`bd-row st-${st}`}
                                     onClick={() => cycleUnitStatus(u)}
-                                    title="누르면 상태가 바뀝니다 (작성중→확정→이체완료→보류)"
+                                    title="누르면 확정 ↔ 이체완료가 바뀝니다"
                                   >
                                     <span className={`bd-pt ${unitIsAlba(u) ? 'alba' : 'staff'}`}>{unitIsAlba(u) ? 'pt' : '직원'}</span>
                                     <span className="bd-name">{unitNames(u)}</span>
