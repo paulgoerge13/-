@@ -783,9 +783,9 @@ export default function ManagerDashboard({ onBack }) {
     .tx-ded.three { color: #b07a1e; background: #fbf3e2; border-color: #f0e0bd; }   /* 3.3% = 호박색 */
     .tx-ded.none { color: #c0504a; background: #fbecea; border-color: #f3d4d0; }    /* 공제없음 = 적색 */
 
-    /* 계좌 칸: 은행+계좌번호가 한눈에 다 보이도록 넓게, 안 잘리게(필요시 줄바꿈) */
-    .tx-acct-wrap { flex: 2 1 250px; min-width: 0; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-    .tx-acct { font-size: 12.5px; color: #444; font-weight: 600; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.35; }
+    /* 계좌 칸: 은행+계좌번호가 무조건 한 줄로 다 보이도록 (양쪽 여백까지 넓게 사용) */
+    .tx-acct-wrap { flex: 3 1 360px; min-width: 0; display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
+    .tx-acct { flex: 1 1 auto; min-width: 0; font-size: 13.5px; color: #333; font-weight: 700; white-space: nowrap; overflow: visible; line-height: 1.3; }
     .tx-acct.empty { color: #a8794a; font-weight: 500; }
     .tx-copy { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 10.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; }
     .tx-copy:hover { border-color: #b8954a; color: #b8954a; }
@@ -829,20 +829,20 @@ export default function ManagerDashboard({ onBack }) {
     /* 넓은 화면: 오른쪽 빈 공간에 고정(스크롤 따라다님) */
     @media (min-width: 1200px) {
       .tx-memo {
-        position: fixed; top: 118px; bottom: 24px; right: 24px; width: 312px; left: auto;
+        position: fixed; top: 118px; bottom: auto; right: 24px; width: 312px; left: auto;
         margin-top: 0;
       }
     }
     .tx-memo-head { font-size: 14px; font-weight: 700; color: #8a6a1e; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; flex: none; }
     .tx-memo-head span { font-size: 11px; font-weight: 600; color: #b3a98e; background: #f5efdd; padding: 2px 8px; border-radius: 999px; }
     .tx-memo-area {
-      width: 100%; height: 240px; resize: vertical; box-sizing: border-box;
-      font-size: 14px; line-height: 1.7; color: #3a3530; font-family: inherit;
+      width: 100%; height: 160px; resize: vertical; box-sizing: border-box;
+      font-size: 14px; line-height: 1.6; color: #3a3530; font-family: inherit;
       border: 1px solid #ece4cf; border-radius: 9px; padding: 12px 13px;
       background: #fff; outline: none;
     }
-    /* 오른쪽 고정 모드에선 세로로 길게 채움 */
-    @media (min-width: 1200px) { .tx-memo-area { flex: 1; height: auto; resize: none; } }
+    /* 오른쪽 고정 모드: 세로 길이를 적당히(너무 길지 않게) */
+    @media (min-width: 1200px) { .tx-memo-area { flex: none; height: 180px; resize: vertical; } }
     .tx-memo-area:focus { border-color: #d8b860; }
     .tx-memo-area::placeholder { color: #c8c0ad; }
     .tx-memo-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex: none; }
