@@ -493,8 +493,8 @@ export default function ManagerDashboard({ onBack }) {
     .md-money-v { font-size: 26px; font-weight: 800; color: #1a1a1a; letter-spacing: -0.02em; margin-top: 9px; }
     .md-money-v.gold { color: #b8954a; }
     .md-money-v small { font-size: 13px; font-weight: 500; color: #b0a99a; margin-left: 2px; }
-    .md-money-mid { flex: none; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 0 6px; }
-    .md-money-minus { font-size: 13px; font-weight: 700; color: #c0504a; white-space: nowrap; }
+    .md-money-mid { flex: none; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; text-align: center; padding: 0 8px; }
+    .md-money-minus { font-size: 12.5px; font-weight: 700; color: #c0504a; white-space: nowrap; }
     .md-money-sub { font-size: 10px; color: #aaa; margin-top: 4px; white-space: nowrap; }
     @media (max-width: 640px) {
       .md-money { flex-direction: column; }
@@ -1156,8 +1156,8 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="md-money-v">{fmt(grandAll)}<small>원</small></div>
                 </div>
                 <div className="md-money-mid">
-                  <div className="md-money-minus">− 공제 {fmt(majorAll + withholdAll)}원</div>
-                  <div className="md-money-sub">4대보험 {fmt(majorAll)} + 원천세 {fmt(withholdAll)}</div>
+                  <div className="md-money-minus">− 4대보험 {fmt(majorAll)}원</div>
+                  <div className="md-money-minus">− 원천세 {fmt(withholdAll)}원</div>
                 </div>
                 <div className="md-money-card primary">
                   <div className="md-money-k">실지급액<span>실제 통장 출금액</span></div>
@@ -1256,8 +1256,8 @@ export default function ManagerDashboard({ onBack }) {
                     <div className="md-money-v">{fmt(totalGrand)}<small>원</small></div>
                   </div>
                   <div className="md-money-mid">
-                    <div className="md-money-minus">− 공제 {fmt(curMajor + curWithhold)}원</div>
-                    <div className="md-money-sub">4대보험 {fmt(curMajor)} + 원천세 {fmt(curWithhold)}</div>
+                    <div className="md-money-minus">− 4대보험 {fmt(curMajor)}원</div>
+                    <div className="md-money-minus">− 원천세 {fmt(curWithhold)}원</div>
                   </div>
                   <div className="md-money-card primary">
                     <div className="md-money-k">실지급액<span>실제 통장 출금액</span></div>
