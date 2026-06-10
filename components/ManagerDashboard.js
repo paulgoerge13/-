@@ -21,6 +21,7 @@ export default function ManagerDashboard({ onBack }) {
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
   const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료 | 보류
+  const [txLayout, setTxLayout] = useState('detail')       // detail(상세) | board(한눈에)
   const [noteMap, setNoteMap] = useState({})        // { [recId]: '비고 메모' }
   const [noteUnavailable, setNoteUnavailable] = useState(false)
   const [txMemo, setTxMemo] = useState('')          // 이체 화면 우측 자유 메모 (월별, 브라우저 저장)
@@ -252,6 +253,21 @@ export default function ManagerDashboard({ onBack }) {
     }
   }
 
+  // '한눈에 보기'에서 칸을 누르면 상태가 순환 (작성중→확정→이체완료→보류→…)
+  function cycleUnitStatus(u) {
+    const cur = unitStatus(u)
+    const i = STATUS_ORDER.indexOf(cur)
+    const next = STATUS_ORDER[(i + 1) % STATUS_ORDER.length]
+    setUnitStatus(u, next)
+  }
+  // 계좌 문자열을 은행명 + 번호로 분리 (예: "기업은행 117-161493-01-011")
+  function splitAcct(acct) {
+    const s = (acct || '').trim()
+    if (!s) return { bank: '', num: '' }
+    const m = s.match(/^(\S+)\s+([\s\S]+)$/)
+    return m ? { bank: m[1], num: m[2] } : { bank: '', num: s }
+  }
+
   // 한 지점(현재 필터로 보이는 행 전체)을 한 번에 같은 상태로 변경
   async function setUnitsStatus(units, next) {
     const ids = []
@@ -466,6 +482,7 @@ export default function ManagerDashboard({ onBack }) {
     .md-wrap.tx-mode { max-width: 1180px; }
     @media (min-width: 1200px) {
       .md-wrap.tx-mode { max-width: none; margin: 0; padding-left: 28px; padding-right: 360px; }
+      .md-wrap.tx-board { padding-right: 28px; }   /* 한눈에 보기: 메모창 없으니 전체 폭 사용 */
     }
 
     .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
@@ -697,6 +714,40 @@ export default function ManagerDashboard({ onBack }) {
     .tx-stat-fill { height: 100%; background: #2ecc71; border-radius: 4px; transition: width 0.3s; }
 
     /* 상태 필터 칩: 전 지점을 상태별로 모아보기 */
+    /* 보기 방식 토글 (상세 / 한눈에) */
+    .tx-layout { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .tx-lbtn { font-size: 13px; font-weight: 700; color: #6b6760; background: #fff; border: 1.5px solid #e2ddd2; border-radius: 999px; padding: 8px 16px; cursor: pointer; transition: all .15s; }
+    .tx-lbtn:hover { border-color: #c2a45e; color: #1a1a1a; }
+    .tx-lbtn.on { color: #fff; background: #5a8a6a; border-color: #5a8a6a; box-shadow: 0 2px 6px rgba(90,138,106,0.3); }
+    .tx-legend { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 6px; }
+    .tx-lg { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; border: 1px solid #e2ded5; color: #3a352e; }
+    .tx-lg-note { font-size: 11px; color: #9a9286; margin-left: 4px; }
+
+    /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
+    .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; margin-bottom: 20px; }
+    .bd-card { background: #fff; border: 1px solid #e6e2d9; border-radius: 12px; overflow: hidden; }
+    .bd-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #f3efe6; border-bottom: 1px solid #e6e2d9; }
+    .bd-bname { font-size: 14px; font-weight: 800; color: #1a1a1a; }
+    .bd-bcount { font-size: 11.5px; font-weight: 700; color: #8a8170; }
+    .bd-rows { display: flex; flex-direction: column; }
+    .bd-row { display: grid; grid-template-columns: 22px minmax(48px, 1fr) auto 38px auto; align-items: center; gap: 6px;
+      padding: 5px 10px; border-bottom: 1px solid #eef0ec; cursor: pointer; transition: filter .1s; }
+    .bd-row:hover { filter: brightness(0.96); }
+    .bd-pt { font-size: 9.5px; font-weight: 800; color: #b07a1e; text-align: center; }
+    .bd-name { font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bd-amt { font-size: 13px; font-weight: 800; color: #111; text-align: right; letter-spacing: -0.02em; }
+    .bd-bank { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; }
+    .bd-acct { font-size: 11px; font-weight: 600; color: #555; white-space: nowrap; }
+    /* 상태별 배경색 (스프레드시트와 동일 규칙) */
+    .bd-row.st-작성중,  .tx-lg.st-작성중  { background: #fde9d0; }
+    .bd-row.st-수정중,  .tx-lg.st-수정중  { background: #ffffff; }
+    .bd-row.st-확정,    .tx-lg.st-확정    { background: #fff27a; }
+    .bd-row.st-이체완료, .tx-lg.st-이체완료 { background: #aef0ae; }
+    .bd-row.st-보류,    .tx-lg.st-보류    { background: #ecdcfa; }
+    .bd-total { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #faf8f3; border-top: 1px solid #e6e2d9; }
+    .bd-total span { font-size: 11.5px; font-weight: 700; color: #8a8170; }
+    .bd-total b { font-size: 14px; font-weight: 800; color: #1a1a1a; }
+
     /* 지점 선택 바 */
     .tx-branchbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px 12px; background: #faf8f3; border: 1px solid #ece6da; border-radius: 12px; }
     .tx-branchbar-label { font-size: 12px; font-weight: 800; color: #9a8f78; margin-right: 2px; }
@@ -967,7 +1018,7 @@ export default function ManagerDashboard({ onBack }) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className={`md-wrap ${view === 'transfer' ? 'tx-mode' : ''}`}>
+      <div className={`md-wrap ${view === 'transfer' ? 'tx-mode' : ''} ${view === 'transfer' && txLayout === 'board' ? 'tx-board' : ''}`}>
 
         {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
 
@@ -1067,6 +1118,22 @@ export default function ManagerDashboard({ onBack }) {
                   </div>
                 </div>
 
+                {/* 보기 방식: 상세 / 한눈에(전 지점 압축) */}
+                <div className="tx-layout">
+                  <button className={`tx-lbtn ${txLayout === 'detail' ? 'on' : ''}`} onClick={() => setTxLayout('detail')}>📋 상세 보기</button>
+                  <button className={`tx-lbtn ${txLayout === 'board' ? 'on' : ''}`} onClick={() => setTxLayout('board')}>🗂 한눈에 보기</button>
+                  {txLayout === 'board' && (
+                    <span className="tx-legend">
+                      <span className="tx-lg st-작성중">작성중</span>
+                      <span className="tx-lg st-확정">확정</span>
+                      <span className="tx-lg st-이체완료">이체완료</span>
+                      <span className="tx-lg st-보류">보류</span>
+                      <span className="tx-lg-note">칸을 누르면 상태가 바뀝니다 · pt=알바</span>
+                    </span>
+                  )}
+                </div>
+
+                {txLayout === 'detail' && (<>
                 {/* 지점 선택 칩: 전 지점 ↔ 특정 지점만 골라보기 */}
                 <div className="tx-branchbar">
                   <span className="tx-branchbar-label">지점</span>
@@ -1107,6 +1174,7 @@ export default function ManagerDashboard({ onBack }) {
                 </div>
 
                 <div className="tx-hint">금액 = 명세서 실지급액(공제 후). 같은 계좌는 한 줄로 합산됩니다. 상태 박스를 누르면 작성중 → 확정 → 이체완료 → 보류 순으로 바뀝니다. 오른쪽 비고 칸에 메모를 적을 수 있습니다.</div>
+                </>)}
                 {txUnavailable && (
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
                 )}
@@ -1114,7 +1182,50 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="tx-warn">ℹ 비고는 이 컴퓨터에는 저장되지만, 다른 기기와 공유되지 않습니다. 공유하려면 Supabase 에 <b>transfer_note</b> 컬럼을 추가해 주세요.</div>
                 )}
 
-                {groups.every(g => g.units.filter(matchFilter).length === 0) ? (
+                {/* ── 한눈에 보기: 전 지점을 압축한 보드(스프레드시트 스타일) ── */}
+                {txLayout === 'board' && (
+                  <div className="bd-grid">
+                    {BRANCHES
+                      .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
+                      .filter(g => g.units.length > 0)
+                      .map(g => {
+                        const sorted = [...g.units].sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko'))
+                        const gTotal = g.units.reduce((s, u) => s + unitAmt(u), 0)
+                        const gDone = g.units.filter(u => unitStatus(u) === '이체완료').length
+                        return (
+                          <div key={g.branch} className="bd-card">
+                            <div className="bd-head">
+                              <span className="bd-bname">{g.branch}</span>
+                              <span className="bd-bcount">{gDone}/{g.units.length}건</span>
+                            </div>
+                            <div className="bd-rows">
+                              {sorted.map(u => {
+                                const st = unitStatus(u)
+                                const a = splitAcct(u.account)
+                                return (
+                                  <div
+                                    key={u.key}
+                                    className={`bd-row st-${st}`}
+                                    onClick={() => cycleUnitStatus(u)}
+                                    title="누르면 상태가 바뀝니다 (작성중→확정→이체완료→보류)"
+                                  >
+                                    <span className="bd-pt">{unitIsAlba(u) ? 'pt' : ''}</span>
+                                    <span className="bd-name">{unitNames(u)}</span>
+                                    <span className="bd-amt">{fmt(unitAmt(u))}</span>
+                                    <span className="bd-bank">{a.bank}</span>
+                                    <span className="bd-acct">{a.num || '계좌 미입력'}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <div className="bd-total"><span>합계</span><b>{fmt(gTotal)}원</b></div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                )}
+
+                {txLayout === 'detail' && (groups.every(g => g.units.filter(matchFilter).length === 0) ? (
                   <p className="md-empty">{statusFilter === 'all' ? '해당 월의 데이터가 없습니다.' : `'${statusFilter}' 상태인 건이 없습니다.`}</p>
                 ) : groups.map(g => {
                   const shown = g.units.filter(matchFilter)
@@ -1212,9 +1323,10 @@ export default function ManagerDashboard({ onBack }) {
                       })}
                     </div>
                   )
-                })}
+                }))}
 
-                {/* 오른쪽 끝에 고정되어 스크롤을 따라다니는 자유 메모 박스 */}
+                {/* 오른쪽 끝에 고정되어 스크롤을 따라다니는 자유 메모 박스 (상세 보기에서만) */}
+                {txLayout === 'detail' && (
                 <aside className="tx-memo">
                   <div className="tx-memo-head">📝 메모 <span>{year}년 {month}월</span></div>
                   <textarea
@@ -1232,6 +1344,7 @@ export default function ManagerDashboard({ onBack }) {
                     </span>
                   </div>
                 </aside>
+                )}
               </>
             )
           })()
