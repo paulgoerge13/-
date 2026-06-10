@@ -462,6 +462,11 @@ export default function ManagerDashboard({ onBack }) {
 
   const css = `
     .md-wrap { max-width: 920px; margin: 0 auto; padding: 24px 18px 48px; font-family: 'Pretendard', 'DM Sans', sans-serif; color: #1a1a1a; }
+    /* 이체 처리 화면: 가독성 위해 폭을 넓게 쓴다 (오른쪽 고정 메모와 겹치지 않게) */
+    .md-wrap.tx-mode { max-width: 1180px; }
+    @media (min-width: 1200px) {
+      .md-wrap.tx-mode { max-width: none; margin: 0; padding-left: 28px; padding-right: 360px; }
+    }
 
     .md-back { background: #fff; border: 1px solid #e0ddd6; color: #555; font-size: 13px; cursor: pointer; padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 600; margin-bottom: 16px; }
     .md-back:hover { border-color: #1a1a1a; color: #1a1a1a; }
@@ -762,10 +767,12 @@ export default function ManagerDashboard({ onBack }) {
     .tx-status.보류 { background-color: #f0eafa; color: #7a4cb8; border-color: #e0d2f2; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a4cb8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
     .tx-status:hover { filter: brightness(0.97); }
 
-    /* 이름: 한 줄 고정 (줄바꿈 방지로 행 높이 일정하게) */
-    .tx-name-wrap { flex: none; width: 108px; display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
-    .tx-name { font-size: 14px; font-weight: 700; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .tx-pt { flex: none; font-size: 9px; font-weight: 700; color: #847e73; background: #efede8; padding: 1px 5px; border-radius: 10px; white-space: nowrap; }
+    /* 이름 + 직원/알바 배지: 넉넉한 폭으로 한눈에 */
+    .tx-name-wrap { flex: none; width: 190px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .tx-name { font-size: 15px; font-weight: 800; color: #1a1a1a; white-space: nowrap; }
+    .tx-pt { flex: none; font-size: 10px; font-weight: 700; color: #847e73; background: #efede8; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+    .tx-pt.staff { color: #2f6bbf; background: #eaf2fc; }   /* 직원(4대보험) = 파랑 */
+    .tx-pt.alba  { color: #b07a1e; background: #fbf3e2; }   /* 알바(3.3%) = 호박색 */
     .tx-pt.merge { color: #5e6b78; background: #eaeef2; }
     .tx-pt.sev { color: #fff; background: #d9a441; box-shadow: 0 1px 2px rgba(180,140,40,0.35); }   /* 퇴직금 포함 = 금색 배지 */
 
@@ -789,12 +796,15 @@ export default function ManagerDashboard({ onBack }) {
     .tx-acct-save:disabled { opacity: 0.6; cursor: default; }
     .tx-acct-cancel { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; }
 
-    /* 금액: 고정 폭으로 오른쪽 정렬 (비고 칸 왼쪽에 위치) */
-    .tx-amt { flex: none; width: 96px; text-align: right; font-size: 15px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
+    /* 이체금액 칸: '이체금액' 라벨 + 큰 금액 + 공제 분해 줄 (오른쪽 정렬) */
+    .tx-amt { flex: none; width: 220px; text-align: right; letter-spacing: -0.01em;
+      background: #fcfaf4; border: 1px solid #efe7d4; border-radius: 10px; padding: 8px 12px; }
+    .tx-amt.has-sev { width: 220px; }
+    .tx-amt-label { font-size: 10.5px; font-weight: 800; color: #b8954a; letter-spacing: 0.02em; margin-bottom: 1px; }
+    .tx-amt-num { font-size: 19px; font-weight: 800; color: #1a1a1a; line-height: 1.1; }
+    .tx-amt-num small { font-size: 11px; color: #b0a890; font-weight: 600; margin-left: 2px; }
     .tx-amt small { font-size: 10.5px; color: #bbb; font-weight: 500; margin-left: 2px; }
-    /* 분해 줄(세전 − 공제)을 담기 위해 폭을 넓힌다 */
-    .tx-amt.has-sev { width: auto; min-width: 168px; }
-    .tx-amt-break { margin-top: 2px; font-size: 10px; font-weight: 600; color: #b08a2e; white-space: nowrap; letter-spacing: 0; }
+    .tx-amt-break { margin-top: 4px; font-size: 10.5px; font-weight: 600; color: #b08a2e; white-space: nowrap; letter-spacing: 0; }
     /* 공제 분해 줄: 4대보험=파랑 / 3.3%=호박색 / 공제없음=적색 (배지와 같은 색으로 확실히 구분) */
     .tx-amt-break.ded { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 6px; font-weight: 700; border: 1px solid #e2ded5; }
     .tx-amt-break.ded.four  { color: #2f6bbf; background: #eaf2fc; border-color: #cfe0f5; }
@@ -802,7 +812,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-amt-break.ded.none  { color: #c0504a; background: #fbecea; border-color: #f3d4d0; }
 
     /* 비고: 담당자가 메모를 적는 칸 (행 오른쪽 끝) */
-    .tx-note { flex: none; width: 130px; }
+    .tx-note { flex: 1 1 150px; min-width: 130px; }
     /* 비고: 비어 있을 때도 눈에 띄게(점선 테두리), 내용이 있으면 노란색으로 확실히 강조 */
     .tx-note-input { width: 100%; font-size: 12px; color: #444; padding: 7px 9px; border: 1.5px dashed #d8cfa8; border-radius: 7px; font-family: inherit; outline: none; background: #fffdf3; transition: all .12s; }
     .tx-note-input::placeholder { color: #b0a570; font-weight: 600; }
@@ -819,7 +829,7 @@ export default function ManagerDashboard({ onBack }) {
     /* 넓은 화면: 오른쪽 빈 공간에 고정(스크롤 따라다님) */
     @media (min-width: 1200px) {
       .tx-memo {
-        position: fixed; top: 118px; bottom: 24px; right: 24px; left: calc(50% + 478px);
+        position: fixed; top: 118px; bottom: 24px; right: 24px; width: 312px; left: auto;
         margin-top: 0;
       }
     }
@@ -949,7 +959,7 @@ export default function ManagerDashboard({ onBack }) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <div className="md-wrap">
+      <div className={`md-wrap ${view === 'transfer' ? 'tx-mode' : ''}`}>
 
         {onBack && <button className="md-back" onClick={onBack}>← 지점 선택으로</button>}
 
@@ -1114,16 +1124,11 @@ export default function ManagerDashboard({ onBack }) {
                             </select>
                             <div className="tx-name-wrap">
                               <span className="tx-name">{unitNames(u)}</span>
-                              {unitMixed(u) ? <span className="tx-pt merge">합산</span>
-                                : unitIsAlba(u) ? <span className="tx-pt">알바</span> : null}
+                              {unitIsAlba(u)
+                                ? <span className="tx-pt alba">알바</span>
+                                : <span className="tx-pt staff">직원</span>}
+                              {unitMixed(u) && <span className="tx-pt merge">합산</span>}
                               {sev > 0 && <span className="tx-pt sev">＋퇴직금</span>}
-                            </div>
-                            <div className="tx-ded-wrap">
-                              {unitDedTypes(u).map(dt => (
-                                <span key={dt} className={`tx-ded ${dt === 'none' ? 'none' : dt === '4대' ? 'four' : 'three'}`}>
-                                  {DED_LABEL[dt] || dt}
-                                </span>
-                              ))}
                             </div>
                             <div className="tx-acct-wrap">
                               {editAcctKey === u.key ? (
@@ -1156,7 +1161,8 @@ export default function ManagerDashboard({ onBack }) {
                               )}
                             </div>
                             <div className="tx-amt has-sev">
-                              {fmt(unitAmt(u))}<small>원</small>
+                              <div className="tx-amt-label">💸 이체금액</div>
+                              <div className="tx-amt-num">{fmt(unitAmt(u))}<small>원</small></div>
                               <div className={`tx-amt-break ded ${unitDedLabel(u) === '4대보험' ? 'four' : unitDedLabel(u) === '3.3%' ? 'three' : 'none'}`}>
                                 세전 {fmt(unitGross(u))} − {unitDedLabel(u)} {fmt(unitDeduction(u))}
                               </div>
