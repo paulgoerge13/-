@@ -821,7 +821,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-memo-area:focus { border-color: #d8b860; }
     .tx-memo-area::placeholder { color: #c8c0ad; }
     .tx-memo-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex: none; }
-    .tx-memo-state { font-size: 11.5px; color: #bdb499; margin-right: auto; }
+    .tx-memo-state { font-size: 11.5px; color: #bdb499; margin-left: auto; text-align: right; }
     .tx-memo-state.dirty { color: #c0504a; font-weight: 600; }
     .tx-memo-state.ok { color: #1f9d57; font-weight: 600; }
     .tx-memo-save {
@@ -1173,11 +1173,11 @@ export default function ManagerDashboard({ onBack }) {
                     placeholder="이체 관련 메모를 자유롭게 적어두세요.&#10;(예: 퇴직금 별도 처리, 보류 사유 등)"
                   />
                   <div className="tx-memo-foot">
+                    <button className="tx-memo-save" onClick={saveTxMemo} disabled={!memoDirty}>저장</button>
                     <span className={`tx-memo-state ${memoSaved ? 'ok' : memoDirty ? 'dirty' : ''}`}>
                       {memoSaved ? '저장됨 ✓' : memoDirty ? '저장 안 됨 (저장 버튼을 눌러주세요)'
                         : memoShareOff ? '이 컴퓨터에만 저장됨 (공유하려면 설정 필요)' : '모든 컴퓨터에 공유됩니다'}
                     </span>
-                    <button className="tx-memo-save" onClick={saveTxMemo} disabled={!memoDirty}>저장</button>
                   </div>
                 </aside>
               </>
