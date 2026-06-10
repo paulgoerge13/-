@@ -697,6 +697,13 @@ export default function ManagerDashboard({ onBack }) {
     .tx-stat-fill { height: 100%; background: #2ecc71; border-radius: 4px; transition: width 0.3s; }
 
     /* 상태 필터 칩: 전 지점을 상태별로 모아보기 */
+    /* 지점 선택 바 */
+    .tx-branchbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px 12px; background: #faf8f3; border: 1px solid #ece6da; border-radius: 12px; }
+    .tx-branchbar-label { font-size: 12px; font-weight: 800; color: #9a8f78; margin-right: 2px; }
+    .tx-bchip { font-size: 13px; font-weight: 700; color: #6b6760; background: #fff; border: 1.5px solid #e2ddd2; border-radius: 999px; padding: 7px 15px; cursor: pointer; transition: all .15s; }
+    .tx-bchip:hover { border-color: #c2a45e; color: #1a1a1a; }
+    .tx-bchip.on { color: #fff; background: #b8954a; border-color: #b8954a; box-shadow: 0 2px 6px rgba(184,149,74,0.3); }
+
     .tx-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding: 0 2px; }
     .tx-fchip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;
       color: #5f5a52; background: #fff; border: 1.5px solid #e7e3da; border-radius: 999px;
@@ -1058,6 +1065,26 @@ export default function ManagerDashboard({ onBack }) {
                     <div className="tx-stat-k">총 이체액</div>
                     <div className="tx-stat-v gold">{fmt(totalAmt)}<small>원</small></div>
                   </div>
+                </div>
+
+                {/* 지점 선택 칩: 전 지점 ↔ 특정 지점만 골라보기 */}
+                <div className="tx-branchbar">
+                  <span className="tx-branchbar-label">지점</span>
+                  <button
+                    className={`tx-bchip ${isAll ? 'on' : ''}`}
+                    onClick={() => setBranch(ALL)}
+                  >
+                    전체 지점
+                  </button>
+                  {BRANCHES.filter(b => records.some(r => r.branch === b)).map(b => (
+                    <button
+                      key={b}
+                      className={`tx-bchip ${branch === b ? 'on' : ''}`}
+                      onClick={() => setBranch(b)}
+                    >
+                      {b}
+                    </button>
+                  ))}
                 </div>
 
                 {/* 상태 필터 칩: 전 지점을 상태별로 모아보기 */}
