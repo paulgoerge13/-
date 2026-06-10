@@ -771,7 +771,7 @@ export default function ManagerDashboard({ onBack }) {
     .md-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
     .md-tab {
       flex: 1; background: #fff; border: 1px solid #e0ddd6; color: #888;
-      border-radius: 10px; padding: 11px 12px; font-size: 13px; font-weight: 600;
+      border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 600;
       cursor: pointer; font-family: 'Pretendard', 'DM Sans', sans-serif; transition: all 0.15s;
     }
     .md-tab:hover { border-color: #b8954a; color: #1a1a1a; }
@@ -794,9 +794,9 @@ export default function ManagerDashboard({ onBack }) {
     @media (max-width: 640px) { .md-pw-grid { grid-template-columns: 1fr; } }
 
     /* ───── 이체 처리 ───── */
-    .tx-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
-    .tx-stat { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 16px 18px; }
-    .tx-stat-k { font-size: 11px; letter-spacing: 0.06em; color: #999; margin-bottom: 7px; }
+    .tx-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; }
+    .tx-stat { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 11px 18px; }
+    .tx-stat-k { font-size: 11px; letter-spacing: 0.06em; color: #999; margin-bottom: 4px; }
     .tx-stat-v { font-size: 22px; font-weight: 800; color: #1a1a1a; letter-spacing: -0.01em; }
     .tx-stat-v small { font-size: 12px; font-weight: 500; color: #aaa; margin-left: 3px; }
     .tx-stat-v.done { color: #2f7d54; }   /* 완료 금액: 차분한 초록 */
