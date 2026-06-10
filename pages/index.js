@@ -1,21 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 import BranchInventory from '../components/BranchInventory'
+import { BRANCHES } from '../lib/branches'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
 const MASTER_PASSWORD = 'ejzhaak0080'
-
-// ── 수정 #7: 서울마리나점 → 하남점 ──
-const BRANCHES = [
-  { id: 'gidc',   name: '광명GIDC점',  password: 'gidc1234' },
-  { id: 'ingye',  name: '인계점',       password: 'ingye13' },
-  { id: 'anyang', name: '안양일번가점', password: 'anyang30' },
-  { id: 'iksan',  name: '익산점',       password: 'iksan08' },
-  { id: 'juan',   name: '인천주안점',   password: 'juan00' },
-  { id: 'hanam',  name: '하남점',       password: 'hanam77' },
-  { id: 'siheung', name: '시흥집',       password: 'siheung01' },
-  { id: 'hanip',  name: '한잎꼬마김밥',  password: 'hanip01' },
-]
 
 function calcBasic(h, w)        { return Math.round(h * w) }
 function calcOvertime(h, w)     { return Math.round(h * w * 1.5) }

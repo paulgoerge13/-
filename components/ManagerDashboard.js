@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { BRANCHES as BRANCH_LIST, BRANCH_NAMES } from '../lib/branches'
 
-const BRANCHES = ['광명GIDC점', '인계점', '안양일번가점', '익산점', '인천주안점', '하남점', '시흥집', '한잎꼬마김밥']
+const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
 
 // ── 전 지점 통합 관리 대시보드 (재사용 컴포넌트) ──
@@ -16,6 +17,7 @@ export default function ManagerDashboard({ onBack }) {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [view, setView] = useState('summary')      // summary | transfer
   const [branchMetric, setBranchMetric] = useState('wage')  // 지점별 보기: wage(월급) | major(4대보험) | withhold(원천세)
+  const [showPw, setShowPw] = useState(false)       // 지점 비밀번호 표 보기/숨기기
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
   const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료 | 보류
@@ -651,6 +653,22 @@ export default function ManagerDashboard({ onBack }) {
     .md-tab:hover { border-color: #b8954a; color: #1a1a1a; }
     .md-tab.on { background: #b8954a; border-color: #b8954a; color: #fff; }
 
+    /* 지점 비밀번호 모음 (숨김 토글) */
+    .md-pw { margin-bottom: 16px; }
+    .md-pw-toggle {
+      background: #fff; border: 1px dashed #d8cfa8; color: #8a7a4a;
+      border-radius: 10px; padding: 9px 14px; font-size: 12.5px; font-weight: 700;
+      cursor: pointer; font-family: 'Pretendard', sans-serif;
+    }
+    .md-pw-toggle:hover { border-style: solid; border-color: #b8954a; color: #a07f3a; }
+    .md-pw-body { margin-top: 10px; background: #fffdf6; border: 1px solid #ece4cf; border-radius: 12px; padding: 14px 16px; }
+    .md-pw-note { font-size: 11px; color: #a99668; margin-bottom: 10px; }
+    .md-pw-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .md-pw-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fff; border: 1px solid #eee5cf; border-radius: 8px; padding: 9px 12px; }
+    .md-pw-name { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+    .md-pw-code { font-size: 13px; font-weight: 700; color: #b8954a; font-family: 'DM Mono', monospace; letter-spacing: 0.02em; }
+    @media (max-width: 640px) { .md-pw-grid { grid-template-columns: 1fr; } }
+
     /* ───── 이체 처리 ───── */
     .tx-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
     .tx-stat { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 16px 18px; }
@@ -944,6 +962,26 @@ export default function ManagerDashboard({ onBack }) {
         <div className="md-tabs">
           <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
           <button className={`md-tab ${view === 'transfer' ? 'on' : ''}`} onClick={() => setView('transfer')}>💸 이체 처리</button>
+        </div>
+
+        {/* 지점 비밀번호 모음 (관리자만 보는 화면이라 안전. 평소엔 숨김) */}
+        <div className="md-pw">
+          <button className="md-pw-toggle" onClick={() => setShowPw(v => !v)}>
+            🔑 지점 비밀번호 {showPw ? '숨기기 ▲' : '보기 ▼'}
+          </button>
+          {showPw && (
+            <div className="md-pw-body">
+              <div className="md-pw-note">급여 페이지 로그인 비밀번호입니다. 이 화면은 관리자(마스터 비밀번호)만 볼 수 있어요.</div>
+              <div className="md-pw-grid">
+                {BRANCH_LIST.map(b => (
+                  <div key={b.id} className="md-pw-item">
+                    <span className="md-pw-name">{b.name}</span>
+                    <code className="md-pw-code">{b.password}</code>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {loading ? (
