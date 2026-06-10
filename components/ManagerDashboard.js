@@ -766,14 +766,15 @@ export default function ManagerDashboard({ onBack }) {
     .tx-ded.three { color: #b07a1e; background: #fbf3e2; border-color: #f0e0bd; }   /* 3.3% = 호박색 */
     .tx-ded.none { color: #c0504a; background: #fbecea; border-color: #f3d4d0; }    /* 공제없음 = 적색 */
 
-    .tx-acct-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; }
-    .tx-acct { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .tx-acct.empty { color: #a8794a; }
+    /* 계좌 칸: 은행+계좌번호가 한눈에 다 보이도록 넓게, 안 잘리게(필요시 줄바꿈) */
+    .tx-acct-wrap { flex: 2 1 250px; min-width: 0; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .tx-acct { font-size: 12.5px; color: #444; font-weight: 600; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.35; }
+    .tx-acct.empty { color: #a8794a; font-weight: 500; }
     .tx-copy { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 10.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; }
     .tx-copy:hover { border-color: #b8954a; color: #b8954a; }
     .tx-acct-edit { flex: none; background: #fff; border: 1px solid #d8cba3; color: #b8954a; font-size: 10.5px; font-weight: 700; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-family: inherit; }
     .tx-acct-edit:hover { background: #b8954a; color: #fff; border-color: #b8954a; }
-    .tx-acct-input { flex: 1; min-width: 140px; font-size: 12px; color: #333; padding: 6px 9px; border: 1.5px solid #b8954a; border-radius: 7px; font-family: inherit; outline: none; }
+    .tx-acct-input { flex: 1; min-width: 230px; font-size: 12.5px; color: #333; padding: 7px 10px; border: 1.5px solid #b8954a; border-radius: 7px; font-family: inherit; outline: none; }
     .tx-acct-save { flex: none; background: #b8954a; border: none; color: #fff; font-size: 11px; font-weight: 700; padding: 6px 11px; border-radius: 6px; cursor: pointer; font-family: inherit; }
     .tx-acct-save:disabled { opacity: 0.6; cursor: default; }
     .tx-acct-cancel { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; }
@@ -786,7 +787,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-amt-break { margin-top: 2px; font-size: 10px; font-weight: 600; color: #b08a2e; white-space: nowrap; letter-spacing: 0; }
 
     /* 비고: 담당자가 메모를 적는 칸 (행 오른쪽 끝) */
-    .tx-note { flex: none; width: 150px; }
+    .tx-note { flex: none; width: 130px; }
     /* 비고: 비어 있을 때도 눈에 띄게(점선 테두리), 내용이 있으면 노란색으로 확실히 강조 */
     .tx-note-input { width: 100%; font-size: 12px; color: #444; padding: 7px 9px; border: 1.5px dashed #d8cfa8; border-radius: 7px; font-family: inherit; outline: none; background: #fffdf3; transition: all .12s; }
     .tx-note-input::placeholder { color: #b0a570; font-weight: 600; }
