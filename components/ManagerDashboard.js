@@ -738,7 +738,7 @@ export default function ManagerDashboard({ onBack }) {
     .tx-bulk:hover { border-color: #b8954a; color: #b8954a; }
 
     .tx-row {
-      display: flex; align-items: center; gap: 10px;
+      display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap;
       background: #fff; border: 1px solid #ebe9e4; border-left-width: 5px;
       border-radius: 10px; padding: 11px 13px; margin-bottom: 7px;
     }
@@ -783,9 +783,10 @@ export default function ManagerDashboard({ onBack }) {
     .tx-ded.three { color: #b07a1e; background: #fbf3e2; border-color: #f0e0bd; }   /* 3.3% = 호박색 */
     .tx-ded.none { color: #c0504a; background: #fbecea; border-color: #f3d4d0; }    /* 공제없음 = 적색 */
 
-    /* 계좌 칸: 은행+계좌번호가 무조건 한 줄로 다 보이도록 (양쪽 여백까지 넓게 사용) */
-    .tx-acct-wrap { flex: 3 1 360px; min-width: 0; display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
-    .tx-acct { flex: 1 1 auto; min-width: 0; font-size: 13.5px; color: #333; font-weight: 700; white-space: nowrap; overflow: visible; line-height: 1.3; }
+    /* 계좌 칸: 행 전체 너비를 차지하는 별도 줄 → 은행명+계좌번호가 항상 한 줄에 다 보임 */
+    .tx-acct-wrap { order: 10; flex: 1 1 100%; width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+      margin-top: 2px; padding: 7px 10px; background: #f8f7f3; border: 1px solid #ece9e2; border-radius: 8px; }
+    .tx-acct { flex: 1 1 auto; min-width: 0; font-size: 14px; color: #222; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; letter-spacing: -0.01em; }
     .tx-acct.empty { color: #a8794a; font-weight: 500; }
     .tx-copy { flex: none; background: #f3f1ec; border: 1px solid #e0ddd6; color: #777; font-size: 10.5px; font-weight: 600; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; }
     .tx-copy:hover { border-color: #b8954a; color: #b8954a; }
