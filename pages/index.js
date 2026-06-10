@@ -1650,6 +1650,10 @@ export default function Home() {
     .home-card-title { font-size: 22px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
     .home-card-sub { font-size: 13px; color: #9a9286; line-height: 1.5; }
     .home-card-chev { position: absolute; right: 24px; top: 32px; font-size: 26px; color: #d0ccc5; font-weight: 300; }
+    .home-card.soon { background: #faf9f6; }
+    .home-card-badge { position: absolute; right: 18px; top: 18px; font-size: 11.5px; font-weight: 700; color: #8a6f3c; background: #f3ead2; border: 1px solid #e6d6ad; padding: 3px 10px; border-radius: 999px; }
+    .home-card.soon .home-card-chev { top: 46px; }
+    .home-card-soon { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 600; color: #b08a2e; }
     .home-card:hover .home-card-chev { color: #b8954a; }
     .home-card.inventory:hover .home-card-chev { color: #5a8a6a; }
     .branch-card {
@@ -2110,10 +2114,11 @@ export default function Home() {
                   <div className="home-card-sub">근무시간 입력 · 급여/공제 자동 계산 · 명세서</div>
                   <div className="home-card-chev">›</div>
                 </div>
-                <div className="home-card inventory" onClick={() => { setAppMode('inventory'); setStep('branch') }}>
+                <div className="home-card inventory soon" onClick={() => { setAppMode('inventory'); setStep('branch') }}>
+                  <span className="home-card-badge">🚧 준비 중</span>
                   <div className="home-card-icon">📦</div>
                   <div className="home-card-title">재고 관리</div>
-                  <div className="home-card-sub">품목별 현재고 · 입출고 기록 · 부족 알림</div>
+                  <div className="home-card-sub">품목별 현재고 · 입출고 기록 · 부족 알림<br/><span className="home-card-soon">현재 준비 중이에요 · 곧 열릴 예정입니다</span></div>
                   <div className="home-card-chev">›</div>
                 </div>
               </div>
