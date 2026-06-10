@@ -506,51 +506,55 @@ export default function ManagerDashboard({ onBack }) {
     const row5 = (r, vals, base) => vals.forEach((v, c) => put(r, c, v, typeof base === 'function' ? base(c) : base))
 
     // 제목
-    put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)`, { font: { bold: true, sz: 16 } })
+    put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)`, { font: { sz: 11 } })
 
+    const rowH = []                 // 행 높이를 촘촘하게(한 페이지에 최대한 많이)
+    rowH[0] = 16; rowH[1] = 6
     let r = 2
     groups.forEach((g, gi) => {
-      if (gi > 0) r++   // 지점 사이 한 줄 띄움
+      if (gi > 0) { rowH[r] = 5; r++ }   // 지점 사이 얇은 간격
       // 지점 제목 줄 (5칸 가로 병합)
       put(r, 0, `${g.branch}  (${g.count}명)`, {
-        font: { bold: true, sz: 13, color: { rgb: 'FFFFFF' } },
+        font: { sz: 9, color: { rgb: 'FFFFFF' } },
         alignment: { horizontal: 'left', vertical: 'center' },
         fill: { fgColor: { rgb: '8A8170' } }, border: allBd,
       })
       for (let c = 1; c < COLS; c++) put(r, c, '', { fill: { fgColor: { rgb: '8A8170' } }, border: allBd })
       merges.push({ s: { r, c: 0 }, e: { r, c: COLS - 1 } })
-      r++
+      rowH[r] = 15; r++
       // 칸 제목(헤더) 줄
       row5(r, ['구분', '이름', '금액', '은행', '계좌'], c => ({
-        font: { bold: true, sz: 10, color: { rgb: '5A5346' } },
+        font: { sz: 8, color: { rgb: '8A8170' } },
         alignment: { horizontal: c === 2 ? 'right' : c === 0 ? 'center' : 'left' },
         fill: { fgColor: { rgb: 'F0EAD9' } }, border: allBd,
       }))
-      r++
+      rowH[r] = 13; r++
       // 사람 줄
       g.sorted.forEach(u => {
         const st = unitStatus(u)
         const a = splitAcct(u.account)
         const fill = { fgColor: { rgb: FILL[st] || 'FFFFFF' } }
-        put(r, 0, unitIsAlba(u) ? 'pt' : '직원', { fill, alignment: { horizontal: 'center' }, font: { sz: 10, color: { rgb: unitIsAlba(u) ? 'B07A1E' : '6B7785' } }, border: allBd })
-        put(r, 1, unitNames(u), { fill, font: { sz: 11, bold: true }, border: allBd })
-        put(r, 2, unitAmt(u), { fill, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { sz: 11, bold: true }, border: allBd })
-        put(r, 3, a.bank, { fill, font: { sz: 10 }, border: allBd })
-        put(r, 4, a.num, { fill, font: { sz: 10 }, border: allBd })
-        r++
+        put(r, 0, unitIsAlba(u) ? 'pt' : '직원', { fill, alignment: { horizontal: 'center' }, font: { sz: 8, color: { rgb: unitIsAlba(u) ? 'B07A1E' : '6B7785' } }, border: allBd })
+        put(r, 1, unitNames(u), { fill, font: { sz: 9 }, border: allBd })
+        put(r, 2, unitAmt(u), { fill, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { sz: 9 }, border: allBd })
+        put(r, 3, a.bank, { fill, font: { sz: 8 }, border: allBd })
+        put(r, 4, a.num, { fill, font: { sz: 8 }, border: allBd })
+        rowH[r] = 13; r++
       })
       // 합계 줄
       const tf = { fgColor: { rgb: 'F0EAD9' } }
       put(r, 0, '', { fill: tf, border: allBd })
-      put(r, 1, '합계', { fill: tf, font: { bold: true, sz: 11 }, border: allBd })
-      put(r, 2, g.total, { fill: tf, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { bold: true, sz: 11 }, border: allBd })
+      put(r, 1, '합계', { fill: tf, font: { sz: 9 }, border: allBd })
+      put(r, 2, g.total, { fill: tf, numFmt: '#,##0', alignment: { horizontal: 'right' }, font: { sz: 9 }, border: allBd })
       put(r, 3, '', { fill: tf, border: allBd })
       put(r, 4, '', { fill: tf, border: allBd })
-      r++
+      rowH[r] = 13; r++
     })
 
-    ws['!cols'] = [{ wch: 7 }, { wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 26 }]
+    ws['!cols'] = [{ wch: 5 }, { wch: 10 }, { wch: 12 }, { wch: 9 }, { wch: 22 }]
+    ws['!rows'] = rowH.map(h => ({ hpt: h || 13 }))
     ws['!merges'] = merges
+    ws['!margins'] = { left: 0.2, right: 0.2, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 }
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
 
     const wb = XLSX.utils.book_new()
