@@ -1630,12 +1630,12 @@ export default function Home() {
     @media (max-width: 600px) { .logo-img { height: 42px; } }
     .header-tag { font-size: 10px; letter-spacing: 0.2em; color: #999; }
 
-    .main { flex: 1; padding: 48px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
+    .main { flex: 1; padding: 32px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
     @media (max-width: 640px) { .header { padding: 16px 20px; } .main { padding: 28px 16px; } }
 
     .page-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 30px; margin-bottom: 10px; }
-    .page-sub { font-size: 15px; color: #999; letter-spacing: 0.04em; margin-bottom: 48px; }
-    .branch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 900px; margin: 0 auto; }
+    .page-sub { font-size: 15px; color: #999; letter-spacing: 0.04em; margin-bottom: 26px; }
+    .branch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 900px; margin: 0 auto; }
     @media (max-width: 640px) { .branch-grid { grid-template-columns: repeat(2, 1fr); } }
 
     /* 홈 — 업무 선택 카드 */
@@ -1657,8 +1657,8 @@ export default function Home() {
     .home-card:hover .home-card-chev { color: #b8954a; }
     .home-card.inventory:hover .home-card-chev { color: #5a8a6a; }
     .branch-card {
-      background: #fff; border: 1px solid #ebe9e4; border-radius: 16px;
-      padding: 40px 32px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+      background: #fff; border: 1px solid #ebe9e4; border-radius: 14px;
+      padding: 22px 20px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
     }
     .branch-card::after {
       content: ''; position: absolute; bottom: 0; left: 0; right: 0;
@@ -1666,28 +1666,28 @@ export default function Home() {
     }
     .branch-card:hover { border-color: #d4b87a; box-shadow: 0 8px 32px rgba(184,149,74,0.12); transform: translateY(-2px); }
     .branch-card:hover::after { transform: scaleX(1); }
-    .branch-num { font-size: 12px; color: #ccc; letter-spacing: 0.2em; margin-bottom: 14px; font-weight: 500; }
-    .branch-name { font-size: 27px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
+    .branch-num { font-size: 10px; color: #ccc; letter-spacing: 0.18em; margin-bottom: 8px; font-weight: 500; }
+    .branch-name { font-size: 19px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
 
     /* 6개 지점 아래 — 전지점 관리(관리자 페이지) 진입 */
     .admin-entry {
-      max-width: 900px; margin: 28px auto 0; cursor: pointer;
-      display: flex; align-items: center; gap: 18px;
+      max-width: 900px; margin: 18px auto 0; cursor: pointer;
+      display: flex; align-items: center; gap: 16px;
       background: #fdfbf6; border: 1.5px solid #e3d3a6;
-      border-radius: 18px; padding: 22px 24px;
+      border-radius: 16px; padding: 16px 22px;
       transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
     }
     .admin-entry:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(184,149,74,0.18); border-color: #c9a85f; }
     .admin-entry-icon {
-      font-size: 26px; width: 56px; height: 56px; flex: none;
+      font-size: 22px; width: 48px; height: 48px; flex: none;
       display: flex; align-items: center; justify-content: center;
-      background: #f3e9d2; border-radius: 15px;
+      background: #f3e9d2; border-radius: 13px;
     }
     .admin-entry-texts { flex: 1; min-width: 0; }
-    .admin-entry-title { font-size: 30px; font-weight: 800; color: #1a1a1a; line-height: 1.2; letter-spacing: -0.01em; }
+    .admin-entry-title { font-size: 23px; font-weight: 800; color: #1a1a1a; line-height: 1.2; letter-spacing: -0.01em; }
     .admin-entry-cta {
-      flex: none; background: #b8954a; color: #fff; font-size: 15px; font-weight: 700;
-      padding: 13px 24px; border-radius: 12px; white-space: nowrap;
+      flex: none; background: #b8954a; color: #fff; font-size: 14px; font-weight: 700;
+      padding: 11px 22px; border-radius: 11px; white-space: nowrap;
       display: flex; align-items: center; gap: 7px; transition: background 0.15s, transform 0.15s;
     }
     .admin-entry:hover .admin-entry-cta { background: #a07f3a; transform: translateX(2px); }
