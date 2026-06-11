@@ -1631,6 +1631,8 @@ export default function Home() {
     .header-tag { font-size: 10px; letter-spacing: 0.2em; color: #999; }
 
     .main { flex: 1; padding: 32px 40px; max-width: 1200px; width: 100%; margin: 0 auto; }
+    /* 관리자 통합 대시보드 — 양옆 꽉 채우기 (대시보드가 자체 여백을 가짐) */
+    .main.main-admin { max-width: none; padding: 24px 0 48px; }
     @media (max-width: 640px) { .header { padding: 16px 20px; } .main { padding: 28px 16px; } }
 
     .page-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 30px; margin-bottom: 10px; }
@@ -2100,7 +2102,7 @@ export default function Home() {
           <span className="header-tag">CREW PAYROLL</span>
         </header>
 
-        <main className="main">
+        <main className={`main ${step === 'admin' ? 'main-admin' : ''}`}>
 
           {/* STEP 0: 홈 — 업무 선택 (급여 / 재고) */}
           {step === 'home' && (
