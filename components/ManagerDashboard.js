@@ -825,7 +825,7 @@ export default function ManagerDashboard({ onBack }) {
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
     /* 칸 너비를 카드 전체에 고정 → 모든 줄이 세로로 딱 맞게 정렬(엑셀 느낌) */
-    .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; align-items: start; margin-bottom: 20px; }
+    .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 10px; align-items: start; margin-bottom: 20px; }
     .bd-card { background: #fff; border: 1px solid #d8d3c8; border-radius: 9px; overflow: hidden; }
     .bd-head { display: flex; align-items: center; gap: 7px; padding: 5px 10px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
     .bd-bname { font-size: 12.5px; font-weight: 800; color: #1a1a1a; }
@@ -835,8 +835,8 @@ export default function ManagerDashboard({ onBack }) {
     .bd-allbtn.done { background: #fff; color: #2f7d54; border: 1px solid #bcd9c8; }
     .bd-allbtn.done:hover { background: #f0f7f2; }
     .bd-rows { display: flex; flex-direction: column; }
-    /* 고정 칸: [pt/직원 38px] [이름 1fr] [금액 82px] [은행 58px] [계좌 1.4fr] */
-    .bd-row { display: grid; grid-template-columns: 38px minmax(46px, 1fr) 82px 58px minmax(104px, 1.4fr);
+    /* 고정 칸: [pt/직원 34px] [이름 1fr] [금액 78px] [은행 56px] [계좌 2fr] */
+    .bd-row { display: grid; grid-template-columns: 34px minmax(50px, 1fr) 78px 56px minmax(150px, 2fr);
       align-items: center; column-gap: 6px;
       padding: 0 8px; height: 24px; border-bottom: 1px solid #ececec; cursor: pointer; transition: filter .1s; }
     .bd-row:last-child { border-bottom: none; }
@@ -859,7 +859,7 @@ export default function ManagerDashboard({ onBack }) {
     .bd-row.st-이체완료, .tx-lg.st-이체완료 { background: #d6f1de; }
     .bd-row.st-보류,    .tx-lg.st-보류    { background: #ecdcfa; }
     /* 합계 줄도 같은 칸 격자에 맞춰 금액이 위와 정렬되도록 */
-    .bd-total { display: grid; grid-template-columns: 38px minmax(46px, 1fr) 82px 58px minmax(104px, 1.4fr);
+    .bd-total { display: grid; grid-template-columns: 34px minmax(50px, 1fr) 78px 56px minmax(150px, 2fr);
       align-items: center; column-gap: 6px; padding: 0 8px; height: 26px; background: #f3efe6; border-top: 2px solid #d8d3c8; }
     .bd-total .bd-total-k { grid-column: 1 / 3; font-size: 10.5px; font-weight: 700; color: #8a8170; }
     .bd-total .bd-total-v { grid-column: 3 / 4; text-align: right; font-size: 11.5px; font-weight: 800; color: #1a1a1a; font-variant-numeric: tabular-nums; }
