@@ -986,6 +986,16 @@ export default function Home() {
       workDays, offDays, annualDays, holidayDays }
   }
 
+  // ── 출력 문서용 합계: 급여명세서·근무표 엑셀은 개별 '공제 방식' 설정과 무관하게
+  //   이체 화면·요약과 동일하게 직원=4대보험 / 알바=3.3% 를 강제 적용한다.
+  //   (그래야 명세서의 '실지급액'이 실제 이체액과 정확히 일치한다.)
+  function calcTotalForDoc(emp) {
+    const t = calcTotal(emp)
+    const forcedType = (emp.empType === '직원') ? '4대' : '3.3'
+    const ded = calcDeductions(t.grandTotal, { ...emp, deductionType: forcedType })
+    return { ...t, deductions: ded, totalDeduction: ded.total, netPay: t.grossPay - ded.total }
+  }
+
   // ── 자동저장: 로컬스토리지에만 저장 (Supabase 호출 없음) ──
   function autoSave() {
     if (!selectedBranch) return
@@ -1368,7 +1378,7 @@ export default function Home() {
   // - 유형은 풀네임(평일/휴일근로/휴무/연차/결근)으로 표기
   // - 알바는 연장·휴일 관련 칸 제거(직원만 표시)
   function buildEmpSheetAoa(emp) {
-    const totals = calcTotal(emp)
+    const totals = calcTotalForDoc(emp)
     const isStaff = (emp.empType || '알바') === '직원'
     const blank = v => (v ? v : '')
 
@@ -1489,7 +1499,7 @@ export default function Home() {
   // ── 급여명세서 인쇄/PDF (근로기준법 제48조 · 더콤마 표준 양식) ──
   function printPayslip() {
     if (!activeEmp?.name) { alert('직원 이름을 먼저 입력해주세요.'); return }
-    const t = calcTotal(activeEmp)
+    const t = calcTotalForDoc(activeEmp)
     const w = (n) => Number(n || 0).toLocaleString()
     const wage = activeEmp.hourlyWage || 0
 
