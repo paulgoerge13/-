@@ -493,7 +493,7 @@ export default function ManagerDashboard({ onBack }) {
     if (groups.length === 0) { alert('이 달에 이체할 데이터가 없습니다.'); return }
 
     // 상태별 옅은 배경색(보기 편하라고만, 색 자체는 중요치 않음)
-    const FILL = { '작성중': 'FDE9D0', '수정중': 'FFFFFF', '확정': 'FDF6C4', '이체완료': 'C6F0C6', '보류': 'ECDCFA' }
+    const FILL = { '작성중': 'FDE9D0', '수정중': 'FFFFFF', '확정': 'FDF6C4', '이체완료': 'D6F1DE', '보류': 'ECDCFA' }
     // ── 지점별 세로 정렬: 한 지점씩 위→아래로, 각 표는 [구분·이름·금액·은행·계좌] 5칸 ──
     const COLS = 5
     const bd = { style: 'thin', color: { rgb: 'D9D2C5' } }
@@ -856,7 +856,7 @@ export default function ManagerDashboard({ onBack }) {
     .bd-row.st-작성중,  .tx-lg.st-작성중  { background: #fde9d0; }
     .bd-row.st-수정중,  .tx-lg.st-수정중  { background: #ffffff; }
     .bd-row.st-확정,    .tx-lg.st-확정    { background: #fdf6c4; }
-    .bd-row.st-이체완료, .tx-lg.st-이체완료 { background: #aef0ae; }
+    .bd-row.st-이체완료, .tx-lg.st-이체완료 { background: #d6f1de; }
     .bd-row.st-보류,    .tx-lg.st-보류    { background: #ecdcfa; }
     /* 합계 줄도 같은 칸 격자에 맞춰 금액이 위와 정렬되도록 */
     .bd-total { display: grid; grid-template-columns: 38px minmax(46px, 1fr) 82px 58px minmax(104px, 1.4fr);
