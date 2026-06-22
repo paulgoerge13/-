@@ -261,6 +261,8 @@ const EMPTY_EMP = {
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
   deductionType: 'none',   // 공제 방식: 'none' | '3.3' | '4대'
+  incomeTaxMode: 'amount', // 소득세 입력 방식: 'amount'(금액 직접) | 'rate'(비율 %)
+  incomeTaxRate: 0,        // 소득세 비율(%) — incomeTaxMode='rate'일 때 과세급여 × 이 % 로 자동 계산
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
   mealAllowance: 0,        // 식대 (비과세) — 4대보험·소득세 산정에서 제외
   severancePay: 0,         // 퇴직금 — 4대보험·소득세 제외, 지급액·실수령액에만 합산 (퇴직소득세 별도)
@@ -274,7 +276,7 @@ const EMPTY_EMP = {
 // 공제방식·소득세·식대·생년월일·입사일·퇴사일은 Supabase payroll 테이블에 컬럼이 없어서
 // DB에서 다시 불러올 때 매번 초기화됐다(=리셋 버그). 이 값들은 지점별·직원이름별로
 // 별도 localStorage 키에 따로 저장해 두고, DB 로드 후 다시 덮어 씌워 유지한다.
-const EMP_SETTINGS_FIELDS = ['deductionType', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate']
+const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate']
 function empSettingsKey(branchName) { return `payroll_empsettings_${branchName}` }
 function loadAllEmpSettings(branchName) {
   if (typeof window === 'undefined' || !branchName) return {}
@@ -359,7 +361,10 @@ function calcDeductions(gross, emp) {
     health     = Math.floor(gross * RATE_HEALTH / 10) * 10
     care       = Math.floor(health * RATE_CARE / 10) * 10
     employment = Math.floor(gross * RATE_EMPLOYMENT / 10) * 10
-    incomeTax  = emp.manualIncomeTax || 0
+    // 소득세: 비율(%) 입력이면 과세급여 × % 자동, 아니면 금액 직접 입력값
+    incomeTax  = (emp.incomeTaxMode === 'rate')
+      ? Math.floor(gross * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
+      : (emp.manualIncomeTax || 0)
     localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
   } else if (dt === '3.3') {
     bizTax     = Math.round(gross * 0.03)    // 사업소득세 3%
@@ -1066,7 +1071,10 @@ export default function Home() {
       resign_date:    emp.resignDate || '',
       birth_date:     emp.birthDate || '',
       deduction_type: emp.deductionType || 'none',
-      income_tax:     emp.manualIncomeTax || 0,
+      // 비율(%) 입력이면 과세급여 기준 계산된 소득세 금액을 저장 (관리자 화면·타 기기 일치용)
+      income_tax:     (emp.incomeTaxMode === 'rate')
+        ? Math.floor(totals.grandTotal * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
+        : (emp.manualIncomeTax || 0),
       meal_allowance: emp.mealAllowance || 0,
       severance_pay:  emp.severancePay || 0,
     }
@@ -1131,6 +1139,8 @@ export default function Home() {
         resignDate:      pick(r.resign_date, s.resignDate, ''),
         birthDate:       pick(r.birth_date, s.birthDate, ''),
         deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
+        incomeTaxMode:   pick(undefined, s.incomeTaxMode, 'amount'),
+        incomeTaxRate:   pick(undefined, s.incomeTaxRate, 0),
         manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
         mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
         severancePay:    pick(r.severance_pay, s.severancePay, 0),   // DB 우선 + 브라우저 저장값 보조 (여러 기기 공유)
@@ -2740,16 +2750,52 @@ export default function Home() {
                   </div>
                 )}
                 {((activeEmp.empType || '알바') === '직원' || activeEmp.deductionType === '4대') && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888' }}>
-                    소득세 (세무사 안내 금액)
-                    <input
-                      type="number"
-                      value={activeEmp.manualIncomeTax || 0}
-                      onChange={e => updateEmp('manualIncomeTax', Number(e.target.value))}
-                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
-                    />
-                    원 <span style={{ color: '#bbb' }}>(지방소득세는 10% 자동)</span>
-                  </label>
+                  <div style={{ marginTop: 8 }}>
+                    {/* 소득세 입력 방식 전환: 금액(원) / 비율(%) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888' }}>
+                      <span>소득세</span>
+                      <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none' }}>
+                        {[
+                          { v: 'amount', t: '금액(원)' },
+                          { v: 'rate',   t: '비율(%)' },
+                        ].map(({ v, t }) => (
+                          <button
+                            key={v}
+                            className={`emp-type-tab${(activeEmp.incomeTaxMode || 'amount') === v ? ' active' : ''}`}
+                            style={{ padding: '4px 10px', fontSize: 12 }}
+                            onClick={() => updateEmp('incomeTaxMode', v)}
+                          >{t}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {(activeEmp.incomeTaxMode || 'amount') === 'rate' ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={activeEmp.incomeTaxRate || 0}
+                          onChange={e => updateEmp('incomeTaxRate', Number(e.target.value))}
+                          style={{ width: 90, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                        />
+                        % <span style={{ color: '#bbb' }}>(과세급여 × 이 % · 지방소득세는 10% 자동)</span>
+                        {totals && activeEmp.incomeTaxRate > 0 && (
+                          <b style={{ color: '#2f6bbf' }}>→ 소득세 {Number(totals.deductions.incomeTax).toLocaleString()}원</b>
+                        )}
+                      </label>
+                    ) : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888' }}>
+                        <input
+                          type="number"
+                          value={activeEmp.manualIncomeTax || 0}
+                          onChange={e => updateEmp('manualIncomeTax', Number(e.target.value))}
+                          style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                        />
+                        원 <span style={{ color: '#bbb' }}>(세무사 안내 금액 · 지방소득세는 10% 자동)</span>
+                      </label>
+                    )}
+                  </div>
                 )}
                 {(activeEmp.empType || '알바') !== '직원' && activeEmp.deductionType === '3.3' && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
