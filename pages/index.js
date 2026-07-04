@@ -522,26 +522,32 @@ export default function Home() {
           if (e.id !== targetId) return e
           if (e._dirty) return e   // 엑셀로 불러온/미저장 데이터는 덮어쓰지 않음
           const r = result.data
-          // DB에 저장된 고정 설정이 있으면 그것을 우선, 없으면 기존 값 유지
-          const keepIf = (dbVal, cur) => (dbVal !== undefined && dbVal !== null && dbVal !== '') ? dbVal : cur
+          const s = settingsMap[r.emp_name] || settingsMap[e.name] || {}
+          // parseEmployeesFromDB와 동일: DB값 우선, 비어있으면 브라우저 저장값, 그래도 없으면 기존 값
+          const pick = (dbVal, lsVal, cur) => {
+            if (dbVal !== undefined && dbVal !== null && dbVal !== '') return dbVal
+            if (lsVal !== undefined && lsVal !== null && lsVal !== '') return lsVal
+            return cur
+          }
           const merged = {
             ...e,
             _dbName: r.emp_name || e._dbName || e.name,
             workData: migrateWorkData(r.work_data || {}),
             specialNote: r.special_note || '',
             hourlyWage: r.hourly_wage || 10320,
-            hireDate:        keepIf(r.hire_date, e.hireDate),
-            resignDate:      keepIf(r.resign_date, e.resignDate),
-            birthDate:       keepIf(r.birth_date, e.birthDate),
-            deductionType:   keepIf(r.deduction_type, e.deductionType),
-            manualIncomeTax: keepIf(r.income_tax, e.manualIncomeTax),
-            mealAllowance:   keepIf(r.meal_allowance, e.mealAllowance),
+            hireDate:        pick(r.hire_date, s.hireDate, e.hireDate || ''),
+            resignDate:      pick(r.resign_date, s.resignDate, e.resignDate || ''),
+            birthDate:       pick(r.birth_date, s.birthDate, e.birthDate || ''),
+            deductionType:   pick(r.deduction_type, s.deductionType, e.deductionType || 'none'),
+            // 소득세 방식/비율은 DB 컬럼이 없어 localStorage 전용 → 반드시 복원
+            incomeTaxMode:   pick(undefined, s.incomeTaxMode, e.incomeTaxMode || 'amount'),
+            incomeTaxRate:   pick(undefined, s.incomeTaxRate, e.incomeTaxRate || 0),
+            manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, e.manualIncomeTax || 0),
+            mealAllowance:   pick(r.meal_allowance, s.mealAllowance, e.mealAllowance || 0),
+            severancePay:    pick(r.severance_pay, s.severancePay, e.severancePay || 0),
           }
           merged.workData = pruneWorkDataToEmployment(merged.workData, merged.hireDate, merged.resignDate)
-          // 주석대로 localStorage 고정 설정을 DB값 위에 다시 덮어씌운다 (소득세·식대·공제·입퇴사일·퇴직금 리셋 방지)
-          const withSettings = applyEmpSettings(merged, settingsMap)
-          withSettings.workData = pruneWorkDataToEmployment(withSettings.workData, withSettings.hireDate, withSettings.resignDate)
-          return withSettings
+          return merged
         }))
       }
       // 데이터 없으면 workData 빈 상태 유지 (이미 초기화됐으므로 OK)
