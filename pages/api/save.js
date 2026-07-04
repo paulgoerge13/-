@@ -28,6 +28,7 @@ export default async function handler(req, res) {
     birth_date,
     deduction_type,
     income_tax,
+    retro_income_tax,
     meal_allowance,
     severance_pay,
   } = req.body
@@ -70,6 +71,7 @@ export default async function handler(req, res) {
     birth_date:     birth_date || '',
     deduction_type: deduction_type || 'none',
     income_tax:     Number(income_tax) || 0,
+    retro_income_tax: Number(retro_income_tax) || 0,
     meal_allowance: Number(meal_allowance) || 0,
     severance_pay:  Number(severance_pay) || 0,
   }

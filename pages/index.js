@@ -264,6 +264,7 @@ const EMPTY_EMP = {
   incomeTaxMode: 'amount', // 소득세 입력 방식: 'amount'(금액 직접) | 'rate'(비율 %)
   incomeTaxRate: 0,        // 소득세 비율(%) — incomeTaxMode='rate'일 때 과세급여 × 이 % 로 자동 계산
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
+  retroIncomeTax: 0,       // 소급 소득세 — 지난달 미징수분을 이번 달에 추가 공제 (그 달에만 적용, 다음 달로 안 넘어감)
   mealAllowance: 0,        // 식대 (비과세) — 4대보험·소득세 산정에서 제외
   severancePay: 0,         // 퇴직금 — 4대보험·소득세 제외, 지급액·실수령액에만 합산 (퇴직소득세 별도)
   birthDate: '',           // 생년월일 (명세서용, 비우면 주민번호 앞자리에서 자동)
@@ -356,6 +357,8 @@ function calcDeductions(gross, emp) {
   // 직원은 공제 방식 선택과 무관하게 항상 4대보험 적용 (알바만 deductionType 따름)
   const dt = (emp.empType === '직원') ? '4대' : (emp.deductionType || 'none')
   let pension = 0, health = 0, care = 0, employment = 0, incomeTax = 0, localTax = 0, bizTax = 0
+  // 소급 소득세: 지난달 미징수분을 이번 달에 추가 공제 (공제 대상자에게만)
+  const retroTax = (dt !== 'none') ? (Number(emp.retroIncomeTax) || 0) : 0
   if (dt === '4대') {
     pension    = Math.floor(gross * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
     health     = Math.floor(gross * RATE_HEALTH / 10) * 10
@@ -370,8 +373,8 @@ function calcDeductions(gross, emp) {
     bizTax     = Math.round(gross * 0.03)    // 사업소득세 3%
     localTax   = Math.round(gross * 0.003)   // 지방소득세 0.3%
   }
-  const total = pension + health + care + employment + incomeTax + localTax + bizTax
-  return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, total, net: gross - total }
+  const total = pension + health + care + employment + incomeTax + localTax + bizTax + retroTax
+  return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, retroTax, total, net: gross - total }
 }
 
 // ── 개인정보 마스킹: 평소엔 가리고, 입력칸을 클릭하면 전체가 보이게 ──
@@ -543,6 +546,8 @@ export default function Home() {
             incomeTaxMode:   pick(undefined, s.incomeTaxMode, e.incomeTaxMode || 'amount'),
             incomeTaxRate:   pick(undefined, s.incomeTaxRate, e.incomeTaxRate || 0),
             manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, e.manualIncomeTax || 0),
+            // 소급 소득세는 그 달(DB 행)에만 저장 → localStorage 보조 없이 DB값만 사용
+            retroIncomeTax:  (r.retro_income_tax !== undefined && r.retro_income_tax !== null) ? Number(r.retro_income_tax) : (e.retroIncomeTax || 0),
             mealAllowance:   pick(r.meal_allowance, s.mealAllowance, e.mealAllowance || 0),
             severancePay:    pick(r.severance_pay, s.severancePay, e.severancePay || 0),
           }
@@ -1086,6 +1091,7 @@ export default function Home() {
       income_tax:     (emp.incomeTaxMode === 'rate')
         ? Math.floor(totals.grandTotal * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
         : (emp.manualIncomeTax || 0),
+      retro_income_tax: Number(emp.retroIncomeTax) || 0,
       meal_allowance: emp.mealAllowance || 0,
       severance_pay:  emp.severancePay || 0,
     }
@@ -1153,6 +1159,7 @@ export default function Home() {
         incomeTaxMode:   pick(undefined, s.incomeTaxMode, 'amount'),
         incomeTaxRate:   pick(undefined, s.incomeTaxRate, 0),
         manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
+        retroIncomeTax:  (r.retro_income_tax !== undefined && r.retro_income_tax !== null) ? Number(r.retro_income_tax) : 0,  // 소급 소득세는 그 달에만
         mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
         severancePay:    pick(r.severance_pay, s.severancePay, 0),   // DB 우선 + 브라우저 저장값 보조 (여러 기기 공유)
       }
@@ -1450,11 +1457,11 @@ export default function Home() {
 
     // 공제: 직원=4대보험, 알바=3.3%만 표기
     const deductHeaders = isStaff
-      ? ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '지방소득세', '공제합계']
-      : ['공제', '사업소득세(3%)', '지방소득세(0.3%)', '공제합계']
+      ? ['공제', '국민연금', '건강보험', '장기요양', '고용보험', '소득세', '지방소득세', '소급소득세', '공제합계']
+      : ['공제', '사업소득세(3%)', '지방소득세(0.3%)', '소급소득세', '공제합계']
     const deductRow = isStaff
-      ? ['4대보험', totals.deductions.pension, totals.deductions.health, totals.deductions.care, totals.deductions.employment, totals.deductions.incomeTax, totals.deductions.localTax, totals.totalDeduction]
-      : ['3.3%', totals.deductions.bizTax, totals.deductions.localTax, totals.totalDeduction]
+      ? ['4대보험', totals.deductions.pension, totals.deductions.health, totals.deductions.care, totals.deductions.employment, totals.deductions.incomeTax, totals.deductions.localTax, totals.deductions.retroTax, totals.totalDeduction]
+      : ['3.3%', totals.deductions.bizTax, totals.deductions.localTax, totals.deductions.retroTax, totals.totalDeduction]
 
     const aoa = [
       [`직원명: ${emp.name}`, `지점: ${selectedBranch?.name || ''}`, `${emp.year}년 ${emp.month}월`, `구분: ${emp.empType || '알바'}`],
@@ -1552,6 +1559,7 @@ export default function Home() {
     const dedItems = d.dt === 'none' ? [] : [
       ['국민연금', d.pension], ['건강보험', d.health], ['고용보험', d.employment],
       ['장기요양보험료', d.care], ['소득세', d.incomeTax], ['사업소득세', d.bizTax], ['지방소득세', d.localTax],
+      ['소급 소득세', d.retroTax],
     ].filter(([l, v]) => v > 0)
 
     // 세부내역 본문 (좌: 지급 / 우: 공제) 행별 정렬
@@ -2811,6 +2819,19 @@ export default function Home() {
                 {(activeEmp.empType || '알바') !== '직원' && activeEmp.deductionType === '3.3' && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
                 )}
+                {/* 소급 소득세 — 지난달 미징수분을 이번 달에 추가 공제 (공제 대상자에게만) */}
+                {((activeEmp.empType || '알바') === '직원' || activeEmp.deductionType === '4대' || activeEmp.deductionType === '3.3') && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                    소급 소득세
+                    <input
+                      type="number"
+                      value={activeEmp.retroIncomeTax || 0}
+                      onChange={e => updateEmp('retroIncomeTax', Number(e.target.value))}
+                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                    />
+                    원 <span style={{ color: '#bbb' }}>(지난달 미징수 소득세를 이번 달에 추가 공제 · 이 달만 적용)</span>
+                  </label>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
                   식대 (비과세)
                   <input
@@ -2897,6 +2918,7 @@ export default function Home() {
                           { label: '소득세',     total: totals.deductions.incomeTax,  desc: '세무사 안내 금액' },
                           { label: '사업소득세', total: totals.deductions.bizTax,     desc: '과세급여 × 3%' },
                           { label: '지방소득세', total: totals.deductions.localTax,   desc: totals.deductions.dt === '3.3' ? '과세급여 × 0.3%' : '소득세 × 10%' },
+                          { label: '소급 소득세', total: totals.deductions.retroTax,   desc: '지난달 미징수 소득세' },
                         ].filter(r => r.total > 0).map(({ label, total, desc }) => (
                           <div key={label} className="summary-row">
                             <div className="summary-row-left">

@@ -17,6 +17,7 @@ alter table payroll add column if not exists hire_date      text    default '';
 alter table payroll add column if not exists resign_date    text    default '';
 alter table payroll add column if not exists birth_date     text    default '';
 alter table payroll add column if not exists deduction_type text    default 'none';
-alter table payroll add column if not exists income_tax     numeric default 0;   -- 소득세
-alter table payroll add column if not exists meal_allowance numeric default 0;   -- 식대(비과세)
-alter table payroll add column if not exists severance_pay  numeric default 0;   -- 퇴직금
+alter table payroll add column if not exists income_tax       numeric default 0;   -- 소득세
+alter table payroll add column if not exists retro_income_tax numeric default 0;   -- 소급 소득세(지난달 미징수분)
+alter table payroll add column if not exists meal_allowance   numeric default 0;   -- 식대(비과세)
+alter table payroll add column if not exists severance_pay    numeric default 0;   -- 퇴직금
