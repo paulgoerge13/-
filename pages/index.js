@@ -516,6 +516,8 @@ export default function Home() {
       const res = await fetch(`/api/load?branch=${encodeURIComponent(branchName)}&name=${encodeURIComponent(empName)}&year=${yr}&month=${mo}`)
       const result = await res.json()
       if (result.success && result.data) {
+        // 소득세·식대·공제·입퇴사일 등 고정 설정은 localStorage에 따로 보관 → DB 로드 후 다시 덮어씌워 유지
+        const settingsMap = loadAllEmpSettings(branchName)
         setEmployees(prev => prev.map(e => {
           if (e.id !== targetId) return e
           if (e._dirty) return e   // 엑셀로 불러온/미저장 데이터는 덮어쓰지 않음
@@ -536,7 +538,10 @@ export default function Home() {
             mealAllowance:   keepIf(r.meal_allowance, e.mealAllowance),
           }
           merged.workData = pruneWorkDataToEmployment(merged.workData, merged.hireDate, merged.resignDate)
-          return merged
+          // 주석대로 localStorage 고정 설정을 DB값 위에 다시 덮어씌운다 (소득세·식대·공제·입퇴사일·퇴직금 리셋 방지)
+          const withSettings = applyEmpSettings(merged, settingsMap)
+          withSettings.workData = pruneWorkDataToEmployment(withSettings.workData, withSettings.hireDate, withSettings.resignDate)
+          return withSettings
         }))
       }
       // 데이터 없으면 workData 빈 상태 유지 (이미 초기화됐으므로 OK)
