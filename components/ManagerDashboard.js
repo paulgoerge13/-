@@ -116,7 +116,10 @@ export default function ManagerDashboard({ onBack }) {
     }
     return r.basic_pay || 0
   }
+  // 과거 확정 금액(엑셀 이관): work_data._fixedNet 이 있으면 그 금액을 그대로 이체액으로 표시(공제 재계산 안 함)
+  function isFixed(r) { return !!(r && r.work_data && r.work_data._fixedNet != null) }
   function fixGrand(r) {
+    if (isFixed(r)) return Number(r.work_data._fixedNet) || 0
     const b = fixBasic(r)
     if (b === (r.basic_pay || 0)) return r.grand_total || 0
     return b
@@ -126,6 +129,7 @@ export default function ManagerDashboard({ onBack }) {
 
   // ── 공제: 4대보험 / 원천세 분리 (2026 요율, 근로자 부담분) — 메인 앱과 동일 ──
   function recMajorIns(r) {   // 4대보험 (직원만)
+    if (isFixed(r)) return 0   // 과거 확정 금액은 이미 net → 공제 없음
     if (r.emp_type !== '직원') return 0
     const taxable = fixGrand(r)
     const pension    = Math.floor(taxable * 0.0475 / 10) * 10
@@ -135,6 +139,7 @@ export default function ManagerDashboard({ onBack }) {
     return pension + health + care + employment
   }
   function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%)
+    if (isFixed(r)) return 0   // 과거 확정 금액은 이미 net → 공제 없음
     const taxable = fixGrand(r)
     if (r.emp_type === '직원') {
       const incomeTax = r.income_tax || 0
