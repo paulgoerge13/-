@@ -824,6 +824,20 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 기록용 제외: workData._recordOnly = true 면 관리자 이체·집계 총액에서 빼고 기록만 남긴다 ──
+  //   (예: 같은 사람이 직원+pt 로 나뉜 경우, pt는 기록만 남기고 금액은 직원에 합산) ──
+  function setRecordOnly(on) {
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (on) wd._recordOnly = true
+      else delete wd._recordOnly
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   function addEmployee(empType = '알바') {
     const newEmp = {
       ...EMPTY_EMP, id: Date.now(),
@@ -941,7 +955,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct' || ds === '_retroPay') return   // 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -2508,6 +2522,21 @@ export default function Home() {
                     onClick={() => updateEmp('empType', '알바')}
                   >알바</button>
                 </div>
+                {/* 기록용 제외 — 관리자 이체·총액에서 빼고 이 기록은 남김 (같은 사람 직원+pt 합산 등) */}
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 8, fontSize: 12, color: !!activeEmp.workData?._recordOnly ? '#b45309' : '#888', lineHeight: 1.5, background: !!activeEmp.workData?._recordOnly ? '#fdf3e2' : 'transparent', border: !!activeEmp.workData?._recordOnly ? '1px solid #ecdcb0' : '1px solid transparent', borderRadius: 8, padding: '7px 9px' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!activeEmp.workData?._recordOnly}
+                    onChange={e => setRecordOnly(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <b>기록용 — 관리자 총액·이체에서 제외</b>
+                    <span style={{ display: 'block', color: '#bbb', marginTop: 2 }}>
+                      이 기록은 남지만 관리자 페이지 총 이체액/집계에는 안 들어가요. (예: 같은 사람이 직원+pt로 나뉜 경우, pt는 여기 체크하고 그 금액을 직원의 <b>추가 지급(소급)</b> 칸에 넣어 4대보험·소득세를 한 번에 계산)
+                    </span>
+                  </span>
+                </label>
                 {activeEmp.empType === '직원' && (
                   <div style={{ marginTop: 10 }}>
                     {/* 기본급 방식: 시급×209 자동 / 월급 직접입력 */}

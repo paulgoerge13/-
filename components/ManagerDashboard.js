@@ -10,6 +10,8 @@ const THECOMMA = '더콤마 전체'   // 더콤마라운지(카페) 6개 지점�
 function branchesFor(sel) {
   return sel === ALL ? BRANCHES : sel === THECOMMA ? THECOMMA_BRANCH_NAMES : [sel]
 }
+// 기록용(_recordOnly) 레코드는 관리자 이체·집계 총액에서 제외 (기록은 남되 금액은 다른 직원에 합산됨)
+function isRecordOnly(r) { return !!(r && r.work_data && r.work_data._recordOnly) }
 
 // ── 전 지점 통합 관리 대시보드 (재사용 컴포넌트) ──
 // manager.js(별도 페이지)와 index.js(메인 앱의 관리자 화면) 양쪽에서 공통 사용.
@@ -406,7 +408,7 @@ export default function ManagerDashboard({ onBack }) {
 
   // ── 전 지점 집계 ──
   const byBranch = branchesFor(branch).map(b => {
-    const rs = records.filter(r => r.branch === b)
+    const rs = records.filter(r => r.branch === b && !isRecordOnly(r))
     return {
       branch: b,
       count: rs.length,
@@ -487,7 +489,7 @@ export default function ManagerDashboard({ onBack }) {
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
   function downloadTransferXlsx() {
     const groups = branchesFor(branch)
-      .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
+      .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b && !isRecordOnly(r))) }))
       .filter(g => g.units.length > 0)
       .map(g => ({
         branch: g.branch,
@@ -1204,7 +1206,7 @@ export default function ManagerDashboard({ onBack }) {
           (() => {
             // 지점별 → 같은 계좌끼리 묶은 '이체 단위(유닛)' 생성
             const groups = branchesFor(branch)
-              .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
+              .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b && !isRecordOnly(r))) }))
               .filter(g => g.units.length > 0)
             const allUnits = groups.flatMap(g => g.units)
             const doneUnits = allUnits.filter(u => unitStatus(u) === '이체완료')
@@ -1259,7 +1261,7 @@ export default function ManagerDashboard({ onBack }) {
                 {/* ── 전 지점을 한 페이지에 압축한 보드(스프레드시트 스타일) ── */}
                 {(() => {
                   const boardGroups = branchesFor(branch)
-                    .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
+                    .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b && !isRecordOnly(r))) }))
                     .filter(g => g.units.length > 0)
                   if (boardGroups.length === 0) {
                     return <p className="md-empty">해당 월의 데이터가 없습니다.</p>
