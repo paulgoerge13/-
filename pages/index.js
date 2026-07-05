@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 import BranchInventory from '../components/BranchInventory'
 import { BRANCHES } from '../lib/branches'
+import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
 const MASTER_PASSWORD = 'ejzhaak0080'
@@ -261,8 +262,9 @@ const EMPTY_EMP = {
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
   deductionType: 'none',   // 공제 방식: 'none' | '3.3' | '4대'
-  incomeTaxMode: 'amount', // 소득세 입력 방식: 'amount'(금액 직접) | 'rate'(비율 %)
+  incomeTaxMode: 'amount', // 소득세 입력 방식: 'amount'(금액 직접) | 'rate'(비율 %) | 'table'(간이세액표 자동)
   incomeTaxRate: 0,        // 소득세 비율(%) — incomeTaxMode='rate'일 때 과세급여 × 이 % 로 자동 계산
+  dependents: 1,           // 공제대상가족 수(본인 포함) — incomeTaxMode='table'일 때 간이세액표 조회 기준
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
   retroIncomeTax: 0,       // 소급 소득세 — 지난달 미징수분을 이번 달에 추가 공제 (그 달에만 적용, 다음 달로 안 넘어감)
   mealAllowance: 0,        // 식대 (비과세) — 4대보험·소득세 산정에서 제외
@@ -277,7 +279,7 @@ const EMPTY_EMP = {
 // 공제방식·소득세·식대·생년월일·입사일·퇴사일은 Supabase payroll 테이블에 컬럼이 없어서
 // DB에서 다시 불러올 때 매번 초기화됐다(=리셋 버그). 이 값들은 지점별·직원이름별로
 // 별도 localStorage 키에 따로 저장해 두고, DB 로드 후 다시 덮어 씌워 유지한다.
-const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate']
+const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'dependents', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate']
 function empSettingsKey(branchName) { return `payroll_empsettings_${branchName}` }
 function loadAllEmpSettings(branchName) {
   if (typeof window === 'undefined' || !branchName) return {}
@@ -364,10 +366,15 @@ function calcDeductions(gross, emp) {
     health     = Math.floor(gross * RATE_HEALTH / 10) * 10
     care       = Math.floor(health * RATE_CARE / 10) * 10
     employment = Math.floor(gross * RATE_EMPLOYMENT / 10) * 10
-    // 소득세: 비율(%) 입력이면 과세급여 × % 자동, 아니면 금액 직접 입력값
-    incomeTax  = (emp.incomeTaxMode === 'rate')
-      ? Math.floor(gross * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
-      : (emp.manualIncomeTax || 0)
+    // 소득세: 간이세액표 자동조회 / 비율(%) 자동 / 금액 직접입력
+    if (emp.incomeTaxMode === 'table') {
+      const t = lookupSimpleTax(gross, emp.dependents || 1)   // 과세급여 + 부양가족수 → 간이세액표
+      incomeTax = (t === null) ? (emp.manualIncomeTax || 0) : t // 표 범위 초과(월 1,000만원↑)면 직접입력값 사용
+    } else if (emp.incomeTaxMode === 'rate') {
+      incomeTax = Math.floor(gross * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
+    } else {
+      incomeTax = (emp.manualIncomeTax || 0)
+    }
     localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
   } else if (dt === '3.3') {
     bizTax     = Math.round(gross * 0.03)    // 사업소득세 3%
@@ -545,6 +552,7 @@ export default function Home() {
             // 소득세 방식/비율은 DB 컬럼이 없어 localStorage 전용 → 반드시 복원
             incomeTaxMode:   pick(undefined, s.incomeTaxMode, e.incomeTaxMode || 'amount'),
             incomeTaxRate:   pick(undefined, s.incomeTaxRate, e.incomeTaxRate || 0),
+            dependents:      pick(undefined, s.dependents, e.dependents || 1),
             manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, e.manualIncomeTax || 0),
             // 소급 소득세는 그 달(DB 행)에만 저장 → localStorage 보조 없이 DB값만 사용
             retroIncomeTax:  (r.retro_income_tax !== undefined && r.retro_income_tax !== null) ? Number(r.retro_income_tax) : (e.retroIncomeTax || 0),
@@ -1088,9 +1096,7 @@ export default function Home() {
       birth_date:     emp.birthDate || '',
       deduction_type: emp.deductionType || 'none',
       // 비율(%) 입력이면 과세급여 기준 계산된 소득세 금액을 저장 (관리자 화면·타 기기 일치용)
-      income_tax:     (emp.incomeTaxMode === 'rate')
-        ? Math.floor(totals.grandTotal * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
-        : (emp.manualIncomeTax || 0),
+      income_tax:     totals.deductions.incomeTax,   // 계산된 소득세(간이세액표/비율/직접입력 공통) 그대로 저장
       retro_income_tax: Number(emp.retroIncomeTax) || 0,
       meal_allowance: emp.mealAllowance || 0,
       severance_pay:  emp.severancePay || 0,
@@ -1158,6 +1164,7 @@ export default function Home() {
         deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
         incomeTaxMode:   pick(undefined, s.incomeTaxMode, 'amount'),
         incomeTaxRate:   pick(undefined, s.incomeTaxRate, 0),
+        dependents:      pick(undefined, s.dependents, 1),
         manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
         retroIncomeTax:  (r.retro_income_tax !== undefined && r.retro_income_tax !== null) ? Number(r.retro_income_tax) : 0,  // 소급 소득세는 그 달에만
         mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
@@ -2775,6 +2782,7 @@ export default function Home() {
                       <span>소득세</span>
                       <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none' }}>
                         {[
+                          { v: 'table',  t: '간이세액표' },
                           { v: 'amount', t: '금액(원)' },
                           { v: 'rate',   t: '비율(%)' },
                         ].map(({ v, t }) => (
@@ -2788,7 +2796,25 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {(activeEmp.incomeTaxMode || 'amount') === 'rate' ? (
+                    {(activeEmp.incomeTaxMode || 'amount') === 'table' ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                        공제대상가족 수
+                        <input
+                          type="number"
+                          step="1"
+                          min="1"
+                          value={activeEmp.dependents || 1}
+                          onChange={e => updateEmp('dependents', Math.max(1, Math.round(Number(e.target.value) || 1)))}
+                          style={{ width: 70, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                        />
+                        명 <span style={{ color: '#bbb' }}>(본인 포함 · 2026 간이세액표 자동조회 · 지방세 10% 자동)</span>
+                        {totals && (
+                          totals.grandTotal >= SIMPLE_TAX_MAX
+                            ? <b style={{ color: '#c0392b' }}>→ 월 1,000만원 초과: '금액' 탭에서 직접입력하세요</b>
+                            : <b style={{ color: '#2f6bbf' }}>→ 소득세 {Number(totals.deductions.incomeTax).toLocaleString()}원 <span style={{ color: '#bbb', fontWeight: 400 }}>(과세급여 {Number(totals.grandTotal).toLocaleString()}원 기준)</span></b>
+                        )}
+                      </label>
+                    ) : (activeEmp.incomeTaxMode || 'amount') === 'rate' ? (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
                         <input
                           type="number"
