@@ -365,8 +365,8 @@ const RATE_EMPLOYMENT = 0.009    // 고용보험 0.9% (2026 동결)
 
 // ── 공제 계산: 세전 총액(gross) 기준으로 항목별 공제액 산출 ──
 function calcDeductions(gross, emp) {
-  // 직원은 공제 방식 선택과 무관하게 항상 4대보험 적용 (알바만 deductionType 따름)
-  const dt = (emp.empType === '직원') ? '4대' : (emp.deductionType || 'none')
+  // 직원=4대보험, 알바=3.3% 를 항상 자동 적용 (이체·명세서와 동일하게 입력화면 미리보기도 강제)
+  const dt = (emp.empType === '직원') ? '4대' : '3.3'
   let pension = 0, health = 0, care = 0, employment = 0, incomeTax = 0, localTax = 0, bizTax = 0
   // 소급 소득세: 지난달 미징수분을 이번 달에 추가 공제 (공제 대상자에게만)
   const retroTax = (dt !== 'none') ? (Number(emp.retroIncomeTax) || 0) : 0
@@ -2912,21 +2912,11 @@ export default function Home() {
                     직원 — <b>공제 없음 금액</b>과 <b>4대보험 공제 후 금액</b>이 아래에 함께 표시됩니다 (4대보험 자동 적용)
                   </div>
                 ) : (
-                  <div className="emp-type-tabs">
-                    {[
-                      { v: 'none', t: '공제 없음' },
-                      { v: '3.3',  t: '3.3% 원천징수' },
-                      { v: '4대',  t: '4대보험' },
-                    ].map(({ v, t }) => (
-                      <button
-                        key={v}
-                        className={`emp-type-tab${(activeEmp.deductionType || 'none') === v ? ' active' : ''}`}
-                        onClick={() => updateEmp('deductionType', v)}
-                      >{t}</button>
-                    ))}
+                  <div style={{ fontSize: 12.5, color: '#b07a1e', background: '#fbf3e2', border: '1px solid #ecdcb0', borderRadius: 8, padding: '9px 12px', fontWeight: 600 }}>
+                    알바 — <b>3.3% 원천징수</b>(사업소득세 3% + 지방소득세 0.3%)가 <b>자동 적용</b>됩니다
                   </div>
                 )}
-                {((activeEmp.empType || '알바') === '직원' || activeEmp.deductionType === '4대') && (
+                {(activeEmp.empType || '알바') === '직원' && (
                   <div style={{ marginTop: 8 }}>
                     {/* 소득세 입력 방식 전환: 금액(원) / 비율(%) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888' }}>
@@ -2996,11 +2986,11 @@ export default function Home() {
                     )}
                   </div>
                 )}
-                {(activeEmp.empType || '알바') !== '직원' && activeEmp.deductionType === '3.3' && (
+                {(activeEmp.empType || '알바') !== '직원' && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
                 )}
-                {/* 소급 소득세 — 지난달 미징수분을 이번 달에 추가 공제 (공제 대상자에게만) */}
-                {((activeEmp.empType || '알바') === '직원' || activeEmp.deductionType === '4대' || activeEmp.deductionType === '3.3') && (
+                {/* 소급 소득세 — 지난달 미징수분을 이번 달에 추가 공제 (직원 4대·알바 3.3 모두 공제 대상) */}
+                {true && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
                     소급 소득세
                     <input
