@@ -260,6 +260,7 @@ const EMPTY_EMP = {
   defaultTimeStart: '00:00', defaultTimeEnd: '00:00', // ── 수정 A: 기본 시간 00:00 ──
   workData: {}, specialNote: '',
   salaryType: 'hourly',    // 직원 기본급 방식: 'hourly'(시급×209 자동) | 'monthly'(월급 직접입력)
+  staffBasicHours: 209,    // 직원 시급제 기본급 기준 시간 (기본 209 = 주휴 포함). 직원별로 다르게 설정 가능(예: 183)
   monthlySalary: 0,        // 월급제(salaryType='monthly')일 때 월 기본급. 통상시급 = 월급 ÷ 209 로 환산해 수당 계산
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
@@ -282,7 +283,7 @@ const EMPTY_EMP = {
 // 공제방식·소득세·식대·생년월일·입사일·퇴사일은 Supabase payroll 테이블에 컬럼이 없어서
 // DB에서 다시 불러올 때 매번 초기화됐다(=리셋 버그). 이 값들은 지점별·직원이름별로
 // 별도 localStorage 키에 따로 저장해 두고, DB 로드 후 다시 덮어 씌워 유지한다.
-const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'dependents', 'manualIncomeTax', 'mealAllowance', 'mealFromBasic', 'severancePay', 'birthDate', 'hireDate', 'resignDate', 'salaryType', 'monthlySalary']
+const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'dependents', 'manualIncomeTax', 'mealAllowance', 'mealFromBasic', 'severancePay', 'birthDate', 'hireDate', 'resignDate', 'salaryType', 'monthlySalary', 'staffBasicHours']
 function empSettingsKey(branchName) { return `payroll_empsettings_${branchName}` }
 function loadAllEmpSettings(branchName) {
   if (typeof window === 'undefined' || !branchName) return {}
@@ -558,6 +559,7 @@ export default function Home() {
             // 월급제 설정은 브라우저 저장값(localStorage) 우선 → 재로그인/DB 0값에도 유지
             salaryType:    pick(s.salaryType, r.salary_type, e.salaryType || 'hourly'),
             monthlySalary: pick(s.monthlySalary, r.monthly_salary, e.monthlySalary || 0),
+            staffBasicHours: pick(undefined, s.staffBasicHours, e.staffBasicHours || 209),  // 기본급 시간(localStorage 전용)
             hireDate:        pick(r.hire_date, s.hireDate, e.hireDate || ''),
             resignDate:      pick(r.resign_date, s.resignDate, e.resignDate || ''),
             birthDate:       pick(r.birth_date, s.birthDate, e.birthDate || ''),
@@ -1026,8 +1028,9 @@ export default function Home() {
     const proration = calcProration(emp)
     // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 주간 근무 × 시급 (야간은 '야간근로' 줄에서 1.5배 별도) ──
     const hoursBaseAlba = mDayH
-    // 월급제(포괄)면 과세 기본급 = 월급 − 식대, 시급제면 시급×209
-    const staffMonthlyBasic = isMonthlySalary ? Math.round(monthlyTaxableBasic) : Math.round(baseWage * 209)
+    // 월급제(포괄)면 과세 기본급 = 월급 − 식대, 시급제면 시급 × 기본급시간(직원별, 기본 209)
+    const basicHours = Number(emp.staffBasicHours) > 0 ? Number(emp.staffBasicHours) : 209
+    const staffMonthlyBasic = isMonthlySalary ? Math.round(monthlyTaxableBasic) : Math.round(baseWage * basicHours)
     // ── 결근 공제 (직원만): 결근 1일당 시급×8(하루치) + 결근이 든 주마다 시급×8(주휴) ──
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
     const absentHours = isStaff ? (absentDays * 8 + absentWeekSet.size * 8) : 0
@@ -1060,7 +1063,7 @@ export default function Home() {
     const netPay = grossPay - deductions.total                // 실지급액
 
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
-      retroPay,
+      retroPay, basicHours,
       meal, severance, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
@@ -1209,6 +1212,7 @@ export default function Home() {
         hourlyWage: r.hourly_wage || 10320,
         salaryType: pick(s.salaryType, r.salary_type, 'hourly'),        // 월급제 설정은 브라우저 저장값 우선
         monthlySalary: pick(s.monthlySalary, r.monthly_salary, 0),
+        staffBasicHours: pick(undefined, s.staffBasicHours, 209),        // 기본급 시간(localStorage 전용)
         scheduledHours: r.scheduled_hours || 8,
         defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
         defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
@@ -1675,7 +1679,7 @@ export default function Home() {
 
     // 지급 항목: [라벨, 금액, 산출식]
     const payItems = [
-      ['기본급', t.totalBasic, t.isStaff ? (t.isMonthlySalary ? `포괄임금제 · 월급 고정(식대 제외 과세분, 연장·야간·주휴 포함)` : '통상시급 × 월 209시간 (주휴 포함)') : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
+      ['기본급', t.totalBasic, t.isStaff ? (t.isMonthlySalary ? `포괄임금제 · 월급 고정(식대 제외 과세분, 연장·야간·주휴 포함)` : `통상시급 × 월 ${t.basicHours}시간 (주휴 포함)`) : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
       ['주휴수당', t.totalWeeklyHoliday, '주간근로시간 ÷ 40 × 8 × 통상시급'],
       ['식대', t.meal, '비과세 식대'],
       ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
@@ -2575,8 +2579,20 @@ export default function Home() {
                         </div>
                       </div>
                     ) : (
-                      <div style={{ marginTop: 8, fontSize: 11, color: '#a89878', letterSpacing: '0.02em' }}>
-                        ※ 기본급 = 시급 × 209시간(주휴 포함) 자동 계산. 월급제(포괄임금)면 위에서 '월급(포괄임금)'을 선택하세요.
+                      <div style={{ marginTop: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                          기본급 시간
+                          <input
+                            type="number"
+                            value={activeEmp.staffBasicHours ?? 209}
+                            onChange={e => updateEmp('staffBasicHours', Number(e.target.value))}
+                            style={{ width: 80, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                          />
+                          시간 <span style={{ color: '#bbb' }}>(기본 209 = 주휴 포함. 이 직원만 다르면 변경, 예: 183)</span>
+                          {activeEmp.hourlyWage > 0 && (
+                            <b style={{ color: '#2f6bbf', width: '100%' }}>→ 기본급 = 시급 {Number(activeEmp.hourlyWage).toLocaleString()} × {Number(activeEmp.staffBasicHours) > 0 ? Number(activeEmp.staffBasicHours) : 209}시간 = {Math.round(Number(activeEmp.hourlyWage) * (Number(activeEmp.staffBasicHours) > 0 ? Number(activeEmp.staffBasicHours) : 209)).toLocaleString()}원</b>
+                          )}
+                        </label>
                       </div>
                     )}
                   </div>
@@ -3105,10 +3121,10 @@ export default function Home() {
                   <div className="summary-list">
                     {[
                       totals.isStaff
-                        ? { label: '기본급',  total: totals.totalBasic, hours: 209,
+                        ? { label: '기본급',  total: totals.totalBasic, hours: totals.basicHours,
                             desc: totals.proration.partial
                               ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
-                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × 209시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
+                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
