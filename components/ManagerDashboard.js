@@ -1485,6 +1485,50 @@ export default function ManagerDashboard({ onBack }) {
               <button className="md-export" onClick={downloadSummary}>요약 엑셀 ↓</button>
             </div>
 
+            {/* 지점별 비용 한눈에: 세전 인건비 · 4대보험 · 원천세 · 실지급 */}
+            {(() => {
+              const rows = byBranch.filter(x => x.count > 0)
+              const cS = { padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #ececec', whiteSpace: 'nowrap' }
+              const hS = { ...cS, textAlign: 'center', color: '#8a8170', fontWeight: 700, background: '#f3efe6', borderBottom: '1px solid #d8d3c8' }
+              const nS = { ...cS, textAlign: 'left', fontWeight: 700, color: '#1a1a1a' }
+              return (
+                <div style={{ overflowX: 'auto', border: '1px solid #e2ded5', borderRadius: 12, background: '#fff', marginBottom: 16 }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 560 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...hS, textAlign: 'left' }}>지점</th>
+                        <th style={hS}>세전 인건비</th>
+                        <th style={{ ...hS, color: '#c0504a' }}>4대보험</th>
+                        <th style={{ ...hS, color: '#c0504a' }}>원천세</th>
+                        <th style={{ ...hS, background: '#ece7da' }}>실지급</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(x => (
+                        <tr key={x.branch} style={{ cursor: 'pointer' }} onClick={() => setBranch(x.branch)}>
+                          <td style={nS}>{x.branch} <span style={{ fontWeight: 400, color: '#aaa', fontSize: 11 }}>({x.count})</span></td>
+                          <td style={cS}>{fmt(x.total)}</td>
+                          <td style={{ ...cS, color: '#c0504a' }}>{x.major ? fmt(x.major) : '·'}</td>
+                          <td style={{ ...cS, color: '#c0504a' }}>{x.withhold ? fmt(x.withhold) : '·'}</td>
+                          <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(x.staffNet + x.albaNet)}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }}>합계</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#f3efe6' }}>{fmt(grandAll)}</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#f3efe6', color: '#c0504a' }}>{fmt(majorAll)}</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#f3efe6', color: '#c0504a' }}>{fmt(withholdAll)}</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#ece7da' }}>{fmt(netAll)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div style={{ fontSize: 11, color: '#a89878', padding: '8px 12px', lineHeight: 1.5 }}>
+                    4대보험 = 직원 국민연금·건강·장기요양·고용 / 원천세 = 직원 소득세+지방세 · 알바 3.3% · 과거 확정금액은 공제 내역이 없어 0으로 표시
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* 지점별로 무엇을 볼지 전환: 월급 / 4대보험 / 원천세 */}
             <div className="md-metric-tabs">
               {Object.keys(METRICS).map(k => (
