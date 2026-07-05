@@ -1687,49 +1687,49 @@ export default function ManagerDashboard({ onBack }) {
 
             {records.length === 0 ? (
               <p className="md-empty">해당 월의 데이터가 없습니다.</p>
-            ) : (
-              sortedRecords.map(r => (
-                <div key={r.id} className="md-emp">
-                  <button className="md-del" onClick={() => deleteRecord(r.id, r.emp_name)}>✕</button>
-
-                  <div className="md-emp-head">
-                    <div>
-                      <div className={`md-badge ${r.emp_type === '직원' ? 'staff' : 'alba'}`}>
-                        {r.emp_type || '알바'}
-                      </div>
-                      <div className="md-emp-name">{r.emp_name}</div>
-                    </div>
-                    <div className="md-status">
-                      <div className={`md-dot ${r.status === 'final' ? 'final' : 'saved'}`} />
-                      <div className={`md-status-lbl ${r.status === 'final' ? 'final' : 'saved'}`}>
-                        {r.status === 'final' ? '마감' : '진행중'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="md-pay-grid">
-                    {[
-                      ['기본급', fixBasic(r)],
-                      ['주휴수당', r.weekly_holiday_pay],
-                      ['연장수당', r.overtime_pay],
-                      ['야간수당', r.night_pay],
-                      ['휴일근로', r.holiday_pay],
-                      ['휴일연장', r.holiday_overtime_pay],
-                    ].map(([label, val]) => (
-                      <div key={label}>
-                        <div className="md-pay-label">{label}</div>
-                        <div className="md-pay-val">{fmt(val)}원</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="md-emp-foot">
-                    <div className="md-total-lbl">세전 합계</div>
-                    <div className="md-total-val">{fmt(fixGrand(r))}원</div>
-                  </div>
+            ) : (() => {
+              const cS = { padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #ececec', whiteSpace: 'nowrap' }
+              const hS = { ...cS, textAlign: 'center', color: '#8a8170', fontWeight: 700, background: '#f3efe6', borderBottom: '1px solid #d8d3c8' }
+              const nS = { ...cS, textAlign: 'left', fontWeight: 700, color: '#1a1a1a' }
+              return (
+                <div style={{ overflowX: 'auto', border: '1px solid #e2ded5', borderRadius: 12, background: '#fff' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 580 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...hS, textAlign: 'left' }}>이름</th>
+                        <th style={hS}>구분</th>
+                        <th style={hS}>세전</th>
+                        <th style={{ ...hS, color: '#c0504a' }}>4대보험</th>
+                        <th style={{ ...hS, color: '#c0504a' }}>원천세</th>
+                        <th style={{ ...hS, background: '#ece7da' }}>실지급</th>
+                        <th style={hS}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRecords.map(r => (
+                        <tr key={r.id}>
+                          <td style={nS}>{r.emp_name}</td>
+                          <td style={{ ...cS, textAlign: 'center', color: r.emp_type === '직원' ? '#2f6bbf' : '#b07a1e' }}>{r.emp_type || '알바'}</td>
+                          <td style={cS}>{fmt(fixGrand(r))}</td>
+                          <td style={{ ...cS, color: '#c0504a' }}>{recMajorIns(r) ? fmt(recMajorIns(r)) : '·'}</td>
+                          <td style={{ ...cS, color: '#c0504a' }}>{recWithholding(r) ? fmt(recWithholding(r)) : '·'}</td>
+                          <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(transferAmt(r))}</td>
+                          <td style={{ ...cS, textAlign: 'center' }}><button onClick={() => deleteRecord(r.id, r.emp_name)} style={{ color: '#c9a', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13 }}>✕</button></td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }} colSpan={2}>합계 ({records.length}명)</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#f3efe6' }}>{fmt(totalGrand)}</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#f3efe6', color: '#c0504a' }}>{fmt(curMajor)}</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#f3efe6', color: '#c0504a' }}>{fmt(curWithhold)}</td>
+                        <td style={{ ...cS, fontWeight: 800, background: '#ece7da' }}>{fmt(curStaffNet + curAlbaNet)}</td>
+                        <td style={{ ...cS, background: '#f3efe6' }}></td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-              ))
-            )}
+              )
+            })()}
           </>
         )}
       </div>
