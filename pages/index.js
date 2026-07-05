@@ -1314,6 +1314,7 @@ export default function Home() {
     if (pm < 1) { pm = 12; py -= 1 }
     if (!confirm(`${staff.length}명 직원의 ${pm}월 소득세(+지방소득세)를 ${cur.month}월 '소급 소득세'로 자동 입력합니다.\n· 간이세액표 · 부양가족 1명 기준\n· ${pm}월 과세급여를 불러와 자동 계산\n계속할까요?`)) return
     setRetroBusy(true)
+    // 1) 각 직원 직전 달 과세급여 → 소급액(소득세+지방세) 계산
     const results = []
     for (const e of staff) {
       let gross = 0, incomeTax = 0, localTax = 0, retro = 0
@@ -1330,13 +1331,31 @@ export default function Home() {
       } catch {}
       results.push({ id: e.id, name: e.name, gross, incomeTax, localTax, retro })
     }
-    setEmployees(prev => prev.map(emp => {
+    // 2) 상태 반영 (소급 칸 채우기)
+    const patched = employees.map(emp => {
       const hit = results.find(x => x.id === emp.id)
       return hit ? { ...emp, retroIncomeTax: hit.retro, _dirty: true } : emp
-    }))
+    })
+    setEmployees(patched)
+    // 3) 바로 저장까지 (직원 전원) — 버튼 한 번으로 계산+저장 완료
+    setSaving({ done: 0, total: staff.length })
+    let done = 0
+    const failed = []
+    for (const e of staff) {
+      const emp = patched.find(x => x.id === e.id)
+      const ok = await doSaveEmp(emp, emp.status === 'final' ? 'final' : 'saved')
+      if (!ok) failed.push(e.name)
+      setSaving({ done: ++done, total: staff.length })
+    }
+    setSaving(null)
     setRetroBusy(false)
     const lines = results.map(x => `· ${x.name}: ${pm}월 과세급여 ${x.gross.toLocaleString()} → 소득세 ${x.incomeTax.toLocaleString()} + 지방세 ${x.localTax.toLocaleString()} = 소급 ${x.retro.toLocaleString()}원`).join('\n')
-    alert(`✅ ${cur.month}월 소급 소득세 자동 입력 완료 (직원 ${results.length}명)\n\n${lines}\n\n※ 확인 후 아래 '임시저장' 또는 '최종마감'으로 저장하세요.`)
+    const gotZero = results.every(x => x.retro === 0)
+    alert(
+      (failed.length ? `⚠️ ${failed.length}명 저장 실패: ${failed.join(', ')}\n\n` : `✅ ${cur.month}월 소급 소득세 자동 적용 + 저장 완료 (직원 ${results.length}명)\n\n`) +
+      lines +
+      (gotZero ? `\n\n※ 전원 0원입니다. ${pm}월 급여가 이 앱에 저장돼 있어야 계산됩니다. ${pm}월을 먼저 입력·저장했는지 확인해주세요.` : '')
+    )
   }
 
   function handleTabSwitch(id) {
@@ -3079,7 +3098,7 @@ export default function Home() {
                     직전 달 소득세 소급 (직원 전체)
                   </div>
                   <div style={{ fontSize: 11.5, color: '#a1873f', lineHeight: 1.5, marginBottom: 10 }}>
-                    이 지점 직원들의 <b>직전 달 소득세 + 지방소득세</b>를 간이세액표(부양가족 1명)로 계산해 이번 달 <b>소급 소득세</b> 칸에 자동으로 채웁니다. 실행 후 <b>임시저장/최종마감</b>으로 저장하세요.
+                    이 지점 직원들의 <b>직전 달 소득세 + 지방소득세</b>를 간이세액표(부양가족 1명)로 계산해 이번 달 <b>소급 소득세</b> 칸에 자동으로 채우고 <b>바로 저장</b>까지 합니다. (버튼 한 번 · 직전 달 급여가 앱에 저장돼 있어야 계산됨)
                   </div>
                   <button
                     onClick={applyPrevMonthTaxRetro}
