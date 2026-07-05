@@ -962,21 +962,25 @@ export default function Home() {
     //   연장은 주간/야간 안에 포함된 시간이라 합계에 또 더하지 않는다.
     const hoursWork = hoursDay + hoursNight + hoursHolidayWork
 
-    // ── 월급제 직원: 통상시급 = 월급 ÷ 209 로 환산해 기본급·연장·야간·휴일수당 산정 ──
-    //    (시급제면 그대로 emp.hourlyWage 사용 / 알바는 항상 시급)
+    // ── 월급제(포괄임금제) 직원: 월급에 연장·야간·휴일수당이 이미 포함된 고정급 ──
+    //    → 자동 수당을 위에 더하지 않는다(이중지급 방지). 결근·일할 공제 기준시급만 월급÷209로 환산.
+    //    월급(총액)에는 식대(비과세)가 포함 → 과세 기본급 = 월급 − 식대. (시급제/알바는 시급 그대로)
     const isMonthlySalary = emp.empType === '직원' && emp.salaryType === 'monthly'
-    const baseWage = isMonthlySalary ? Math.round((Number(emp.monthlySalary) || 0) / 209) : emp.hourlyWage
-    // 연장수당은 직원만. 알바는 연장수당 자체가 없음(전 지점 공통).
-    const autoOvertime        = emp.empType === '직원' ? calcOvertime(mOtH, baseWage) : 0
-    // 야간수당: 직원 = 야간시간 × 시급 × 0.5(가산). 알바 = 야간시간 × 시급 × 1.5(기본급에서 빠진 야간을 통째로 여기서 지급).
+    const monthlyTaxableBasic = isMonthlySalary
+      ? Math.max(0, (Number(emp.monthlySalary) || 0) - (emp.mealAllowance || 0))  // 과세 기본급 = 월급 − 식대
+      : 0
+    const baseWage = isMonthlySalary ? Math.round(monthlyTaxableBasic / 209) : emp.hourlyWage
+    // 연장수당은 직원만. 포괄임금제면 월급에 포함되어 자동 가산 안 함.
+    const autoOvertime        = (emp.empType === '직원' && !isMonthlySalary) ? calcOvertime(mOtH, baseWage) : 0
+    // 야간수당: 직원 = 야간시간 × 시급 × 0.5(가산). 알바 = 야간시간 × 시급 × 1.5. 포괄임금제면 0(월급 포함).
     const autoNight           = emp.empType === '직원'
-      ? calcNight(mNightH, baseWage)
+      ? (isMonthlySalary ? 0 : calcNight(mNightH, baseWage))
       : Math.round(mNightH * emp.hourlyWage * 1.5)
-    // 휴일근로수당: 휴일 전체 근무시간(주간+야간) × 시급 × 1.5
-    const autoHoliday         = calcHoliday(hoursHolidayWork, baseWage)
-    const autoHolidayOtPay    = calcHolidayOt(mHolidayOtH, baseWage)
-    // 휴일야간 가산: 휴일 야간시간 × 시급 × 0.5 (휴일근로 1.5에 추가)
-    const autoHolidayNightPay = calcHolidayNight(mHolidayNightH, baseWage)
+    // 휴일근로수당: 휴일 전체 근무시간(주간+야간) × 시급 × 1.5. 포괄임금제면 0(월급 포함).
+    const autoHoliday         = isMonthlySalary ? 0 : calcHoliday(hoursHolidayWork, baseWage)
+    const autoHolidayOtPay    = isMonthlySalary ? 0 : calcHolidayOt(mHolidayOtH, baseWage)
+    // 휴일야간 가산: 휴일 야간시간 × 시급 × 0.5. 포괄임금제면 0(월급 포함).
+    const autoHolidayNightPay = isMonthlySalary ? 0 : calcHolidayNight(mHolidayNightH, baseWage)
 
     const isStaff = emp.empType === '직원'
     const isStaffNoCalc = isStaff // 직원은 기본급(시급×209)에 주휴 포함
@@ -984,8 +988,8 @@ export default function Home() {
     const proration = calcProration(emp)
     // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 주간 근무 × 시급 (야간은 '야간근로' 줄에서 1.5배 별도) ──
     const hoursBaseAlba = mDayH
-    // 월급제면 입력한 월급이 곧 기본급, 시급제면 시급×209
-    const staffMonthlyBasic = isMonthlySalary ? Math.round(Number(emp.monthlySalary) || 0) : Math.round(baseWage * 209)
+    // 월급제(포괄)면 과세 기본급 = 월급 − 식대, 시급제면 시급×209
+    const staffMonthlyBasic = isMonthlySalary ? Math.round(monthlyTaxableBasic) : Math.round(baseWage * 209)
     // ── 결근 공제 (직원만): 결근 1일당 시급×8(하루치) + 결근이 든 주마다 시급×8(주휴) ──
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
     const absentHours = isStaff ? (absentDays * 8 + absentWeekSet.size * 8) : 0
@@ -1563,7 +1567,7 @@ export default function Home() {
 
     // 지급 항목: [라벨, 금액, 산출식]
     const payItems = [
-      ['기본급', t.totalBasic, t.isStaff ? (t.isMonthlySalary ? `월급제 (통상시급 ${Number(t.baseWage).toLocaleString()}원 = 월급 ÷ 209 · 주휴 포함)` : '통상시급 × 월 209시간 (주휴 포함)') : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
+      ['기본급', t.totalBasic, t.isStaff ? (t.isMonthlySalary ? `포괄임금제 · 월급 고정(식대 제외 과세분, 연장·야간·주휴 포함)` : '통상시급 × 월 209시간 (주휴 포함)') : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
       ['주휴수당', t.totalWeeklyHoliday, '주간근로시간 ÷ 40 × 8 × 통상시급'],
       ['식대', t.meal, '비과세 식대'],
       ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
@@ -2417,7 +2421,7 @@ export default function Home() {
                       <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none' }}>
                         {[
                           { v: 'hourly',  t: '시급 × 209' },
-                          { v: 'monthly', t: '월급 직접입력' },
+                          { v: 'monthly', t: '월급(포괄임금)' },
                         ].map(({ v, t }) => (
                           <button
                             key={v}
@@ -2429,19 +2433,25 @@ export default function Home() {
                       </div>
                     </div>
                     {(activeEmp.salaryType || 'hourly') === 'monthly' ? (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
-                        월급
-                        <input
-                          type="number"
-                          value={activeEmp.monthlySalary || 0}
-                          onChange={e => updateEmp('monthlySalary', Number(e.target.value))}
-                          style={{ width: 130, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
-                        />
-                        원 <span style={{ color: '#bbb' }}>(주휴 포함 월 기본급 · 연장·야간수당은 통상시급 {Math.round((Number(activeEmp.monthlySalary) || 0) / 209).toLocaleString()}원(월급÷209)으로 자동)</span>
-                      </label>
+                      <div style={{ marginTop: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                          월급(총액)
+                          <input
+                            type="number"
+                            value={activeEmp.monthlySalary || 0}
+                            onChange={e => updateEmp('monthlySalary', Number(e.target.value))}
+                            style={{ width: 130, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                          />
+                          원 <span style={{ color: '#bbb' }}>(포괄임금 · 식대 포함 고정 지급액 · 연장·야간수당 별도 가산 안 함)</span>
+                        </label>
+                        <div style={{ marginTop: 6, fontSize: 11, color: '#a89878', lineHeight: 1.5 }}>
+                          아래 <b>식대</b> 칸에 비과세 금액을 넣으면 그만큼 빼고 과세됩니다.<br />
+                          과세 기본급 = 월급 {Number(activeEmp.monthlySalary || 0).toLocaleString()} − 식대 {Number(activeEmp.mealAllowance || 0).toLocaleString()} = <b style={{ color: '#2f6bbf' }}>{Math.max(0, (Number(activeEmp.monthlySalary) || 0) - (Number(activeEmp.mealAllowance) || 0)).toLocaleString()}원</b> <span style={{ color: '#bbb' }}>(소득세·4대보험 기준)</span>
+                        </div>
+                      </div>
                     ) : (
                       <div style={{ marginTop: 8, fontSize: 11, color: '#a89878', letterSpacing: '0.02em' }}>
-                        ※ 기본급 = 시급 × 209시간(주휴 포함) 자동 계산. 월급제면 위에서 '월급 직접입력'을 선택하세요.
+                        ※ 기본급 = 시급 × 209시간(주휴 포함) 자동 계산. 월급제(포괄임금)면 위에서 '월급(포괄임금)'을 선택하세요.
                       </div>
                     )}
                   </div>
