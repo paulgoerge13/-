@@ -281,7 +281,7 @@ const EMPTY_EMP = {
 // 공제방식·소득세·식대·생년월일·입사일·퇴사일은 Supabase payroll 테이블에 컬럼이 없어서
 // DB에서 다시 불러올 때 매번 초기화됐다(=리셋 버그). 이 값들은 지점별·직원이름별로
 // 별도 localStorage 키에 따로 저장해 두고, DB 로드 후 다시 덮어 씌워 유지한다.
-const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'dependents', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate']
+const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'dependents', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate', 'salaryType', 'monthlySalary']
 function empSettingsKey(branchName) { return `payroll_empsettings_${branchName}` }
 function loadAllEmpSettings(branchName) {
   if (typeof window === 'undefined' || !branchName) return {}
@@ -554,8 +554,8 @@ export default function Home() {
             workData: migrateWorkData(r.work_data || {}),
             specialNote: r.special_note || '',
             hourlyWage: r.hourly_wage || 10320,
-            salaryType:    r.salary_type || e.salaryType || 'hourly',
-            monthlySalary: (r.monthly_salary !== undefined && r.monthly_salary !== null) ? Number(r.monthly_salary) : (e.monthlySalary || 0),
+            salaryType:    pick(r.salary_type, s.salaryType, e.salaryType || 'hourly'),
+            monthlySalary: pick(r.monthly_salary, s.monthlySalary, e.monthlySalary || 0),
             hireDate:        pick(r.hire_date, s.hireDate, e.hireDate || ''),
             resignDate:      pick(r.resign_date, s.resignDate, e.resignDate || ''),
             birthDate:       pick(r.birth_date, s.birthDate, e.birthDate || ''),
@@ -1171,8 +1171,8 @@ export default function Home() {
         accountNumber: r.account_number || '',
         empType: r.emp_type || '알바',
         hourlyWage: r.hourly_wage || 10320,
-        salaryType: r.salary_type || 'hourly',
-        monthlySalary: Number(r.monthly_salary) || 0,
+        salaryType: pick(r.salary_type, s.salaryType, 'hourly'),
+        monthlySalary: pick(r.monthly_salary, s.monthlySalary, 0),
         scheduledHours: r.scheduled_hours || 8,
         defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
         defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
