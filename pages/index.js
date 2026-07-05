@@ -1318,19 +1318,25 @@ export default function Home() {
     // 1) 각 직원 직전 달 과세급여 → 소급액(소득세+지방세) 계산
     const results = []
     for (const e of staff) {
-      let gross = 0, incomeTax = 0, localTax = 0, retro = 0
-      try {
-        const res = await fetch(`/api/load?branch=${encodeURIComponent(selectedBranch.name)}&name=${encodeURIComponent(e.name)}&year=${py}&month=${pm}`)
-        const r = await res.json()
-        if (r.success && r.data) {
-          gross = Number(r.data.grand_total) || 0
-          const t = gross > 0 ? lookupSimpleTax(gross, 1) : 0   // 부양가족 1명 고정
-          incomeTax = (t === null || t === undefined) ? 0 : t
-          localTax = Math.floor((incomeTax * 0.1) / 10) * 10     // 지방소득세 = 소득세 10%
-          retro = incomeTax + localTax
-        }
-      } catch {}
-      results.push({ id: e.id, name: e.name, gross, incomeTax, localTax, retro })
+      let gross = 0, incomeTax = 0, localTax = 0, retro = 0, found = false
+      // 직전 달 이름이 다를 수 있어(예: '손수형님g') 현재 이름 → _dbName 순으로 조회
+      const tryNames = [e.name, e._dbName].filter((n, i, a) => n && n.trim() && a.indexOf(n) === i)
+      for (const nm of tryNames) {
+        try {
+          const res = await fetch(`/api/load?branch=${encodeURIComponent(selectedBranch.name)}&name=${encodeURIComponent(nm)}&year=${py}&month=${pm}`)
+          const r = await res.json()
+          if (r.success && r.data) {
+            found = true
+            gross = Number(r.data.grand_total) || 0
+            const t = gross > 0 ? lookupSimpleTax(gross, 1) : 0   // 부양가족 1명 고정
+            incomeTax = (t === null || t === undefined) ? 0 : t
+            localTax = Math.floor((incomeTax * 0.1) / 10) * 10     // 지방소득세 = 소득세 10%
+            retro = incomeTax + localTax
+            break
+          }
+        } catch {}
+      }
+      results.push({ id: e.id, name: e.name, gross, incomeTax, localTax, retro, found })
     }
     // 2) 상태 반영 (소급 칸 채우기)
     const patched = employees.map(emp => {
@@ -1350,12 +1356,15 @@ export default function Home() {
     }
     setSaving(null)
     setRetroBusy(false)
-    const lines = results.map(x => `· ${x.name}: ${pm}월 과세급여 ${x.gross.toLocaleString()} → 소득세 ${x.incomeTax.toLocaleString()} + 지방세 ${x.localTax.toLocaleString()} = 소급 ${x.retro.toLocaleString()}원`).join('\n')
-    const gotZero = results.every(x => x.retro === 0)
+    const lines = results.map(x => x.found
+      ? `· ${x.name}: ${pm}월 과세급여 ${x.gross.toLocaleString()} → 소득세 ${x.incomeTax.toLocaleString()} + 지방세 ${x.localTax.toLocaleString()} = 소급 ${x.retro.toLocaleString()}원`
+      : `· ${x.name}: ⚠️ ${pm}월 기록 없음 (그 달 입사 전이거나 이름이 다름 → 확인 후 다시 실행)`
+    ).join('\n')
+    const notFound = results.filter(x => !x.found).map(x => x.name)
     alert(
       (failed.length ? `⚠️ ${failed.length}명 저장 실패: ${failed.join(', ')}\n\n` : `✅ ${cur.month}월 소급 소득세 자동 적용 + 저장 완료 (직원 ${results.length}명)\n\n`) +
       lines +
-      (gotZero ? `\n\n※ 전원 0원입니다. ${pm}월 급여가 이 앱에 저장돼 있어야 계산됩니다. ${pm}월을 먼저 입력·저장했는지 확인해주세요.` : '')
+      (notFound.length ? `\n\n※ ${pm}월 기록을 못 찾은 직원: ${notFound.join(', ')}\n   - 그 달 입사 전이면 소급 없음(정상)\n   - 이름이 달랐으면(예: 5월 '손수형님g') ${pm}월 탭에서 이름을 6월과 똑같이 정정·저장한 뒤 이 버튼을 다시 누르세요.` : '')
     )
   }
 
