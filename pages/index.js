@@ -264,7 +264,7 @@ const EMPTY_EMP = {
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
   deductionType: 'none',   // 공제 방식: 'none' | '3.3' | '4대'
-  incomeTaxMode: 'amount', // 소득세 입력 방식: 'amount'(금액 직접) | 'rate'(비율 %) | 'table'(간이세액표 자동)
+  incomeTaxMode: 'table',  // 소득세 입력 방식: 'table'(간이세액표 자동·기본) | 'amount'(금액 직접) | 'rate'(비율 %)
   incomeTaxRate: 0,        // 소득세 비율(%) — incomeTaxMode='rate'일 때 과세급여 × 이 % 로 자동 계산
   dependents: 1,           // 공제대상가족 수(본인 포함) — incomeTaxMode='table'일 때 간이세액표 조회 기준
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
@@ -301,6 +301,12 @@ function applyEmpSettings(emp, settingsMap) {
   const out = { ...emp }
   EMP_SETTINGS_FIELDS.forEach(f => { if (s[f] !== undefined && s[f] !== '') out[f] = s[f] })
   return out
+}
+// 소득세 방식 결정: 비율·간이세액표는 그대로, '금액'은 실제 금액을 넣은 경우만 유지, 그 외(미지정·금액0)는 간이세액표 기본
+function resolveTaxMode(mode, manualAmt) {
+  if (mode === 'rate' || mode === 'table') return mode
+  if (mode === 'amount' && (Number(manualAmt) || 0) > 0) return 'amount'
+  return 'table'
 }
 
 // ── 날짜 문자열(YYYY-MM-DD) → Date (시각 0시), 못 읽으면 null ──
@@ -368,11 +374,12 @@ function calcDeductions(gross, emp) {
     health     = Math.floor(gross * RATE_HEALTH / 10) * 10
     care       = Math.floor(health * RATE_CARE / 10) * 10
     employment = Math.floor(gross * RATE_EMPLOYMENT / 10) * 10
-    // 소득세: 간이세액표 자동조회 / 비율(%) 자동 / 금액 직접입력
-    if (emp.incomeTaxMode === 'table') {
+    // 소득세: 간이세액표 자동조회(기본) / 비율(%) 자동 / 금액 직접입력
+    const taxMode = emp.incomeTaxMode || 'table'   // 미지정이면 간이세액표 기본
+    if (taxMode === 'table') {
       const t = lookupSimpleTax(gross, emp.dependents || 1)   // 과세급여 + 부양가족수 → 간이세액표
       incomeTax = (t === null) ? (emp.manualIncomeTax || 0) : t // 표 범위 초과(월 1,000만원↑)면 직접입력값 사용
-    } else if (emp.incomeTaxMode === 'rate') {
+    } else if (taxMode === 'rate') {
       incomeTax = Math.floor(gross * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
     } else {
       incomeTax = (emp.manualIncomeTax || 0)
@@ -554,7 +561,7 @@ export default function Home() {
             birthDate:       pick(r.birth_date, s.birthDate, e.birthDate || ''),
             deductionType:   pick(r.deduction_type, s.deductionType, e.deductionType || 'none'),
             // 소득세 방식/비율은 DB 컬럼이 없어 localStorage 전용 → 반드시 복원
-            incomeTaxMode:   pick(undefined, s.incomeTaxMode, e.incomeTaxMode || 'amount'),
+            incomeTaxMode:   resolveTaxMode(s.incomeTaxMode, s.manualIncomeTax),
             incomeTaxRate:   pick(undefined, s.incomeTaxRate, e.incomeTaxRate || 0),
             dependents:      pick(undefined, s.dependents, e.dependents || 1),
             manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, e.manualIncomeTax || 0),
@@ -1179,7 +1186,7 @@ export default function Home() {
         resignDate:      pick(r.resign_date, s.resignDate, ''),
         birthDate:       pick(r.birth_date, s.birthDate, ''),
         deductionType:   pick(r.deduction_type, s.deductionType, 'none'),
-        incomeTaxMode:   pick(undefined, s.incomeTaxMode, 'amount'),
+        incomeTaxMode:   resolveTaxMode(s.incomeTaxMode, s.manualIncomeTax),
         incomeTaxRate:   pick(undefined, s.incomeTaxRate, 0),
         dependents:      pick(undefined, s.dependents, 1),
         manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
@@ -2438,7 +2445,8 @@ export default function Home() {
                           월급(총액)
                           <input
                             type="number"
-                            value={activeEmp.monthlySalary || 0}
+                            value={activeEmp.monthlySalary || ''}
+                            placeholder="0"
                             onChange={e => updateEmp('monthlySalary', Number(e.target.value))}
                             style={{ width: 130, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                           />
@@ -2843,7 +2851,7 @@ export default function Home() {
                         ].map(({ v, t }) => (
                           <button
                             key={v}
-                            className={`emp-type-tab${(activeEmp.incomeTaxMode || 'amount') === v ? ' active' : ''}`}
+                            className={`emp-type-tab${(activeEmp.incomeTaxMode || 'table') === v ? ' active' : ''}`}
                             style={{ padding: '4px 10px', fontSize: 12 }}
                             onClick={() => updateEmp('incomeTaxMode', v)}
                           >{t}</button>
@@ -2851,14 +2859,15 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {(activeEmp.incomeTaxMode || 'amount') === 'table' ? (
+                    {(activeEmp.incomeTaxMode || 'table') === 'table' ? (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
                         공제대상가족 수
                         <input
                           type="number"
                           step="1"
                           min="1"
-                          value={activeEmp.dependents || 1}
+                          value={activeEmp.dependents || ''}
+                          placeholder="1"
                           onChange={e => updateEmp('dependents', Math.max(1, Math.round(Number(e.target.value) || 1)))}
                           style={{ width: 70, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                         />
@@ -2869,13 +2878,14 @@ export default function Home() {
                             : <b style={{ color: '#2f6bbf' }}>→ 소득세 {Number(totals.deductions.incomeTax).toLocaleString()}원 <span style={{ color: '#bbb', fontWeight: 400 }}>(과세급여 {Number(totals.grandTotal).toLocaleString()}원 기준)</span></b>
                         )}
                       </label>
-                    ) : (activeEmp.incomeTaxMode || 'amount') === 'rate' ? (
+                    ) : (activeEmp.incomeTaxMode || 'table') === 'rate' ? (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
                         <input
                           type="number"
                           step="0.1"
                           min="0"
-                          value={activeEmp.incomeTaxRate || 0}
+                          value={activeEmp.incomeTaxRate || ''}
+                          placeholder="0"
                           onChange={e => updateEmp('incomeTaxRate', Number(e.target.value))}
                           style={{ width: 90, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                         />
@@ -2888,7 +2898,8 @@ export default function Home() {
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888' }}>
                         <input
                           type="number"
-                          value={activeEmp.manualIncomeTax || 0}
+                          value={activeEmp.manualIncomeTax || ''}
+                          placeholder="0"
                           onChange={e => updateEmp('manualIncomeTax', Number(e.target.value))}
                           style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                         />
@@ -2906,7 +2917,8 @@ export default function Home() {
                     소급 소득세
                     <input
                       type="number"
-                      value={activeEmp.retroIncomeTax || 0}
+                      value={activeEmp.retroIncomeTax || ''}
+                      placeholder="0"
                       onChange={e => updateEmp('retroIncomeTax', Number(e.target.value))}
                       style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                     />
@@ -2917,7 +2929,8 @@ export default function Home() {
                   식대 (비과세)
                   <input
                     type="number"
-                    value={activeEmp.mealAllowance || 0}
+                    value={activeEmp.mealAllowance || ''}
+                    placeholder="0"
                     onChange={e => updateEmp('mealAllowance', Number(e.target.value))}
                     style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                   />
@@ -2927,7 +2940,8 @@ export default function Home() {
                   퇴직금
                   <input
                     type="number"
-                    value={activeEmp.severancePay || 0}
+                    value={activeEmp.severancePay || ''}
+                    placeholder="0"
                     onChange={e => updateEmp('severancePay', Number(e.target.value))}
                     style={{ width: 130, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                   />
