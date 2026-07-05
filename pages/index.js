@@ -554,8 +554,9 @@ export default function Home() {
             workData: migrateWorkData(r.work_data || {}),
             specialNote: r.special_note || '',
             hourlyWage: r.hourly_wage || 10320,
-            salaryType:    pick(r.salary_type, s.salaryType, e.salaryType || 'hourly'),
-            monthlySalary: pick(r.monthly_salary, s.monthlySalary, e.monthlySalary || 0),
+            // 월급제 설정은 브라우저 저장값(localStorage) 우선 → 재로그인/DB 0값에도 유지
+            salaryType:    pick(s.salaryType, r.salary_type, e.salaryType || 'hourly'),
+            monthlySalary: pick(s.monthlySalary, r.monthly_salary, e.monthlySalary || 0),
             hireDate:        pick(r.hire_date, s.hireDate, e.hireDate || ''),
             resignDate:      pick(r.resign_date, s.resignDate, e.resignDate || ''),
             birthDate:       pick(r.birth_date, s.birthDate, e.birthDate || ''),
@@ -1171,8 +1172,8 @@ export default function Home() {
         accountNumber: r.account_number || '',
         empType: r.emp_type || '알바',
         hourlyWage: r.hourly_wage || 10320,
-        salaryType: pick(r.salary_type, s.salaryType, 'hourly'),
-        monthlySalary: pick(r.monthly_salary, s.monthlySalary, 0),
+        salaryType: pick(s.salaryType, r.salary_type, 'hourly'),        // 월급제 설정은 브라우저 저장값 우선
+        monthlySalary: pick(s.monthlySalary, r.monthly_salary, 0),
         scheduledHours: r.scheduled_hours || 8,
         defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
         defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
