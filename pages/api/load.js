@@ -22,5 +22,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error.message })
   }
 
-  return res.status(200).json({ success: true, data: data || null })
+  // 휴지통(soft delete)된 레코드는 없는 것으로 취급
+  return res.status(200).json({ success: true, data: (data && !data.deleted_at) ? data : null })
 }

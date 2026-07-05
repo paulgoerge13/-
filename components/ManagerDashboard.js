@@ -28,6 +28,9 @@ export default function ManagerDashboard({ onBack }) {
   const [pivotMetric, setPivotMetric] = useState('net')     // 지점별 월별: net(실지급/이체) | gross(세전 지급액)
   const [yearRecords, setYearRecords] = useState([])        // 지점별 월별용: 그 해 전체(12개월) 레코드
   const [yearLoading, setYearLoading] = useState(false)
+  const [trash, setTrash] = useState([])                    // 휴지통(soft delete) 목록
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashLoading, setTrashLoading] = useState(false)
   const [showPw, setShowPw] = useState(false)       // 지점 비밀번호 표 보기/숨기기
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
@@ -62,7 +65,7 @@ export default function ManagerDashboard({ onBack }) {
         .order('branch', { ascending: true })
         .order('emp_name', { ascending: true })
       if (error) throw error
-      setRecords(data || [])
+      setRecords((data || []).filter(r => !r.deleted_at))   // 휴지통 제외
     } catch (e) {
       console.error('데이터 로드 오류:', e.message)
     } finally {
@@ -80,7 +83,7 @@ export default function ManagerDashboard({ onBack }) {
       setYearLoading(true)
       try {
         const { data, error } = await supabase.from('payroll').select('*').eq('year', year)
-        if (!error && !cancelled) setYearRecords(data || [])
+        if (!error && !cancelled) setYearRecords((data || []).filter(r => !r.deleted_at))   // 휴지통 제외
       } catch (e) { console.error('연간 데이터 로드 오류:', e.message) }
       finally { if (!cancelled) setYearLoading(false) }
     })()
@@ -88,9 +91,13 @@ export default function ManagerDashboard({ onBack }) {
   }, [view, year])
 
   async function deleteRecord(id, name) {
-    if (confirm(`${name} 님의 기록을 삭제하시겠습니까?`)) {
+    if (confirm(`${name} 님의 기록을 삭제하시겠습니까?\n(휴지통으로 이동 · 30일간 되살리기 가능)`)) {
       const target = records.find(r => r.id === id)
-      const { error } = await supabase.from('payroll').delete().eq('id', id)
+      // 소프트 삭제: deleted_at 표시 (컬럼 없으면 하드 삭제로 폴백)
+      let { error } = await supabase.from('payroll').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+      if (error && /column|deleted_at|schema cache|could not find/i.test(`${error.message} ${error.details || ''}`)) {
+        ({ error } = await supabase.from('payroll').delete().eq('id', id))
+      }
       if (error) { alert('삭제 실패'); return }
       // 수정 이력 기록 (실패해도 무시 — 조회는 각 지점 페이지에서)
       try {
@@ -105,6 +112,33 @@ export default function ManagerDashboard({ onBack }) {
       } catch (e) {}
       load()
     }
+  }
+
+  // ── 휴지통(soft delete) ──
+  async function loadTrash() {
+    setTrashLoading(true)
+    try {
+      const { data, error } = await supabase.from('payroll').select('*')
+        .not('deleted_at', 'is', null).order('deleted_at', { ascending: false }).limit(200)
+      if (error) throw error
+      setTrash(data || [])
+    } catch (e) {
+      console.error('휴지통 로드 오류:', e.message)
+      alert('휴지통을 불러오지 못했어요.\nSupabase 에 deleted_at 컬럼을 먼저 추가해야 합니다.')
+    } finally { setTrashLoading(false) }
+  }
+  function toggleTrash() { const n = !showTrash; setShowTrash(n); if (n) loadTrash() }
+  async function restoreRecord(r) {
+    if (!confirm(`${r.emp_name} (${r.year}년 ${r.month}월 · ${r.branch}) 을(를) 되살릴까요?`)) return
+    const { error } = await supabase.from('payroll').update({ deleted_at: null }).eq('id', r.id)
+    if (error) { alert('되살리기 실패'); return }
+    loadTrash(); load()
+  }
+  async function purgeRecord(r) {
+    if (!confirm(`${r.emp_name} (${r.year}년 ${r.month}월) 을(를) 완전 삭제할까요?\n이건 되돌릴 수 없어요.`)) return
+    const { error } = await supabase.from('payroll').delete().eq('id', r.id)
+    if (error) { alert('완전 삭제 실패'); return }
+    loadTrash()
   }
 
   function fmt(n) { return Math.round(n || 0).toLocaleString('ko-KR') }
@@ -1217,7 +1251,36 @@ export default function ManagerDashboard({ onBack }) {
             {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
           </select>
           <button className="md-refresh" onClick={load}>🔄</button>
+          <button className="md-refresh" onClick={toggleTrash} title="삭제된 기록 되살리기">🗑 휴지통</button>
         </div>
+
+        {showTrash && (
+          <div style={{ border: '1px solid #e2ded5', borderRadius: 12, background: '#fffdf8', padding: '14px 16px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <b style={{ fontSize: 15 }}>🗑 휴지통</b>
+              <span style={{ fontSize: 12, color: '#999' }}>삭제된 기록 · 되살리기 가능</span>
+              <button className="md-refresh" style={{ marginLeft: 'auto' }} onClick={loadTrash}>새로고침</button>
+              <button className="md-refresh" onClick={() => setShowTrash(false)}>닫기</button>
+            </div>
+            {trashLoading ? <p style={{ color: '#999', fontSize: 13 }}>불러오는 중…</p>
+              : trash.length === 0 ? <p style={{ color: '#999', fontSize: 13, margin: '6px 0' }}>휴지통이 비어 있어요.</p>
+              : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {trash.map(r => (
+                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '7px 10px', background: '#fff', border: '1px solid #eee', borderRadius: 8 }}>
+                      <b>{r.emp_name}</b>
+                      <span style={{ color: '#888' }}>{r.branch} · {r.year}년 {r.month}월 · {r.emp_type}</span>
+                      <span style={{ color: '#aaa', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.grand_total)}원</span>
+                      <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                        <button onClick={() => restoreRecord(r)} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#2f7d54', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer' }}>되살리기</button>
+                        <button onClick={() => purgeRecord(r)} style={{ fontSize: 12, color: '#c0392b', background: '#fff', border: '1px solid #eecfca', borderRadius: 6, padding: '5px 10px', cursor: 'pointer' }}>완전삭제</button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+          </div>
+        )}
 
         {/* 보기 전환 탭: 이체 처리 / 인건비 요약 (이체 처리가 먼저) */}
         <div className="md-tabs">

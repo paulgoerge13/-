@@ -19,6 +19,9 @@ export default async function handler(req, res) {
 
   if (error) return res.status(500).json({ error: error.message })
 
+  // 휴지통(deleted_at 있는 것) 제외 — 컬럼 없으면 undefined 라 그대로 통과
+  const alive = (data || []).filter(r => !r.deleted_at)
+
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
-  return res.status(200).json({ success: true, data: data || [] })
+  return res.status(200).json({ success: true, data: alive })
 }
