@@ -31,6 +31,8 @@ export default async function handler(req, res) {
     retro_income_tax,
     meal_allowance,
     severance_pay,
+    salary_type,
+    monthly_salary,
   } = req.body
 
   if (!branch || !emp_name) {
@@ -74,6 +76,8 @@ export default async function handler(req, res) {
     retro_income_tax: Number(retro_income_tax) || 0,
     meal_allowance: Number(meal_allowance) || 0,
     severance_pay:  Number(severance_pay) || 0,
+    salary_type:    salary_type || 'hourly',
+    monthly_salary: Number(monthly_salary) || 0,
   }
 
   const opts = { onConflict: 'branch,emp_name,year,month' }

@@ -21,3 +21,7 @@ alter table payroll add column if not exists income_tax       numeric default 0;
 alter table payroll add column if not exists retro_income_tax numeric default 0;   -- 소급 소득세(지난달 미징수분)
 alter table payroll add column if not exists meal_allowance   numeric default 0;   -- 식대(비과세)
 alter table payroll add column if not exists severance_pay    numeric default 0;   -- 퇴직금
+
+-- 월급제 직원 (시급×209 대신 월급 직접입력)
+alter table payroll add column if not exists salary_type    text    default 'hourly'; -- 'hourly'|'monthly'
+alter table payroll add column if not exists monthly_salary numeric default 0;       -- 월급(주휴 포함 기본급)

@@ -259,6 +259,8 @@ const EMPTY_EMP = {
   hourlyWage: 10320,                          // ── 수정 A: 기본 시급 변경 ──
   defaultTimeStart: '00:00', defaultTimeEnd: '00:00', // ── 수정 A: 기본 시간 00:00 ──
   workData: {}, specialNote: '',
+  salaryType: 'hourly',    // 직원 기본급 방식: 'hourly'(시급×209 자동) | 'monthly'(월급 직접입력)
+  monthlySalary: 0,        // 월급제(salaryType='monthly')일 때 월 기본급. 통상시급 = 월급 ÷ 209 로 환산해 수당 계산
   manualBasic: 0, manualWeeklyHoliday: 0, manualOvertime: 0,
   manualNight: 0, manualHoliday: 0, manualHolidayOt: 0, manualHolidayNight: 0,
   deductionType: 'none',   // 공제 방식: 'none' | '3.3' | '4대'
@@ -545,6 +547,8 @@ export default function Home() {
             workData: migrateWorkData(r.work_data || {}),
             specialNote: r.special_note || '',
             hourlyWage: r.hourly_wage || 10320,
+            salaryType:    r.salary_type || e.salaryType || 'hourly',
+            monthlySalary: (r.monthly_salary !== undefined && r.monthly_salary !== null) ? Number(r.monthly_salary) : (e.monthlySalary || 0),
             hireDate:        pick(r.hire_date, s.hireDate, e.hireDate || ''),
             resignDate:      pick(r.resign_date, s.resignDate, e.resignDate || ''),
             birthDate:       pick(r.birth_date, s.birthDate, e.birthDate || ''),
@@ -958,17 +962,21 @@ export default function Home() {
     //   연장은 주간/야간 안에 포함된 시간이라 합계에 또 더하지 않는다.
     const hoursWork = hoursDay + hoursNight + hoursHolidayWork
 
+    // ── 월급제 직원: 통상시급 = 월급 ÷ 209 로 환산해 기본급·연장·야간·휴일수당 산정 ──
+    //    (시급제면 그대로 emp.hourlyWage 사용 / 알바는 항상 시급)
+    const isMonthlySalary = emp.empType === '직원' && emp.salaryType === 'monthly'
+    const baseWage = isMonthlySalary ? Math.round((Number(emp.monthlySalary) || 0) / 209) : emp.hourlyWage
     // 연장수당은 직원만. 알바는 연장수당 자체가 없음(전 지점 공통).
-    const autoOvertime        = emp.empType === '직원' ? calcOvertime(mOtH, emp.hourlyWage) : 0
+    const autoOvertime        = emp.empType === '직원' ? calcOvertime(mOtH, baseWage) : 0
     // 야간수당: 직원 = 야간시간 × 시급 × 0.5(가산). 알바 = 야간시간 × 시급 × 1.5(기본급에서 빠진 야간을 통째로 여기서 지급).
     const autoNight           = emp.empType === '직원'
-      ? calcNight(mNightH, emp.hourlyWage)
+      ? calcNight(mNightH, baseWage)
       : Math.round(mNightH * emp.hourlyWage * 1.5)
     // 휴일근로수당: 휴일 전체 근무시간(주간+야간) × 시급 × 1.5
-    const autoHoliday         = calcHoliday(hoursHolidayWork, emp.hourlyWage)
-    const autoHolidayOtPay    = calcHolidayOt(mHolidayOtH, emp.hourlyWage)
+    const autoHoliday         = calcHoliday(hoursHolidayWork, baseWage)
+    const autoHolidayOtPay    = calcHolidayOt(mHolidayOtH, baseWage)
     // 휴일야간 가산: 휴일 야간시간 × 시급 × 0.5 (휴일근로 1.5에 추가)
-    const autoHolidayNightPay = calcHolidayNight(mHolidayNightH, emp.hourlyWage)
+    const autoHolidayNightPay = calcHolidayNight(mHolidayNightH, baseWage)
 
     const isStaff = emp.empType === '직원'
     const isStaffNoCalc = isStaff // 직원은 기본급(시급×209)에 주휴 포함
@@ -976,14 +984,15 @@ export default function Home() {
     const proration = calcProration(emp)
     // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 주간 근무 × 시급 (야간은 '야간근로' 줄에서 1.5배 별도) ──
     const hoursBaseAlba = mDayH
-    const staffMonthlyBasic = Math.round(emp.hourlyWage * 209)
+    // 월급제면 입력한 월급이 곧 기본급, 시급제면 시급×209
+    const staffMonthlyBasic = isMonthlySalary ? Math.round(Number(emp.monthlySalary) || 0) : Math.round(baseWage * 209)
     // ── 결근 공제 (직원만): 결근 1일당 시급×8(하루치) + 결근이 든 주마다 시급×8(주휴) ──
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
     const absentHours = isStaff ? (absentDays * 8 + absentWeekSet.size * 8) : 0
-    const absentDeduction = Math.round(absentHours * emp.hourlyWage)
+    const absentDeduction = Math.round(absentHours * baseWage)
     // ── 기본급 수동 차감 (직원만): 조퇴·지각 등 차감 시간(시간) × 시급을 기본급에서 차감 ──
     const manualDeductHours = isStaff ? (emp.workData?._deduct?.hours || 0) : 0
-    const manualDeduction = Math.round(manualDeductHours * emp.hourlyWage)
+    const manualDeduction = Math.round(manualDeductHours * baseWage)
     const totalBasic           = isStaff
       ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
@@ -1008,7 +1017,7 @@ export default function Home() {
       meal, severance, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
-      hoursHolidayWork, proration, staffMonthlyBasic,
+      hoursHolidayWork, proration, staffMonthlyBasic, isMonthlySalary, baseWage,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
       manualDeductHours, manualDeduction,
       deductions, netPay, totalDeduction: deductions.total,
@@ -1075,6 +1084,8 @@ export default function Home() {
       email: emp.email || '',
       account_number: emp.accountNumber || '',
       hourly_wage: emp.hourlyWage,
+      salary_type: emp.salaryType || 'hourly',
+      monthly_salary: Number(emp.monthlySalary) || 0,
       scheduled_hours: emp.scheduledHours || 8,
       default_time: `${emp.defaultTimeStart}~${emp.defaultTimeEnd}`,
       year: emp.year,
@@ -1149,6 +1160,8 @@ export default function Home() {
         accountNumber: r.account_number || '',
         empType: r.emp_type || '알바',
         hourlyWage: r.hourly_wage || 10320,
+        salaryType: r.salary_type || 'hourly',
+        monthlySalary: Number(r.monthly_salary) || 0,
         scheduledHours: r.scheduled_hours || 8,
         defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
         defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
@@ -1550,7 +1563,7 @@ export default function Home() {
 
     // 지급 항목: [라벨, 금액, 산출식]
     const payItems = [
-      ['기본급', t.totalBasic, t.isStaff ? '통상시급 × 월 209시간 (주휴 포함)' : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
+      ['기본급', t.totalBasic, t.isStaff ? (t.isMonthlySalary ? `월급제 (통상시급 ${Number(t.baseWage).toLocaleString()}원 = 월급 ÷ 209 · 주휴 포함)` : '통상시급 × 월 209시간 (주휴 포함)') : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
       ['주휴수당', t.totalWeeklyHoliday, '주간근로시간 ÷ 40 × 8 × 통상시급'],
       ['식대', t.meal, '비과세 식대'],
       ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
@@ -2397,8 +2410,40 @@ export default function Home() {
                   >알바</button>
                 </div>
                 {activeEmp.empType === '직원' && (
-                  <div style={{ marginTop: 8, fontSize: 11, color: '#a89878', letterSpacing: '0.02em' }}>
-                    ※ 직원 기본급은 시급 × 209시간(주휴 포함)으로 자동 계산됩니다.
+                  <div style={{ marginTop: 10 }}>
+                    {/* 기본급 방식: 시급×209 자동 / 월급 직접입력 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                      <span>기본급 방식</span>
+                      <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none' }}>
+                        {[
+                          { v: 'hourly',  t: '시급 × 209' },
+                          { v: 'monthly', t: '월급 직접입력' },
+                        ].map(({ v, t }) => (
+                          <button
+                            key={v}
+                            className={`emp-type-tab${(activeEmp.salaryType || 'hourly') === v ? ' active' : ''}`}
+                            style={{ padding: '4px 10px', fontSize: 12 }}
+                            onClick={() => updateEmp('salaryType', v)}
+                          >{t}</button>
+                        ))}
+                      </div>
+                    </div>
+                    {(activeEmp.salaryType || 'hourly') === 'monthly' ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                        월급
+                        <input
+                          type="number"
+                          value={activeEmp.monthlySalary || 0}
+                          onChange={e => updateEmp('monthlySalary', Number(e.target.value))}
+                          style={{ width: 130, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                        />
+                        원 <span style={{ color: '#bbb' }}>(주휴 포함 월 기본급 · 연장·야간수당은 통상시급 {Math.round((Number(activeEmp.monthlySalary) || 0) / 209).toLocaleString()}원(월급÷209)으로 자동)</span>
+                      </label>
+                    ) : (
+                      <div style={{ marginTop: 8, fontSize: 11, color: '#a89878', letterSpacing: '0.02em' }}>
+                        ※ 기본급 = 시급 × 209시간(주휴 포함) 자동 계산. 월급제면 위에서 '월급 직접입력'을 선택하세요.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
