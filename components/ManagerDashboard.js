@@ -23,8 +23,11 @@ export default function ManagerDashboard({ onBack }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
-  const [view, setView] = useState('transfer')      // transfer | summary (이체 처리를 첫 화면으로)
+  const [view, setView] = useState('transfer')      // transfer | summary | monthly
   const [branchMetric, setBranchMetric] = useState('wage')  // 지점별 보기: wage(월급) | major(4대보험) | withhold(원천세)
+  const [pivotMetric, setPivotMetric] = useState('net')     // 지점별 월별: net(실지급/이체) | gross(세전 지급액)
+  const [yearRecords, setYearRecords] = useState([])        // 지점별 월별용: 그 해 전체(12개월) 레코드
+  const [yearLoading, setYearLoading] = useState(false)
   const [showPw, setShowPw] = useState(false)       // 지점 비밀번호 표 보기/숨기기
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
@@ -68,6 +71,21 @@ export default function ManagerDashboard({ onBack }) {
   }
 
   useEffect(() => { load() }, [branch, year, month])
+
+  // ── 지점별 월별 인건비: 그 해 전체(12개월) 레코드 로드 ──
+  useEffect(() => {
+    if (view !== 'monthly') return
+    let cancelled = false
+    ;(async () => {
+      setYearLoading(true)
+      try {
+        const { data, error } = await supabase.from('payroll').select('*').eq('year', year)
+        if (!error && !cancelled) setYearRecords(data || [])
+      } catch (e) { console.error('연간 데이터 로드 오류:', e.message) }
+      finally { if (!cancelled) setYearLoading(false) }
+    })()
+    return () => { cancelled = true }
+  }, [view, year])
 
   async function deleteRecord(id, name) {
     if (confirm(`${name} 님의 기록을 삭제하시겠습니까?`)) {
@@ -1200,6 +1218,7 @@ export default function ManagerDashboard({ onBack }) {
         <div className="md-tabs">
           <button className={`md-tab ${view === 'transfer' ? 'on' : ''}`} onClick={() => setView('transfer')}>💸 이체 처리</button>
           <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
+          <button className={`md-tab ${view === 'monthly' ? 'on' : ''}`} onClick={() => setView('monthly')}>📅 지점별 월별</button>
         </div>
 
         {loading ? (
@@ -1346,6 +1365,75 @@ export default function ManagerDashboard({ onBack }) {
                     </span>
                   </div>
                 </aside>
+              </>
+            )
+          })()
+        ) : view === 'monthly' ? (
+          /* ───────── 지점별 월별 인건비 (한 페이지 피벗) ───────── */
+          (() => {
+            if (yearLoading) return <p className="md-loading">LOADING...</p>
+            const recs = yearRecords.filter(r => !isRecordOnly(r))
+            if (recs.length === 0) return <p className="md-empty">{year}년 데이터가 없습니다.</p>
+            const grossAmt = (r) => fixGrand(r) + (r.meal_allowance || 0) + (Number(r.severance_pay) || 0)
+            const val = (r) => pivotMetric === 'gross' ? grossAmt(r) : transferAmt(r)
+            const months = Array.from({ length: 12 }, (_, i) => i + 1).filter(m => recs.some(r => r.month === m))
+            const brs = branchesFor(branch).filter(b => recs.some(r => r.branch === b))
+            const cell = (b, m) => recs.filter(r => r.branch === b && r.month === m).reduce((s, r) => s + val(r), 0)
+            const rowTotal = (b) => months.reduce((s, m) => s + cell(b, m), 0)
+            const colTotal = (m) => brs.reduce((s, b) => s + cell(b, m), 0)
+            const grand = brs.reduce((s, b) => s + rowTotal(b), 0)
+            const tcBrs = THECOMMA_BRANCH_NAMES.filter(b => brs.includes(b))
+            const showThecomma = branch === ALL && tcBrs.length > 0
+            const cS = { padding: '7px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #ececec', whiteSpace: 'nowrap' }
+            const hS = { ...cS, textAlign: 'center', color: '#8a8170', fontWeight: 700, background: '#f3efe6', borderBottom: '1px solid #d8d3c8' }
+            const nS = { ...cS, textAlign: 'left', fontWeight: 600, color: '#1a1a1a', position: 'sticky', left: 0, background: '#fff' }
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 12px', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{year}년 지점별 월별 인건비{branch === THECOMMA ? ' (더콤마)' : branch !== ALL ? ` (${branch})` : ''}</div>
+                  <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none', marginLeft: 'auto' }}>
+                    {[{ v: 'net', t: '실지급(이체)' }, { v: 'gross', t: '세전 지급액' }].map(({ v, t }) => (
+                      <button key={v} className={`emp-type-tab${pivotMetric === v ? ' active' : ''}`} style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => setPivotMetric(v)}>{t}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ overflowX: 'auto', border: '1px solid #e2ded5', borderRadius: 12, background: '#fff' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 640 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...hS, textAlign: 'left', position: 'sticky', left: 0, zIndex: 2 }}>지점</th>
+                        {months.map(m => <th key={m} style={hS}>{m}월</th>)}
+                        <th style={{ ...hS, background: '#ece7da' }}>연간 합계</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {brs.map(b => (
+                        <tr key={b}>
+                          <td style={nS}>{b}</td>
+                          {months.map(m => <td key={m} style={cS}>{cell(b, m) ? fmt(cell(b, m)) : '·'}</td>)}
+                          <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(rowTotal(b))}</td>
+                        </tr>
+                      ))}
+                      {showThecomma && (
+                        <tr>
+                          <td style={{ ...nS, color: '#b07a1e', background: '#fbf3e2' }}>☕ 더콤마 소계</td>
+                          {months.map(m => <td key={m} style={{ ...cS, color: '#b07a1e', background: '#fdf6ea', fontWeight: 700 }}>{fmt(tcBrs.reduce((s, b) => s + cell(b, m), 0))}</td>)}
+                          <td style={{ ...cS, color: '#b07a1e', background: '#f8ecd4', fontWeight: 800 }}>{fmt(tcBrs.reduce((s, b) => s + rowTotal(b), 0))}</td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }}>합계</td>
+                        {months.map(m => <td key={m} style={{ ...cS, fontWeight: 800, background: '#f3efe6' }}>{fmt(colTotal(m))}</td>)}
+                        <td style={{ ...cS, fontWeight: 800, background: '#ece7da' }}>{fmt(grand)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p className="tx-board-note" style={{ marginTop: 10 }}>
+                  {pivotMetric === 'net'
+                    ? '실지급(이체) 기준 — 직원 4대보험·알바 3.3% 공제 후 + 퇴직금 · 기록용 제외'
+                    : '세전 지급액 기준 — 식대·퇴직금 포함(공제 전) · 기록용 제외'}
+                </p>
               </>
             )
           })()
