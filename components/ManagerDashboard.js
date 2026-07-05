@@ -406,6 +406,8 @@ export default function ManagerDashboard({ onBack }) {
     }
   }
 
+  // 기록용(_recordOnly) 제외한 실제 집계 대상 레코드 (이체 화면과 동일 기준)
+  const payRecords = records.filter(r => !isRecordOnly(r))
   // ── 전 지점 집계 ──
   const byBranch = branchesFor(branch).map(b => {
     const rs = records.filter(r => r.branch === b && !isRecordOnly(r))
@@ -417,8 +419,8 @@ export default function ManagerDashboard({ onBack }) {
       total: rs.reduce((s, r) => s + fixGrand(r), 0),
       staffTotal: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0),
       albaTotal: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0),
-      staffNet: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + recNet(r), 0),
-      albaNet: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + recNet(r), 0),
+      staffNet: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + transferAmt(r), 0),   // 이체와 동일(퇴직금 포함)
+      albaNet: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + transferAmt(r), 0),
       // 지점별 공제 (직원=4대보험, 알바=공제없음 / 원천세는 직원 소득세·지방세 + 알바 3.3%)
       major: rs.reduce((s, r) => s + recMajorIns(r), 0),                                          // 4대보험 (직원만)
       withhold: rs.reduce((s, r) => s + recWithholding(r), 0),                                    // 원천세
@@ -433,8 +435,8 @@ export default function ManagerDashboard({ onBack }) {
   const staffNetAll = byBranch.reduce((s, x) => s + x.staffNet, 0)
   const albaNetAll = byBranch.reduce((s, x) => s + x.albaNet, 0)
   const netAll = staffNetAll + albaNetAll
-  const majorAll = records.reduce((s, r) => s + recMajorIns(r), 0)     // 4대보험 공제 합계
-  const withholdAll = records.reduce((s, r) => s + recWithholding(r), 0) // 원천세 공제 합계
+  const majorAll = payRecords.reduce((s, r) => s + recMajorIns(r), 0)     // 4대보험 공제 합계
+  const withholdAll = payRecords.reduce((s, r) => s + recWithholding(r), 0) // 원천세 공제 합계
   const totalPeople = byBranch.reduce((s, x) => s + x.count, 0)
   const totalFinal = byBranch.reduce((s, x) => s + x.finalCount, 0)
 
@@ -447,16 +449,16 @@ export default function ManagerDashboard({ onBack }) {
   const metric = METRICS[branchMetric] || METRICS.wage
 
   // 현재(단일 지점) 집계
-  const totalGrand = records.reduce((s, r) => s + fixGrand(r), 0)
-  const curStaff = records.filter(r => r.emp_type === '직원').length
-  const curAlba = records.filter(r => r.emp_type !== '직원').length
-  const curStaffTotal = records.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0)
-  const curAlbaTotal = records.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0)
-  const curStaffNet = records.filter(r => r.emp_type === '직원').reduce((s, r) => s + recNet(r), 0)
-  const curAlbaNet = records.filter(r => r.emp_type !== '직원').reduce((s, r) => s + recNet(r), 0)
-  const curMajor = records.reduce((s, r) => s + recMajorIns(r), 0)
-  const curWithhold = records.reduce((s, r) => s + recWithholding(r), 0)
-  const curFinal = records.filter(r => r.status === 'final').length
+  const totalGrand = payRecords.reduce((s, r) => s + fixGrand(r), 0)
+  const curStaff = payRecords.filter(r => r.emp_type === '직원').length
+  const curAlba = payRecords.filter(r => r.emp_type !== '직원').length
+  const curStaffTotal = payRecords.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0)
+  const curAlbaTotal = payRecords.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0)
+  const curStaffNet = payRecords.filter(r => r.emp_type === '직원').reduce((s, r) => s + transferAmt(r), 0)   // 이체와 동일(퇴직금 포함)
+  const curAlbaNet = payRecords.filter(r => r.emp_type !== '직원').reduce((s, r) => s + transferAmt(r), 0)
+  const curMajor = payRecords.reduce((s, r) => s + recMajorIns(r), 0)
+  const curWithhold = payRecords.reduce((s, r) => s + recWithholding(r), 0)
+  const curFinal = payRecords.filter(r => r.status === 'final').length
 
   // ── 전 지점 요약 엑셀(CSV) 내보내기 — 보고용 ──
   function downloadSummary() {
