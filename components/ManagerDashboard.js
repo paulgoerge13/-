@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
-import { BRANCHES as BRANCH_LIST, BRANCH_NAMES } from '../lib/branches'
+import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES } from '../lib/branches'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
+const THECOMMA = '더콤마 전체'   // 더콤마라운지(카페) 6개 지점만 묶은 보기
+// 선택된 필터에 해당하는 지점 이름 목록
+function branchesFor(sel) {
+  return sel === ALL ? BRANCHES : sel === THECOMMA ? THECOMMA_BRANCH_NAMES : [sel]
+}
 
 // ── 전 지점 통합 관리 대시보드 (재사용 컴포넌트) ──
 // manager.js(별도 페이지)와 index.js(메인 앱의 관리자 화면) 양쪽에서 공통 사용.
@@ -400,7 +405,7 @@ export default function ManagerDashboard({ onBack }) {
   }
 
   // ── 전 지점 집계 ──
-  const byBranch = BRANCHES.map(b => {
+  const byBranch = branchesFor(branch).map(b => {
     const rs = records.filter(r => r.branch === b)
     return {
       branch: b,
@@ -481,7 +486,7 @@ export default function ManagerDashboard({ onBack }) {
 
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
   function downloadTransferXlsx() {
-    const groups = BRANCHES
+    const groups = branchesFor(branch)
       .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
       .filter(g => g.units.length > 0)
       .map(g => ({
@@ -1130,6 +1135,7 @@ export default function ManagerDashboard({ onBack }) {
   `
 
   const isAll = branch === ALL
+  const isMulti = branch === ALL || branch === THECOMMA   // 여러 지점 묶음 보기(통합 대시보드 레이아웃)
 
   // 직원을 위, 알바를 아래로 정렬 (그 안에서는 이름순)
   const empRank = r => (r.emp_type === '직원' ? 0 : 1)
@@ -1173,6 +1179,7 @@ export default function ManagerDashboard({ onBack }) {
         <div className="md-filter">
           <select className="md-select" value={branch} onChange={e => setBranch(e.target.value)}>
             <option value={ALL}>{ALL}</option>
+            <option value={THECOMMA}>☕ {THECOMMA} (한잎·시흥 제외)</option>
             {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
           <select className="md-select" value={year} onChange={e => setYear(Number(e.target.value))}>
@@ -1196,7 +1203,7 @@ export default function ManagerDashboard({ onBack }) {
           /* ───────── 이체 처리 화면 ───────── */
           (() => {
             // 지점별 → 같은 계좌끼리 묶은 '이체 단위(유닛)' 생성
-            const groups = (isAll ? BRANCHES : [branch])
+            const groups = branchesFor(branch)
               .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
               .filter(g => g.units.length > 0)
             const allUnits = groups.flatMap(g => g.units)
@@ -1251,7 +1258,7 @@ export default function ManagerDashboard({ onBack }) {
 
                 {/* ── 전 지점을 한 페이지에 압축한 보드(스프레드시트 스타일) ── */}
                 {(() => {
-                  const boardGroups = BRANCHES
+                  const boardGroups = branchesFor(branch)
                     .map(b => ({ branch: b, units: buildUnits(records.filter(r => r.branch === b)) }))
                     .filter(g => g.units.length > 0)
                   if (boardGroups.length === 0) {
@@ -1337,12 +1344,12 @@ export default function ManagerDashboard({ onBack }) {
               </>
             )
           })()
-        ) : isAll ? (
-          /* ───────── 전 지점 통합 대시보드 ───────── */
+        ) : isMulti ? (
+          /* ───────── 여러 지점 통합 대시보드 (전 지점 / 더콤마 전체) ───────── */
           <>
             {/* 히어로: 공제 전 금액 → (공제) → 실지급액 두 갈래로 정리 */}
             <div className="md-hero">
-              <div className="md-hero-label">{year}년 {month}월 · 전 지점 급여</div>
+              <div className="md-hero-label">{year}년 {month}월 · {isAll ? '전 지점' : branch} 급여</div>
               <div className="md-money">
                 <div className="md-money-card">
                   <div className="md-money-k">공제 전 금액<span>세전 인건비(월급)</span></div>
