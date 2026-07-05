@@ -1303,6 +1303,42 @@ export default function Home() {
     }
   }
 
+  // ── 직전 달 소득세(+지방세)를 이번 달 '소급 소득세'로 자동 입력 (직원 전체 · 부양가족 1명 기준) ──
+  const [retroBusy, setRetroBusy] = useState(false)
+  async function applyPrevMonthTaxRetro() {
+    if (retroBusy || saving || !selectedBranch) return
+    const staff = employees.filter(e => e.empType === '직원' && e.name && e.name.trim())
+    if (!staff.length) { alert('이 지점에 직원이 없습니다.'); return }
+    const cur = employees.find(e => e.id === activeEmpId) || employees[0]
+    let py = cur.year, pm = cur.month - 1
+    if (pm < 1) { pm = 12; py -= 1 }
+    if (!confirm(`${staff.length}명 직원의 ${pm}월 소득세(+지방소득세)를 ${cur.month}월 '소급 소득세'로 자동 입력합니다.\n· 간이세액표 · 부양가족 1명 기준\n· ${pm}월 과세급여를 불러와 자동 계산\n계속할까요?`)) return
+    setRetroBusy(true)
+    const results = []
+    for (const e of staff) {
+      let gross = 0, incomeTax = 0, localTax = 0, retro = 0
+      try {
+        const res = await fetch(`/api/load?branch=${encodeURIComponent(selectedBranch.name)}&name=${encodeURIComponent(e.name)}&year=${py}&month=${pm}`)
+        const r = await res.json()
+        if (r.success && r.data) {
+          gross = Number(r.data.grand_total) || 0
+          const t = gross > 0 ? lookupSimpleTax(gross, 1) : 0   // 부양가족 1명 고정
+          incomeTax = (t === null || t === undefined) ? 0 : t
+          localTax = Math.floor((incomeTax * 0.1) / 10) * 10     // 지방소득세 = 소득세 10%
+          retro = incomeTax + localTax
+        }
+      } catch {}
+      results.push({ id: e.id, name: e.name, gross, incomeTax, localTax, retro })
+    }
+    setEmployees(prev => prev.map(emp => {
+      const hit = results.find(x => x.id === emp.id)
+      return hit ? { ...emp, retroIncomeTax: hit.retro, _dirty: true } : emp
+    }))
+    setRetroBusy(false)
+    const lines = results.map(x => `· ${x.name}: ${pm}월 과세급여 ${x.gross.toLocaleString()} → 소득세 ${x.incomeTax.toLocaleString()} + 지방세 ${x.localTax.toLocaleString()} = 소급 ${x.retro.toLocaleString()}원`).join('\n')
+    alert(`✅ ${cur.month}월 소급 소득세 자동 입력 완료 (직원 ${results.length}명)\n\n${lines}\n\n※ 확인 후 아래 '임시저장' 또는 '최종마감'으로 저장하세요.`)
+  }
+
   function handleTabSwitch(id) {
     // 탭 전환 시 로컬스토리지만 저장 (Supabase 호출 없음)
     if (selectedBranch) {
@@ -3037,7 +3073,25 @@ export default function Home() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              {employees.some(e => e.empType === '직원' && e.name && e.name.trim()) && (
+                <div style={{ marginTop: '24px', padding: '14px 16px', border: '1px dashed #c9a24a', borderRadius: 12, background: '#fbf6ea' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#8a6d24', marginBottom: 8 }}>
+                    직전 달 소득세 소급 (직원 전체)
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#a1873f', lineHeight: 1.5, marginBottom: 10 }}>
+                    이 지점 직원들의 <b>직전 달 소득세 + 지방소득세</b>를 간이세액표(부양가족 1명)로 계산해 이번 달 <b>소급 소득세</b> 칸에 자동으로 채웁니다. 실행 후 <b>임시저장/최종마감</b>으로 저장하세요.
+                  </div>
+                  <button
+                    onClick={applyPrevMonthTaxRetro}
+                    disabled={retroBusy || !!saving}
+                    style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#b8954a', color: '#fff', cursor: (retroBusy || saving) ? 'wait' : 'pointer', opacity: (retroBusy || saving) ? 0.6 : 1 }}
+                  >
+                    {retroBusy ? '계산 중…' : '↩ 직전 달 소득세 자동 소급 적용'}
+                  </button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                 <button
                   className="btn outline"
                   onClick={() => handleManualSave('saved')}
