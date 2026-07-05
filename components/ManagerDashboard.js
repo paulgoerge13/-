@@ -53,7 +53,8 @@ export default function ManagerDashboard({ onBack }) {
     setLoading(true)
     try {
       let q = supabase.from('payroll').select('*').eq('year', year).eq('month', month)
-      if (branch !== ALL) q = q.eq('branch', branch)
+      if (branch === THECOMMA) q = q.in('branch', THECOMMA_BRANCH_NAMES)   // 더콤마 6개 지점 한 번에
+      else if (branch !== ALL) q = q.eq('branch', branch)
       const { data, error } = await q
         .order('branch', { ascending: true })
         .order('emp_name', { ascending: true })
