@@ -270,6 +270,7 @@ const EMPTY_EMP = {
   manualIncomeTax: 0,      // 4대보험 모드일 때 소득세(세무사 안내값 수동입력)
   retroIncomeTax: 0,       // 소급 소득세 — 지난달 미징수분을 이번 달에 추가 공제 (그 달에만 적용, 다음 달로 안 넘어감)
   mealAllowance: 0,        // 식대 (비과세) — 4대보험·소득세 산정에서 제외
+  mealFromBasic: false,    // 시급제 직원: 식대를 기본급 안에서 분리(총액 불변, 과세만 −식대). 끄면 식대를 별도 추가.
   severancePay: 0,         // 퇴직금 — 4대보험·소득세 제외, 지급액·실수령액에만 합산 (퇴직소득세 별도)
   birthDate: '',           // 생년월일 (명세서용, 비우면 주민번호 앞자리에서 자동)
   hireDate: '',            // 입사일 (YYYY-MM-DD) — 직원 기본급 일할계산용. 비우면 월초부터 만근
@@ -281,7 +282,7 @@ const EMPTY_EMP = {
 // 공제방식·소득세·식대·생년월일·입사일·퇴사일은 Supabase payroll 테이블에 컬럼이 없어서
 // DB에서 다시 불러올 때 매번 초기화됐다(=리셋 버그). 이 값들은 지점별·직원이름별로
 // 별도 localStorage 키에 따로 저장해 두고, DB 로드 후 다시 덮어 씌워 유지한다.
-const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'dependents', 'manualIncomeTax', 'mealAllowance', 'severancePay', 'birthDate', 'hireDate', 'resignDate', 'salaryType', 'monthlySalary']
+const EMP_SETTINGS_FIELDS = ['deductionType', 'incomeTaxMode', 'incomeTaxRate', 'dependents', 'manualIncomeTax', 'mealAllowance', 'mealFromBasic', 'severancePay', 'birthDate', 'hireDate', 'resignDate', 'salaryType', 'monthlySalary']
 function empSettingsKey(branchName) { return `payroll_empsettings_${branchName}` }
 function loadAllEmpSettings(branchName) {
   if (typeof window === 'undefined' || !branchName) return {}
@@ -569,6 +570,7 @@ export default function Home() {
             // 소급 소득세는 그 달(DB 행)에만 저장 → localStorage 보조 없이 DB값만 사용
             retroIncomeTax:  (r.retro_income_tax !== undefined && r.retro_income_tax !== null) ? Number(r.retro_income_tax) : (e.retroIncomeTax || 0),
             mealAllowance:   pick(r.meal_allowance, s.mealAllowance, e.mealAllowance || 0),
+            mealFromBasic:   (s.mealFromBasic !== undefined ? s.mealFromBasic : (e.mealFromBasic || false)),  // 식대 기본급 분리(localStorage 전용)
             severancePay:    pick(r.severance_pay, s.severancePay, e.severancePay || 0),
           }
           merged.workData = pruneWorkDataToEmployment(merged.workData, merged.hireDate, merged.resignDate)
@@ -1005,8 +1007,10 @@ export default function Home() {
     // ── 기본급 수동 차감 (직원만): 조퇴·지각 등 차감 시간(시간) × 시급을 기본급에서 차감 ──
     const manualDeductHours = isStaff ? (emp.workData?._deduct?.hours || 0) : 0
     const manualDeduction = Math.round(manualDeductHours * baseWage)
+    // 시급제 직원: 식대를 기본급 안에서 분리(총액 불변). 과세 기본급 = 시급×209 − 식대. (월급제는 이미 월급−식대라 제외)
+    const mealCutFromBasic = (isStaff && !isMonthlySalary && emp.mealFromBasic) ? (emp.mealAllowance || 0) : 0
     const totalBasic           = isStaff
-      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction)
+      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight
@@ -1193,6 +1197,7 @@ export default function Home() {
         manualIncomeTax: pick(r.income_tax, s.manualIncomeTax, 0),
         retroIncomeTax:  (r.retro_income_tax !== undefined && r.retro_income_tax !== null) ? Number(r.retro_income_tax) : 0,  // 소급 소득세는 그 달에만
         mealAllowance:   pick(r.meal_allowance, s.mealAllowance, 0),
+        mealFromBasic:   (s.mealFromBasic !== undefined ? s.mealFromBasic : false),  // 식대 기본급 분리(localStorage 전용)
         severancePay:    pick(r.severance_pay, s.severancePay, 0),   // DB 우선 + 브라우저 저장값 보조 (여러 기기 공유)
       }
       // 퇴사일이 있으면 그 범위 밖 근무표도 정리
@@ -3001,6 +3006,30 @@ export default function Home() {
                   />
                   원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
                 </label>
+                {/* 시급제 직원: 식대를 기본급 안에서 분리 (총액 불변, 과세만 낮춤) */}
+                {(activeEmp.empType || '알바') === '직원' && (activeEmp.salaryType || 'hourly') !== 'monthly' && (activeEmp.mealAllowance || 0) > 0 && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 6, marginLeft: 2, fontSize: 12, color: '#666', lineHeight: 1.5 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!activeEmp.mealFromBasic}
+                      onChange={e => updateEmp('mealFromBasic', e.target.checked)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>
+                      <b>식대를 기본급에서 분리</b> (총액 안 늘리고 과세만 낮춤)
+                      {activeEmp.mealFromBasic && totals && (
+                        <span style={{ display: 'block', color: '#2f6bbf', marginTop: 2 }}>
+                          → 과세 기본급 {Number(totals.totalBasic).toLocaleString()}원 + 식대 {Number(activeEmp.mealAllowance).toLocaleString()}원 (지급 총액 불변)
+                        </span>
+                      )}
+                      {!activeEmp.mealFromBasic && (
+                        <span style={{ display: 'block', color: '#bbb', marginTop: 2 }}>
+                          꺼두면 식대가 기본급 위에 추가로 지급돼요. 기본급 안에 식대가 포함된 경우 켜세요.
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
                   퇴직금
                   <input
