@@ -810,6 +810,20 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 추가 지급(소급·미지급 정산): workData._retroPay 에 저장 (과세, 그 달만 적용, DB work_data로 동기화) ──
+  function setRetroPay(val) {
+    const amt = Math.max(0, Math.round(Number(val) || 0))
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (amt > 0) wd._retroPay = amt
+      else delete wd._retroPay
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   function addEmployee(empType = '알바') {
     const newEmp = {
       ...EMPTY_EMP, id: Date.now(),
@@ -927,7 +941,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct') return                    // 수동 차감 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -1018,7 +1032,9 @@ export default function Home() {
     const totalHolidayOtPay    = (emp.manualHolidayOt || 0) + autoHolidayOtPay
     const totalHolidayNightPay = (emp.manualHolidayNight || 0) + autoHolidayNightPay
     const totalWeeklyFinal     = isStaffNoCalc ? (emp.manualWeeklyHoliday || 0) : (emp.manualWeeklyHoliday || 0) + totalWeeklyHoliday
-    const grandTotal = totalBasic + totalWeeklyFinal + totalOvertime + totalNight + totalHoliday + totalHolidayOtPay + totalHolidayNightPay
+    // 추가 지급(소급·미지급 정산): 과세 급여에 포함 → 3.3%/4대보험 원천징수 적용 (그 달만)
+    const retroPay = Math.max(0, Math.round(Number(emp.workData?._retroPay) || 0))
+    const grandTotal = totalBasic + totalWeeklyFinal + totalOvertime + totalNight + totalHoliday + totalHolidayOtPay + totalHolidayNightPay + retroPay
 
     const hoursWeekly = emp.hourlyWage > 0 ? Math.round((totalWeeklyFinal / emp.hourlyWage) * 10) / 10 : 0
 
@@ -1030,6 +1046,7 @@ export default function Home() {
     const netPay = grossPay - deductions.total                // 실지급액
 
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
+      retroPay,
       meal, severance, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
@@ -1652,6 +1669,7 @@ export default function Home() {
       ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근무시간(주간+야간 ${t.hoursHolidayWork}h) × 1.5배`],
       ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 0.5배 가산 (휴일근로 1.5배 + 0.5배 = 2.0배)`],
       ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
+      ['추가 지급(소급)', t.retroPay, '미지급분 소급 정산 (과세)'],
       ['퇴직금', t.severance, '4대보험·소득세 제외 (퇴직소득세 별도)', '퇴직'],
     ].filter(([l, v]) => v > 0 || l === '기본급')
 
@@ -2995,6 +3013,21 @@ export default function Home() {
                     원 <span style={{ color: '#bbb' }}>(지난달 미징수 소득세를 이번 달에 추가 공제 · 이 달만 적용)</span>
                   </label>
                 )}
+                {/* 추가 지급(소급·미지급 정산) — 지난달 덜 준 급여를 이번 달에 더 지급 (과세, 3.3%/4대보험 적용, 이 달만) */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                  추가 지급(소급)
+                  <input
+                    type="number"
+                    value={activeEmp.workData?._retroPay || ''}
+                    placeholder="0"
+                    onChange={e => setRetroPay(e.target.value)}
+                    style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                  />
+                  원 <span style={{ color: '#bbb' }}>(지난달 덜 준 급여를 이번 달에 추가 지급 · 과세(3.3%/4대보험 적용) · 이 달만)</span>
+                  {(activeEmp.workData?._retroPay || 0) > 0 && totals && (
+                    <b style={{ color: '#2f6bbf', width: '100%' }}>→ 과세급여에 +{Number(activeEmp.workData._retroPay).toLocaleString()}원 포함, 세금 공제 후 지급</b>
+                  )}
+                </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888' }}>
                   식대 (비과세)
                   <input
@@ -3074,6 +3107,7 @@ export default function Home() {
                       { label: '휴일근로',  total: totals.totalHoliday,         hours: totals.hoursHolidayWork,   desc: `휴일근무 ${totals.hoursHolidayWork}시간(주간+야간) × 시급 × 1.5배` },
                       { label: '휴일연장',  total: totals.totalHolidayOtPay,    hours: totals.hoursHolidayOt,     desc: `휴일연장 ${totals.hoursHolidayOt}시간 × 시급 × 0.5배 (휴일근로 1.5배에 추가 가산 → 합 2.0배)` },
                       { label: '휴일야간',  total: totals.totalHolidayNightPay, hours: totals.hoursHolidayNight,  desc: `휴일야간 ${totals.hoursHolidayNight}시간 × 시급 × 0.5배 (휴일근로에 추가 가산)` },
+                      { label: '추가 지급(소급)', total: totals.retroPay,        hours: null,                      desc: `미지급분 소급 정산 (과세 · 3.3%/4대보험 적용)` },
                       { label: '식대',      total: totals.meal,                 hours: null,                      desc: `비과세 (4대보험·소득세 제외)` },
                       { label: '퇴직금',    total: totals.severance,            hours: null,                      desc: `4대보험·소득세 제외 (퇴직소득세 별도)` },
                     ].filter(row => row.total > 0 || row.label === '기본급' || row.neg).map(({ label, total, hours, desc, neg }) => (
