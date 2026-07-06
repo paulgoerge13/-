@@ -31,6 +31,8 @@ export default function ManagerDashboard({ onBack }) {
   const [trash, setTrash] = useState([])                    // 휴지통(soft delete) 목록
   const [showTrash, setShowTrash] = useState(false)
   const [trashLoading, setTrashLoading] = useState(false)
+  const [mergeFrom, setMergeFrom] = useState(Math.max(1, now.getMonth()))  // 기간 합산 시작월 (기본 전달)
+  const [mergeTo, setMergeTo] = useState(now.getMonth() + 1)               // 기간 합산 종료월 (기본 이번달)
   const [showPw, setShowPw] = useState(false)       // 지점 비밀번호 표 보기/숨기기
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
@@ -75,9 +77,9 @@ export default function ManagerDashboard({ onBack }) {
 
   useEffect(() => { load() }, [branch, year, month])
 
-  // ── 지점별 월별 인건비: 그 해 전체(12개월) 레코드 로드 ──
+  // ── 지점별 월별 / 기간 합산: 그 해 전체(12개월) 레코드 로드 ──
   useEffect(() => {
-    if (view !== 'monthly') return
+    if (view !== 'monthly' && view !== 'merge') return
     let cancelled = false
     ;(async () => {
       setYearLoading(true)
@@ -1287,6 +1289,7 @@ export default function ManagerDashboard({ onBack }) {
           <button className={`md-tab ${view === 'transfer' ? 'on' : ''}`} onClick={() => setView('transfer')}>💸 이체 처리</button>
           <button className={`md-tab ${view === 'summary' ? 'on' : ''}`} onClick={() => setView('summary')}>📊 인건비 요약</button>
           <button className={`md-tab ${view === 'monthly' ? 'on' : ''}`} onClick={() => setView('monthly')}>📅 지점별 월별</button>
+          <button className={`md-tab ${view === 'merge' ? 'on' : ''}`} onClick={() => setView('merge')}>🧾 기간 합산</button>
         </div>
 
         {loading ? (
@@ -1501,6 +1504,80 @@ export default function ManagerDashboard({ onBack }) {
                   {pivotMetric === 'net'
                     ? '실지급(이체) 기준 — 직원 4대보험·알바 3.3% 공제 후 + 퇴직금 · 기록용 제외'
                     : '세전 지급액 기준 — 식대·퇴직금 포함(공제 전) · 기록용 제외'}
+                </p>
+              </>
+            )
+          })()
+        ) : view === 'merge' ? (
+          /* ───────── 기간 합산 정산 (여러 달을 사람별로 합쳐 한 번에 지급) ───────── */
+          (() => {
+            const lo = Math.min(mergeFrom, mergeTo), hi = Math.max(mergeFrom, mergeTo)
+            const brs = branchesFor(branch)
+            const recs = yearRecords.filter(r => !isRecordOnly(r) && brs.includes(r.branch) && r.month >= lo && r.month <= hi)
+            // 사람 단위로 합산 (지점+이름+계좌 기준)
+            const key = r => `${r.branch}||${r.emp_name}||${(r.account_number || '').replace(/\s/g, '')}`
+            const map = {}
+            recs.forEach(r => {
+              const k = key(r)
+              if (!map[k]) map[k] = { branch: r.branch, name: r.emp_name, type: r.emp_type, acct: r.account_number || '', months: [], amt: 0 }
+              map[k].months.push(r.month)
+              map[k].amt += transferAmt(r)
+            })
+            const people = Object.values(map).sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || (a.type === '직원' ? -1 : 1) || a.name.localeCompare(b.name, 'ko'))
+            const total = people.reduce((s, p) => s + p.amt, 0)
+            const cS = { padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #ececec', whiteSpace: 'nowrap' }
+            const hS = { ...cS, textAlign: 'center', color: '#8a8170', fontWeight: 700, background: '#f3efe6', borderBottom: '1px solid #d8d3c8' }
+            const nS = { ...cS, textAlign: 'left', fontWeight: 700, color: '#1a1a1a' }
+            const MoSel = ({ v, set }) => (
+              <select className="md-select" style={{ flex: 'none', width: 90 }} value={v} onChange={e => set(Number(e.target.value))}>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
+              </select>
+            )
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 12px', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{year}년 기간 합산 정산{branch !== ALL ? ` · ${branch === THECOMMA ? '더콤마' : branch}` : ''}</div>
+                  <span style={{ marginLeft: 'auto', fontSize: 13, color: '#666' }}>합산 기간</span>
+                  <MoSel v={mergeFrom} set={setMergeFrom} /> <span>~</span> <MoSel v={mergeTo} set={setMergeTo} />
+                </div>
+                <div className="tx-stats" style={{ marginBottom: 12 }}>
+                  <div className="tx-stat"><div className="tx-stat-k">합산 지급 인원</div><div className="tx-stat-v">{people.length}<small>명</small></div></div>
+                  <div className="tx-stat"><div className="tx-stat-k">합산 총 이체액 ({lo}~{hi}월)</div><div className="tx-stat-v done">{fmt(total)}<small>원</small></div></div>
+                </div>
+                {people.length === 0 ? <p className="md-empty">해당 기간 데이터가 없습니다.</p> : (
+                  <div style={{ overflowX: 'auto', border: '1px solid #e2ded5', borderRadius: 12, background: '#fff' }}>
+                    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 620 }}>
+                      <thead>
+                        <tr>
+                          {branch === ALL && <th style={{ ...hS, textAlign: 'left' }}>지점</th>}
+                          <th style={{ ...hS, textAlign: 'left' }}>이름</th>
+                          <th style={hS}>구분</th>
+                          <th style={{ ...hS, textAlign: 'left' }}>은행·계좌</th>
+                          <th style={hS}>포함 월</th>
+                          <th style={{ ...hS, background: '#ece7da' }}>합산 이체액</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {people.map((p, i) => (
+                          <tr key={i}>
+                            {branch === ALL && <td style={{ ...cS, textAlign: 'left', color: '#888' }}>{p.branch}</td>}
+                            <td style={nS}>{p.name}</td>
+                            <td style={{ ...cS, textAlign: 'center', color: p.type === '직원' ? '#2f6bbf' : '#b07a1e' }}>{p.type || '알바'}</td>
+                            <td style={{ ...cS, textAlign: 'left', color: '#555', fontSize: 12 }}>{p.acct || '—'}</td>
+                            <td style={{ ...cS, textAlign: 'center', color: '#999', fontSize: 12 }}>{[...new Set(p.months)].sort((a, b) => a - b).join('·')}월</td>
+                            <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(p.amt)}</td>
+                          </tr>
+                        ))}
+                        <tr>
+                          <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }} colSpan={branch === ALL ? 5 : 4}>합계 ({people.length}명)</td>
+                          <td style={{ ...cS, fontWeight: 800, background: '#ece7da' }}>{fmt(total)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="tx-board-note" style={{ marginTop: 10 }}>
+                  선택 기간({lo}~{hi}월)의 실지급(이체액)을 사람별로 합산 · 폐업/여러 달 한꺼번에 지급용 · 기록용·삭제(휴지통) 제외
                 </p>
               </>
             )
