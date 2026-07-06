@@ -460,6 +460,7 @@ export default function Home() {
   const [tooltipInfo, setTooltipInfo] = useState(null)
   // ── 수정 #2: 시간 입력 임시 상태 (셀별) ──
   const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
+  const [applyDows, setApplyDows] = useState([1, 2, 3, 4, 5]) // 일괄 적용할 요일 (0=일 … 6=토, 기본 월~금)
   const [importing, setImporting] = useState(false)
   const [saving, setSaving] = useState(null)   // null | {done, total} 전원 저장 진행상황
   const [branchTab, setBranchTab] = useState('payroll') // 지점 화면 탭: payroll | inventory
@@ -690,6 +691,7 @@ export default function Home() {
   function applyDefaultToWeekdays() {
     const start = activeEmp.defaultTimeStart, end = activeEmp.defaultTimeEnd
     if (!start || !end || start === end) { alert('먼저 위 "기본 근무 시간"을 입력해주세요. (예: 09:00 ~ 18:00)'); return }
+    if (!applyDows.length) { alert('적용할 요일을 하나 이상 선택해주세요.'); return }
     const y = activeEmp.year, m = activeEmp.month
     const split = netSplit(start, end, 0)
     const daysInMonth = new Date(y, m, 0).getDate()
@@ -698,7 +700,7 @@ export default function Home() {
     let count = 0
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(y, m - 1, d).getDay()
-      if (dow === 0 || dow === 6) continue   // 토·일 제외
+      if (!applyDows.includes(dow)) continue   // 선택한 요일만
       const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
       const cur = wd0[ds]
       if (cur && cur.type && cur.type !== '평') continue   // 휴무·연차·결근·휴일 지정일은 보존
@@ -714,7 +716,8 @@ export default function Home() {
       ? { ...e, workData: { ...e.workData, ...newDays }, _dirty: true } : e))
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
-    alert(`평일 ${count}일에 ${start}~${end} 를 적용했어요.\n(휴무·연차로 지정한 날은 그대로 뒀어요)\n확인 후 저장하세요.`)
+    const dowLabel = [...applyDows].sort().map(x => ['일','월','화','수','목','금','토'][x]).join('·')
+    alert(`${dowLabel}요일 ${count}일에 ${start}~${end} 를 적용했어요.\n(휴무·연차로 지정한 날은 그대로 뒀어요)\n확인 후 저장하세요.`)
   }
 
   // ── 수정 #2: 시간 입력 포커스 아웃 시 자동 포맷 + 기본시간 자동계산 ──
@@ -2668,11 +2671,27 @@ export default function Home() {
                       placeholder="00:00"
                     />
                   </div>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                    {['일', '월', '화', '수', '목', '금', '토'].map((label, dow) => {
+                      const on = applyDows.includes(dow)
+                      return (
+                        <button
+                          key={dow}
+                          type="button"
+                          onClick={() => setApplyDows(prev => prev.includes(dow) ? prev.filter(x => x !== dow) : [...prev, dow])}
+                          style={{ flex: 1, fontSize: 11.5, fontWeight: 700, padding: '5px 0', borderRadius: 6, cursor: 'pointer',
+                            border: on ? '1px solid #b8954a' : '1px solid #d0ccc5',
+                            background: on ? '#b8954a' : '#fff',
+                            color: on ? '#fff' : (dow === 0 ? '#e05555' : dow === 6 ? '#2f6bbf' : '#666') }}
+                        >{label}</button>
+                      )
+                    })}
+                  </div>
                   <button
                     type="button"
                     onClick={applyDefaultToWeekdays}
-                    style={{ marginTop: 8, width: '100%', fontSize: 12, fontWeight: 700, color: '#fff', background: '#b8954a', border: 'none', borderRadius: 8, padding: '8px 0', cursor: 'pointer' }}
-                  >📅 이 시간을 평일(월~금) 전체에 적용</button>
+                    style={{ marginTop: 6, width: '100%', fontSize: 12, fontWeight: 700, color: '#fff', background: '#b8954a', border: 'none', borderRadius: 8, padding: '8px 0', cursor: 'pointer' }}
+                  >📅 선택한 요일 전체에 이 시간 적용</button>
                 </div>
               </div>
 
