@@ -315,7 +315,7 @@ export default function ManagerDashboard({ onBack }) {
   // 지점의 이체 유닛: 합산 지점이고 현재 보는 달이 합산 대상 월이면 여러 달 합산, 아니면 그 달만
   function unitsForBranch(b) {
     if (MERGE_BRANCHES[b] && MERGE_BRANCHES[b].includes(month)) return combinedUnitsForMergeBranch(b)
-    return unitsForBranch(b)
+    return buildUnits(records.filter(r => r.branch === b && !isRecordOnly(r)))
   }
   function unitAmt(u) { return u.recs.reduce((s, r) => s + transferAmt(r), 0) }
   function unitSeverance(u) { return u.recs.reduce((s, r) => s + recSeverance(r), 0) }          // 퇴직금 합계
