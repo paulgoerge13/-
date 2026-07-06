@@ -685,6 +685,38 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 기본 근무 시간을 그 달 평일(월~금) 전체에 일괄 적용 ──
+  //   휴무·연차·결근·휴일로 이미 지정한 날은 건드리지 않는다.
+  function applyDefaultToWeekdays() {
+    const start = activeEmp.defaultTimeStart, end = activeEmp.defaultTimeEnd
+    if (!start || !end || start === end) { alert('먼저 위 "기본 근무 시간"을 입력해주세요. (예: 09:00 ~ 18:00)'); return }
+    const y = activeEmp.year, m = activeEmp.month
+    const split = netSplit(start, end, 0)
+    const daysInMonth = new Date(y, m, 0).getDate()
+    const wd0 = activeEmp.workData || {}
+    const newDays = {}
+    let count = 0
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(y, m - 1, d).getDay()
+      if (dow === 0 || dow === 6) continue   // 토·일 제외
+      const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      const cur = wd0[ds]
+      if (cur && cur.type && cur.type !== '평') continue   // 휴무·연차·결근·휴일 지정일은 보존
+      newDays[ds] = {
+        type: '평', basicH: 0, restH: 0, overtimeH: 0,
+        holidayH: 0, holidayRestH: 0, holidayOtH: 0, holidayNightH: 0,
+        timeStart: start, timeEnd: end,
+        daytimeH: split ? split.day : 0, nightH: split ? split.night : 0,
+      }
+      count++
+    }
+    setEmployees(prev => prev.map(e => e.id === activeEmpId
+      ? { ...e, workData: { ...e.workData, ...newDays }, _dirty: true } : e))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+    alert(`평일 ${count}일에 ${start}~${end} 를 적용했어요.\n(휴무·연차로 지정한 날은 그대로 뒀어요)\n확인 후 저장하세요.`)
+  }
+
   // ── 수정 #2: 시간 입력 포커스 아웃 시 자동 포맷 + 기본시간 자동계산 ──
   function handleTimeBlur(dateStr, field, rawVal) {
     const formatted = formatTimeInput(rawVal)
@@ -2636,6 +2668,11 @@ export default function Home() {
                       placeholder="00:00"
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={applyDefaultToWeekdays}
+                    style={{ marginTop: 8, width: '100%', fontSize: 12, fontWeight: 700, color: '#fff', background: '#b8954a', border: 'none', borderRadius: 8, padding: '8px 0', cursor: 'pointer' }}
+                  >📅 이 시간을 평일(월~금) 전체에 적용</button>
                 </div>
               </div>
 
