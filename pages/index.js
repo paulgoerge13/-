@@ -875,6 +875,19 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 식대를 기본급에서 분리: workData._mealFromBasic 에 저장 (DB work_data → 마감·재로그인·타 기기 유지) ──
+  function setMealFromBasic(on) {
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (on) wd._mealFromBasic = true
+      else delete wd._mealFromBasic
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   function addEmployee(empType = '알바') {
     const newEmp = {
       ...EMPTY_EMP, id: Date.now(),
@@ -992,7 +1005,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly') return   // 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -1074,7 +1087,8 @@ export default function Home() {
     const manualDeductHours = isStaff ? (emp.workData?._deduct?.hours || 0) : 0
     const manualDeduction = Math.round(manualDeductHours * baseWage)
     // 시급제 직원: 식대를 기본급 안에서 분리(총액 불변). 과세 기본급 = 시급×209 − 식대. (월급제는 이미 월급−식대라 제외)
-    const mealCutFromBasic = (isStaff && !isMonthlySalary && emp.mealFromBasic) ? (emp.mealAllowance || 0) : 0
+    const mealFromBasicOn = !!(emp.workData?._mealFromBasic || emp.mealFromBasic)
+    const mealCutFromBasic = (isStaff && !isMonthlySalary && mealFromBasicOn) ? (emp.mealAllowance || 0) : 0
     const totalBasic           = isStaff
       ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
       : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
@@ -3135,18 +3149,18 @@ export default function Home() {
                   <label style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 6, marginLeft: 2, fontSize: 12, color: '#666', lineHeight: 1.5 }}>
                     <input
                       type="checkbox"
-                      checked={!!activeEmp.mealFromBasic}
-                      onChange={e => updateEmp('mealFromBasic', e.target.checked)}
+                      checked={!!(activeEmp.workData?._mealFromBasic || activeEmp.mealFromBasic)}
+                      onChange={e => setMealFromBasic(e.target.checked)}
                       style={{ marginTop: 2 }}
                     />
                     <span>
                       <b>식대를 기본급에서 분리</b> (총액 안 늘리고 과세만 낮춤)
-                      {activeEmp.mealFromBasic && totals && (
+                      {(activeEmp.workData?._mealFromBasic || activeEmp.mealFromBasic) && totals && (
                         <span style={{ display: 'block', color: '#2f6bbf', marginTop: 2 }}>
                           → 과세 기본급 {Number(totals.totalBasic).toLocaleString()}원 + 식대 {Number(activeEmp.mealAllowance).toLocaleString()}원 (지급 총액 불변)
                         </span>
                       )}
-                      {!activeEmp.mealFromBasic && (
+                      {!(activeEmp.workData?._mealFromBasic || activeEmp.mealFromBasic) && (
                         <span style={{ display: 'block', color: '#bbb', marginTop: 2 }}>
                           꺼두면 식대가 기본급 위에 추가로 지급돼요. 기본급 안에 식대가 포함된 경우 켜세요.
                         </span>
