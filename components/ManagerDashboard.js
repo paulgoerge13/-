@@ -192,15 +192,16 @@ export default function ManagerDashboard({ onBack }) {
     const employment = Math.floor(taxable * 0.009 / 10) * 10
     return pension + health + care + employment
   }
-  function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%)
+  function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%) + 소급 소득세
     if (isFixed(r)) return 0   // 과거 확정 금액은 이미 net → 공제 없음
+    const retro = Number(r.retro_income_tax) || 0   // 소급 소득세 (개인 화면과 동일하게 원천세에 포함)
     const taxable = fixGrand(r)
     if (r.emp_type === '직원') {
       const incomeTax = r.income_tax || 0
       const localTax  = Math.floor((incomeTax * 0.1) / 10) * 10
-      return incomeTax + localTax
+      return incomeTax + localTax + retro
     }
-    return Math.round(taxable * 0.03) + Math.round(taxable * 0.003)  // 3.3%
+    return Math.round(taxable * 0.03) + Math.round(taxable * 0.003) + retro  // 3.3% + 소급
   }
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
   function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
