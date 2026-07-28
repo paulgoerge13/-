@@ -244,6 +244,15 @@ function parseExcelHours(v) {
   return 0
 }
 
+// 이름 정규화: "더콤마 김현준님", "임병우P2", "김진아G" → 핵심 이름(김현준·임병우·김진아)
+function normName(s) {
+  return String(s || '')
+    .replace(/더콤마라운지|더콤마|라운지/g, '')   // 브랜드 접두 제거
+    .replace(/님$/,'')                             // 존칭 제거
+    .replace(/\s+/g, '')                            // 공백 제거
+    .replace(/[A-Za-z]+\d*$/,'')                    // 끝의 마커(P2·P4·G 등) 제거
+    .trim()
+}
 // 지점명 매칭: "더콤마라운지 광명점" ↔ "광명GIDC점"
 function normBranch(s) { return String(s || '').replace(/더콤마라운지|점|\s/g, '') }
 function branchMatches(appName, wsName) {
@@ -1499,20 +1508,17 @@ export default function Home() {
         if (hIdx < 0) return
         const header = rows[hIdx]
         const ci = (label) => header.indexOf(label)
-        const cDate = ci('날짜'), cWs = ci('워크스페이스명'), cName = ci('이름')
+        const ciAny = (...labels) => { for (const l of labels) { const i = header.indexOf(l); if (i >= 0) return i } return -1 }
+        const cDate = ci('날짜'), cWs = ciAny('워크스페이스명', '매장명', '지점', '매장', '워크스페이스'), cName = ci('이름')
         const cIn = ci('출근'), cOut = ci('퇴근'), cRest = ci('휴게시간'), cWage = ci('시급/월급')
 
         const dataRows = rows.slice(hIdx + 1).filter(r => parseExcelDate(r[cDate]))
         if (dataRows.length === 0) return
 
-        const wsBranch = dataRows[0][cWs]
-        if (!branchMatches(selectedBranch.name, wsBranch)) {
-          skippedBranches.add(String(wsBranch || '알수없음').replace('더콤마라운지', '').trim())
-          skippedSheets++
-          return
-        }
-
-        const empName = String(dataRows[0][cName] || sheetName.split('_')[0] || '').trim()
+        // 지점 무관 — 어떤 엑셀이든 이름으로 매칭 (지점은 참고용으로만 기록)
+        const wsBranch = cWs >= 0 ? dataRows[0][cWs] : ''
+        const rawName = String(dataRows[0][cName] || sheetName.split('_')[0] || '').trim()
+        const empName = normName(rawName) || rawName
         const empType = String(dataRows[0][cWage] || '').includes('월급') ? '직원' : '알바'
         const workData = {}
         const monthCount = {}
@@ -1552,7 +1558,7 @@ export default function Home() {
       setEmployees(prev => {
         let next = [...prev]
         imported.forEach((imp, idx) => {
-          const existIdx = next.findIndex(e => e.name && e.name.trim() === imp.name)
+          const existIdx = next.findIndex(e => e.name && (e.name.trim() === imp.name || normName(e.name) === imp.name))
           if (existIdx >= 0) {
             next[existIdx] = { ...next[existIdx], workData: imp.workData, year: imp.year, month: imp.month, _dirty: true }
             if (idx === 0) firstId = next[existIdx].id
