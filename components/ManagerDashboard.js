@@ -1239,7 +1239,8 @@ export default function ManagerDashboard({ onBack }) {
   // 직원을 위, 알바를 아래로 정렬 (그 안에서는 이름순)
   const empRank = r => (r.emp_type === '직원' ? 0 : 1)
   const sortByType = (a, b) => empRank(a) - empRank(b) || String(a.emp_name).localeCompare(String(b.emp_name), 'ko')
-  const sortedRecords = [...records].sort(sortByType)
+  const sortedRecords = [...payRecords].sort(sortByType)   // 표=합계 일치: 기록용(_recordOnly) 제외
+  const recordOnlyRecs = records.filter(isRecordOnly)      // 집계에서 빠진 '기록용' 명단(안내용)
   // 이체 유닛도 직원 포함 유닛을 위로
   const unitRank = u => (u.recs.some(r => r.emp_type === '직원') ? 0 : 1)
 
@@ -1729,6 +1730,7 @@ export default function ManagerDashboard({ onBack }) {
               const hS = { ...cS, textAlign: 'center', color: '#8a8170', fontWeight: 700, background: '#f3efe6', borderBottom: '1px solid #d8d3c8' }
               const nS = { ...cS, textAlign: 'left', fontWeight: 700, color: '#1a1a1a' }
               return (
+                <>
                 <div style={{ overflowX: 'auto', border: '1px solid #e2ded5', borderRadius: 12, background: '#fff' }}>
                   <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 580 }}>
                     <thead>
@@ -1755,7 +1757,7 @@ export default function ManagerDashboard({ onBack }) {
                         </tr>
                       ))}
                       <tr>
-                        <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }} colSpan={2}>합계 ({records.length}명)</td>
+                        <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }} colSpan={2}>합계 ({sortedRecords.length}명)</td>
                         <td style={{ ...cS, fontWeight: 800, background: '#f3efe6' }}>{fmt(totalGrand)}</td>
                         <td style={{ ...cS, fontWeight: 800, background: '#f3efe6', color: '#c0504a' }}>{fmt(curMajor)}</td>
                         <td style={{ ...cS, fontWeight: 800, background: '#f3efe6', color: '#c0504a' }}>{fmt(curWithhold)}</td>
@@ -1765,8 +1767,14 @@ export default function ManagerDashboard({ onBack }) {
                     </tbody>
                   </table>
                 </div>
-              )
-            })()}
+                {recordOnlyRecs.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#b45309', background: '#fdf3e2', border: '1px solid #ecdcb0', borderRadius: 8, padding: '8px 12px' }}>
+                    🔒 <b>기록용(집계 제외) {recordOnlyRecs.length}명</b> — {recordOnlyRecs.map(r => r.emp_name).join(', ')} · 이 인원은 위 합계·이체에서 빠져요. 실제 지급 대상이면 해당 직원의 <b>기록용 제외</b> 체크를 풀어주세요.
+                  </div>
+                )}
+              </>
+            )
+          })()}
           </>
         )}
       </div>
