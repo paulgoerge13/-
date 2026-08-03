@@ -884,6 +884,20 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 수습 감액(%): workData._probationPct 에 저장 (예: 90 = 임금 90% 지급, 그 달만) ──
+  function setProbationPct(val) {
+    const p = Math.max(0, Math.min(100, Math.round(Number(val) || 0)))
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (p > 0 && p < 100) wd._probationPct = p
+      else delete wd._probationPct
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   // ── 식대를 기본급에서 분리: workData._mealFromBasic 에 저장 (DB work_data → 마감·재로그인·타 기기 유지) ──
   function setMealFromBasic(on) {
     setEmployees(prev => prev.map(e => {
@@ -1014,7 +1028,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic') return   // 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -1063,10 +1077,13 @@ export default function Home() {
     //    → 자동 수당을 위에 더하지 않는다(이중지급 방지). 결근·일할 공제 기준시급만 월급÷209로 환산.
     //    월급(총액)에는 식대(비과세)가 포함 → 과세 기본급 = 월급 − 식대. (시급제/알바는 시급 그대로)
     const isMonthlySalary = emp.empType === '직원' && emp.salaryType === 'monthly'
+    // 수습 감액: work_data._probationPct(예:90)면 임금(기본급·수당)을 그 %로 지급. 식대·퇴직금은 감액 안 함. (직원만)
+    const probPct = (emp.empType === '직원' && Number(emp.workData?._probationPct) > 0) ? Number(emp.workData._probationPct) : 100
+    const probMult = probPct / 100
     const monthlyTaxableBasic = isMonthlySalary
-      ? Math.max(0, (Number(emp.monthlySalary) || 0) - (emp.mealAllowance || 0))  // 과세 기본급 = 월급 − 식대
+      ? Math.round(Math.max(0, (Number(emp.monthlySalary) || 0) - (emp.mealAllowance || 0)) * probMult)  // 과세 기본급 = (월급 − 식대) × 수습%
       : 0
-    const baseWage = isMonthlySalary ? Math.round(monthlyTaxableBasic / 209) : emp.hourlyWage
+    const baseWage = isMonthlySalary ? Math.round(monthlyTaxableBasic / 209) : Math.round((emp.hourlyWage || 0) * probMult)
     // 연장수당은 직원만. 포괄임금제면 월급에 포함되어 자동 가산 안 함.
     const autoOvertime        = (emp.empType === '직원' && !isMonthlySalary) ? calcOvertime(mOtH, baseWage) : 0
     // 야간수당: 직원 = 야간시간 × 시급 × 0.5(가산). 알바 = 야간시간 × 시급 × 1.5. 포괄임금제면 0(월급 포함).
@@ -1114,7 +1131,8 @@ export default function Home() {
     const hoursWeekly = emp.hourlyWage > 0 ? Math.round((totalWeeklyFinal / emp.hourlyWage) * 10) / 10 : 0
 
     // ── 식대(비과세) · 퇴직금 · 지급액계 · 공제 · 실수령액 ──
-    const meal = emp.mealAllowance || 0
+    // 식대 일할: 직원 중도 입·퇴사면 근무일 비례로 식대도 줄임 (기본급 일할과 동일 비율). 만근이면 그대로.
+    const meal = Math.round((emp.mealAllowance || 0) * (isStaff ? proration.ratio : 1))
     const severance = emp.severancePay || 0                   // 퇴직금 (4대보험·소득세 제외)
     const grossPay = grandTotal + meal + severance            // 지급액계 (과세 + 비과세 + 퇴직금)
     const deductions = calcDeductions(grandTotal, emp)        // 공제는 과세급여(식대·퇴직금 제외) 기준
@@ -2581,21 +2599,23 @@ export default function Home() {
                     onClick={() => updateEmp('empType', '알바')}
                   >알바</button>
                 </div>
-                {/* 기록용 제외 — 관리자 이체·총액에서 빼고 이 기록은 남김 (같은 사람 직원+pt 합산 등) */}
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 8, fontSize: 12, color: !!activeEmp.workData?._recordOnly ? '#b45309' : '#888', lineHeight: 1.5, background: !!activeEmp.workData?._recordOnly ? '#fdf3e2' : 'transparent', border: !!activeEmp.workData?._recordOnly ? '1px solid #ecdcb0' : '1px solid transparent', borderRadius: 8, padding: '7px 9px' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!activeEmp.workData?._recordOnly}
-                    onChange={e => setRecordOnly(e.target.checked)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <span>
-                    <b>기록용 — 관리자 총액·이체에서 제외</b>
-                    <span style={{ display: 'block', color: '#bbb', marginTop: 2 }}>
-                      이 기록은 남지만 관리자 페이지 총 이체액/집계에는 안 들어가요. (예: 같은 사람이 직원+pt로 나뉜 경우, pt는 여기 체크하고 그 금액을 직원의 <b>추가 지급(소급)</b> 칸에 넣어 4대보험·소득세를 한 번에 계산)
+                {/* 기록용 제외 — 이미 기록용으로 지정된 특수 레코드(예: 김현준P3)에서만 보임 (실수 방지) */}
+                {!!activeEmp.workData?._recordOnly && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 8, fontSize: 12, color: '#b45309', lineHeight: 1.5, background: '#fdf3e2', border: '1px solid #ecdcb0', borderRadius: 8, padding: '7px 9px' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!activeEmp.workData?._recordOnly}
+                      onChange={e => setRecordOnly(e.target.checked)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>
+                      <b>기록용 — 관리자 총액·이체에서 제외</b>
+                      <span style={{ display: 'block', color: '#bbb', marginTop: 2 }}>
+                        이 기록은 남지만 관리자 총액/이체엔 안 들어가요. (같은 사람 직원+pt 합산용 · 특수 케이스)
+                      </span>
                     </span>
-                  </span>
-                </label>
+                  </label>
+                )}
                 {activeEmp.empType === '직원' && (
                   <div style={{ marginTop: 10 }}>
                     {/* 기본급 방식: 시급×209 자동 / 월급 직접입력 */}
@@ -3150,6 +3170,23 @@ export default function Home() {
                   />
                   원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
                 </label>
+                {/* 수습 감액(%) — 직원만. 임금(기본급·수당)만 그 %로, 식대·퇴직금은 감액 안 함 */}
+                {(activeEmp.empType || '알바') === '직원' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                    수습 감액
+                    <input
+                      type="number" min="0" max="100"
+                      value={activeEmp.workData?._probationPct ?? ''}
+                      placeholder="100"
+                      onChange={e => setProbationPct(e.target.value)}
+                      style={{ width: 70, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                    />
+                    % <span style={{ color: '#bbb' }}>지급 (수습이면 90 · 임금에만 적용, 식대·퇴직금 제외 · 비우면 100%)</span>
+                    {activeEmp.workData?._probationPct > 0 && activeEmp.workData._probationPct < 100 && (
+                      <b style={{ color: '#b07a1e', width: '100%' }}>→ 수습 {activeEmp.workData._probationPct}%: 기본급·수당이 {activeEmp.workData._probationPct}%로 계산돼요 (식대·퇴직금은 그대로)</b>
+                    )}
+                  </label>
+                )}
                 {/* 시급제 직원: 식대를 기본급 안에서 분리 (총액 불변, 과세만 낮춤) */}
                 {(activeEmp.empType || '알바') === '직원' && (activeEmp.salaryType || 'hourly') !== 'monthly' && (activeEmp.mealAllowance || 0) > 0 && (
                   <label style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 6, marginLeft: 2, fontSize: 12, color: '#666', lineHeight: 1.5 }}>

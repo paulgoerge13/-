@@ -204,7 +204,25 @@ export default function ManagerDashboard({ onBack }) {
     return Math.round(taxable * 0.03) + Math.round(taxable * 0.003) + retro  // 3.3% + 소급
   }
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
-  function recNet(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) }
+  // 식대 일할: 직원 중도 입·퇴사면 근무일 비례로 식대도 줄임 (개인 화면과 동일) — 만근/알바는 그대로
+  function recProrationRatio(r) {
+    if (r.emp_type !== '직원') return 1
+    const y = Number(r.year), m = Number(r.month)
+    if (!y || !m) return 1
+    const monthDays = new Date(y, m, 0).getDate()
+    const mStart = new Date(y, m - 1, 1), mEnd = new Date(y, m - 1, monthDays)
+    const pd = s => { const x = String(s || '').match(/(\d{4})-(\d{1,2})-(\d{1,2})/); return x ? new Date(+x[1], +x[2] - 1, +x[3]) : null }
+    const hire = pd(r.hire_date), resign = pd(r.resign_date)
+    if (hire && hire > mEnd) return 0
+    if (resign && resign < mStart) return 0
+    const start = (hire && hire > mStart) ? hire : mStart
+    const end = (resign && resign < mEnd) ? resign : mEnd
+    if (end < start) return 0
+    if ((!hire || hire <= mStart) && (!resign || resign >= mEnd)) return 1
+    return (Math.round((end - start) / 86400000) + 1) / monthDays
+  }
+  function recMeal(r) { return Math.round((Number(r.meal_allowance) || 0) * recProrationRatio(r)) }
+  function recNet(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) }
   // 퇴직금: 4대보험·근로소득세 공제 대상이 아니며(퇴직소득세 별도), 입력된 금액 그대로 이체액에 더한다.
   function recSeverance(r) { return Number(r.severance_pay) || 0 }
 
@@ -212,7 +230,7 @@ export default function ManagerDashboard({ onBack }) {
   //   실지급 = 세전지급액(grand_total) + 식대(비과세) − 공제총액 + 퇴직금
   //   공제는 직원 = 4대보험(+소득세·지방세) / 알바 = 3.3% 기준 (요약 화면과 동일하게 통일).
   //   → recDeduction(r) 이 직원/알바 구분으로 공제를 계산하므로 그대로 사용한다.
-  function transferAmt(r) { return fixGrand(r) + (r.meal_allowance || 0) - recDeduction(r) + recSeverance(r) }
+  function transferAmt(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) + recSeverance(r) }
 
   // ── 이체 상태 (확정 → 이체완료 두 가지만 순환) ──
   const STATUS_ORDER = ['확정', '이체완료']
@@ -333,7 +351,7 @@ export default function ManagerDashboard({ onBack }) {
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
   function unitMixed(u) { return u.recs.length > 1 }
   // ── 이체자가 "공제 전(세전) → 공제 → 실제 이체액" 을 한눈에 확인할 수 있도록 ──
-  function unitGross(u) { return u.recs.reduce((s, r) => s + fixGrand(r) + (r.meal_allowance || 0), 0) } // 공제 전(세전+식대)
+  function unitGross(u) { return u.recs.reduce((s, r) => s + fixGrand(r) + recMeal(r), 0) } // 공제 전(세전+식대)
   function unitDeduction(u) { return u.recs.reduce((s, r) => s + recDeduction(r), 0) }                   // 공제 합계
   // 이 유닛의 공제 방식 이름 (4대보험 / 3.3% / 공제없음) — 배지와 동일 기준
   function unitDedLabel(u) {
@@ -487,7 +505,7 @@ export default function ManagerDashboard({ onBack }) {
         const extra = recs.filter(r => !used.includes(r)).slice(0, 3 - used.length)
         used = [...used, ...extra]
       }
-      const wageSum = used.reduce((s, r) => s + fixGrand(r) + (r.meal_allowance || 0), 0)
+      const wageSum = used.reduce((s, r) => s + fixGrand(r) + recMeal(r), 0)
       const daysSum = used.reduce((s, r) => s + new Date(r.year, r.month, 0).getDate(), 0)
       const avgDaily = daysSum > 0 ? wageSum / daysSum : 0
       const hireD = new Date(sevHire)
@@ -1480,7 +1498,7 @@ export default function ManagerDashboard({ onBack }) {
             if (yearLoading) return <p className="md-loading">LOADING...</p>
             const recs = yearRecords.filter(r => !isRecordOnly(r))
             if (recs.length === 0) return <p className="md-empty">{year}년 데이터가 없습니다.</p>
-            const grossAmt = (r) => fixGrand(r) + (r.meal_allowance || 0) + (Number(r.severance_pay) || 0)
+            const grossAmt = (r) => fixGrand(r) + recMeal(r) + (Number(r.severance_pay) || 0)
             const val = (r) => pivotMetric === 'gross' ? grossAmt(r) : transferAmt(r)
             const months = Array.from({ length: 12 }, (_, i) => i + 1).filter(m => recs.some(r => r.month === m))
             const brs = branchesFor(branch).filter(b => recs.some(r => r.branch === b))
