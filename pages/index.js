@@ -2367,7 +2367,7 @@ export default function Home() {
                 {appMode === 'inventory' ? '재고를 관리할 지점을 선택해주세요 (비밀번호 없이 바로 진입)' : '급여 계산할 지점을 선택해주세요'}
               </p>
               <div className="branch-grid">
-                {BRANCHES.map((b, i) => (
+                {(appMode === 'inventory' ? BRANCHES.filter(b => b.brand === 'thecomma') : BRANCHES).map((b, i) => (
                   <div key={b.id} className="branch-card" onClick={() => {
                     setSelectedBranch(b)
                     if (appMode === 'inventory') {
