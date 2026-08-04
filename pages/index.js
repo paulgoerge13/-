@@ -981,10 +981,14 @@ export default function Home() {
     let weekDayH = 0, weekNightH = 0, weekRestH = 0, weekOtH = 0, weekRegH = 0
     // 휴일근무를 주간/야간/연장으로 분리해 집계 (연장은 주간/야간에 포함된 가산분이라 합계엔 안 더함)
     let weekHolidayDayH = 0, weekHolidayNightH = 0, weekHolidayOtH = 0
+    let hasAbsent = false   // 이 주에 결근이 있으면 = 개근 아님 → 주휴수당 미발생
     week.forEach(day => {
       if (!day) return
       const ds = `${emp.year}-${String(emp.month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
       const d = emp.workData[ds] || {}
+      // 결근(결): 예전에 입력한 시간이 남아 있어도 절대 집계하지 않는다(월 집계와 동일).
+      //   또한 결근이 있는 주는 소정근로일 개근이 아니므로 주휴수당이 발생하지 않는다.
+      if (d.type === '결') { hasAbsent = true; return }
       if (d.type === '공' || d.type === '연') return // 휴무·연차 제외
       if (d.type === '휴' && emp.empType === '직원') {
         // 직원 휴일근로는 일반 주간/야간에 섞지 않고 휴일근무로만 집계 (중복 방지)
@@ -1012,7 +1016,7 @@ export default function Home() {
     return {
       weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH, weekHolidayH,
       weekHolidayDayH, weekHolidayNightH, weekHolidayOtH,
-      weeklyHolidayPay: isStaffNoCalc ? 0 : calcWeeklyHoliday(weekRegH, emp.hourlyWage)
+      weeklyHolidayPay: (isStaffNoCalc || hasAbsent) ? 0 : calcWeeklyHoliday(weekRegH, emp.hourlyWage)
     }
   }
 
