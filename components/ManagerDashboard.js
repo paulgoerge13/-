@@ -979,6 +979,10 @@ export default function ManagerDashboard({ onBack }) {
     .tx-stat-v { font-size: 22px; font-weight: 800; color: #1a1a1a; letter-spacing: -0.01em; }
     .tx-stat-v small { font-size: 12px; font-weight: 500; color: #aaa; margin-left: 3px; }
     .tx-stat-v.done { color: #2f7d54; }   /* 완료 금액: 차분한 초록 */
+    /* 세금·보험 요약: 3칸 · 이체액보다 한 단계 작게 (주인공은 이체 금액) */
+    .tx-stats.tx-stats-3 { grid-template-columns: repeat(3, 1fr); }
+    .tx-stat-v.sm { font-size: 18px; }
+    @media (max-width: 720px) { .tx-stats.tx-stats-3 { grid-template-columns: 1fr; } }
     .tx-stat-bar { margin-top: 10px; height: 6px; border-radius: 4px; background: #eee; overflow: hidden; }
     .tx-stat-fill { height: 100%; background: #6fae87; border-radius: 4px; transition: width 0.3s; }
 
@@ -1437,6 +1441,22 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="tx-stat">
                     <div className="tx-stat-k">완료 금액</div>
                     <div className="tx-stat-v done">{fmt(doneAmt)}<small>원</small></div>
+                  </div>
+                </div>
+
+                {/* 세금·보험 요약 — 지금 보고 있는 범위(지점 필터)의 세전 인건비·4대보험·원천세 */}
+                <div className="tx-stats tx-stats-3">
+                  <div className="tx-stat">
+                    <div className="tx-stat-k">세전 인건비{branch === ALL ? ' (전 지점)' : branch === THECOMMA ? ' (더콤마)' : ` (${branch})`}</div>
+                    <div className="tx-stat-v sm">{fmt(grandAll)}<small>원</small></div>
+                  </div>
+                  <div className="tx-stat">
+                    <div className="tx-stat-k">4대보험 <em style={{ fontStyle: 'normal', color: '#bbb' }}>직원 부담분</em></div>
+                    <div className="tx-stat-v sm">{fmt(majorAll)}<small>원</small></div>
+                  </div>
+                  <div className="tx-stat">
+                    <div className="tx-stat-k">원천세 <em style={{ fontStyle: 'normal', color: '#bbb' }}>소득세+지방세 · 알바 3.3%</em></div>
+                    <div className="tx-stat-v sm">{fmt(withholdAll)}<small>원</small></div>
                   </div>
                 </div>
 
