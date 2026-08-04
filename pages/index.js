@@ -569,7 +569,10 @@ export default function Home() {
             // 월급제 설정은 브라우저 저장값(localStorage) 우선 → 재로그인/DB 0값에도 유지
             salaryType:    pick(s.salaryType, r.salary_type, e.salaryType || 'hourly'),
             monthlySalary: pick(s.monthlySalary, r.monthly_salary, e.monthlySalary || 0),
-            staffBasicHours: pick(undefined, s.staffBasicHours, e.staffBasicHours || 209),  // 기본급 시간(localStorage 전용)
+            // 기본급 시간: DB(work_data._basicHours) 우선 → 브라우저 저장값 → 기존값 (209 되돌아감 방지)
+            staffBasicHours: (Number((r.work_data || {})._basicHours) > 0)
+              ? Number((r.work_data || {})._basicHours)
+              : pick(undefined, s.staffBasicHours, e.staffBasicHours || 209),
             hireDate:        pick(r.hire_date, s.hireDate, e.hireDate || ''),
             resignDate:      pick(r.resign_date, s.resignDate, e.resignDate || ''),
             birthDate:       pick(r.birth_date, s.birthDate, e.birthDate || ''),
@@ -931,6 +934,26 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 기본급 기준시간: workData._basicHours 에 저장 ──
+  //   예) 근로계약은 하루 8시간(209h)인데 실근무 7시간이면 183h 로 낮춰 자동 차감.
+  //   예전엔 localStorage 에만 있어 재로그인·마감·다른 기기에서 209로 되돌아갔다(식대 분리와 같은 문제).
+  //   → DB work_data 에 저장해 항상 유지되게 한다. 209(기본값)면 저장하지 않는다.
+  function setBasicHours(val) {
+    const h = Math.max(0, Number(val) || 0)
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (h > 0 && h !== 209) wd._basicHours = h
+      else delete wd._basicHours
+      // 화면 표시용 필드도 같이 맞춰둔다 (기존 localStorage 보조 저장도 유지)
+      const next = { ...e, workData: wd, staffBasicHours: h > 0 ? h : 209, _dirty: true }
+      if (selectedBranch && next.name) saveEmpSettings(selectedBranch.name, next.name, next)
+      return next
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   // ── 식대를 기본급에서 분리: workData._mealFromBasic 에 저장 (DB work_data → 마감·재로그인·타 기기 유지) ──
   function setMealFromBasic(on) {
     setEmployees(prev => prev.map(e => {
@@ -1065,7 +1088,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct') return   // 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct' || ds === '_basicHours') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -1140,7 +1163,10 @@ export default function Home() {
     // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 주간 근무 × 시급 (야간은 '야간근로' 줄에서 1.5배 별도) ──
     const hoursBaseAlba = mDayH
     // 월급제(포괄)면 과세 기본급 = 월급 − 식대, 시급제면 시급 × 기본급시간(직원별, 기본 209)
-    const basicHours = Number(emp.staffBasicHours) > 0 ? Number(emp.staffBasicHours) : 209
+    // 기본급 기준시간: DB(work_data._basicHours) 우선 → 화면값 → 209(기본)
+    const wdBasicH = Number(emp.workData?._basicHours) || 0
+    const basicHours = wdBasicH > 0 ? wdBasicH
+      : (Number(emp.staffBasicHours) > 0 ? Number(emp.staffBasicHours) : 209)
     const staffMonthlyBasic = isMonthlySalary ? Math.round(monthlyTaxableBasic) : Math.round(baseWage * basicHours)
     // ── 결근 공제 (직원만): 결근 1일당 시급×8(하루치) + 결근이 든 주마다 시급×8(주휴) ──
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
@@ -1325,7 +1351,10 @@ export default function Home() {
         hourlyWage: r.hourly_wage || 10320,
         salaryType: pick(s.salaryType, r.salary_type, 'hourly'),        // 월급제 설정은 브라우저 저장값 우선
         monthlySalary: pick(s.monthlySalary, r.monthly_salary, 0),
-        staffBasicHours: pick(undefined, s.staffBasicHours, 209),        // 기본급 시간(localStorage 전용)
+        // 기본급 시간: DB(work_data._basicHours) 우선 → 브라우저 저장값 → 209
+        staffBasicHours: (Number((r.work_data || {})._basicHours) > 0)
+          ? Number((r.work_data || {})._basicHours)
+          : pick(undefined, s.staffBasicHours, 209),
         scheduledHours: r.scheduled_hours || 8,
         defaultTimeStart: r.default_time ? r.default_time.split('~')[0] : '00:00',
         defaultTimeEnd: r.default_time ? r.default_time.split('~')[1] : '00:00',
@@ -2745,10 +2774,15 @@ export default function Home() {
                           <input
                             type="number"
                             value={activeEmp.staffBasicHours ?? 209}
-                            onChange={e => updateEmp('staffBasicHours', Number(e.target.value))}
+                            onChange={e => setBasicHours(e.target.value)}
                             style={{ width: 80, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                           />
-                          시간 <span style={{ color: '#bbb' }}>(기본 209 = 주휴 포함. 이 직원만 다르면 변경, 예: 183)</span>
+                          시간 <span style={{ color: '#bbb' }}>(기본 209 = 주휴 포함. 이 직원만 다르면 변경, 예: 하루 7시간 근무 → 183)</span>
+                          {Number(activeEmp.staffBasicHours) > 0 && Number(activeEmp.staffBasicHours) !== 209 && (
+                            <b style={{ color: '#b07a1e', width: '100%' }}>
+                              → 209시간 대비 {(209 - Number(activeEmp.staffBasicHours)).toFixed(0)}시간 차감 (이 설정은 저장돼 매달 자동 적용돼요)
+                            </b>
+                          )}
                           {activeEmp.hourlyWage > 0 && (
                             <b style={{ color: '#2f6bbf', width: '100%' }}>→ 기본급 = 시급 {Number(activeEmp.hourlyWage).toLocaleString()} × {Number(activeEmp.staffBasicHours) > 0 ? Number(activeEmp.staffBasicHours) : 209}시간 = {Math.round(Number(activeEmp.hourlyWage) * (Number(activeEmp.staffBasicHours) > 0 ? Number(activeEmp.staffBasicHours) : 209)).toLocaleString()}원</b>
                           )}
