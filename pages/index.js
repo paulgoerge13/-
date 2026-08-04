@@ -705,6 +705,30 @@ export default function Home() {
     const split = netSplit(start, end, 0)
     const daysInMonth = new Date(y, m, 0).getDate()
     const wd0 = activeEmp.workData || {}
+
+    // ── 휴무('공')는 덮어쓸지 먼저 확인 ──
+    //   엑셀 근무기록을 불러오면 근무 없는 날이 전부 '휴무'로 깔린다. 예전에는 휴무도
+    //   무조건 보존해서, 그런 달은 선택한 요일이 전부 휴무 → 0일 적용 = "눌러도 적용이 안 됨".
+    //   → 휴무가 걸린 날 수를 세어 사용자에게 물어보고, 원하면 덮어쓴다.
+    //   (연차·결근·휴일근로는 실제 사건 기록이라 항상 보존)
+    const KEEP_TYPES = ['연', '결', '휴']   // 항상 보존
+    let dayOffCount = 0
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(y, m - 1, d).getDay()
+      if (!applyDows.includes(dow)) continue
+      const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      if (wd0[ds] && wd0[ds].type === '공') dayOffCount++
+    }
+    let overwriteDayOff = false
+    if (dayOffCount > 0) {
+      overwriteDayOff = confirm(
+        `선택한 요일 중 ${dayOffCount}일이 "휴무"로 지정돼 있어요.\n\n` +
+        `확인 = 그 휴무일도 ${start}~${end} 근무로 바꿉니다.\n` +
+        `취소 = 휴무일은 그대로 두고, 나머지 날에만 적용합니다.\n\n` +
+        `(연차·결근·휴일근로로 지정한 날은 어느 쪽이든 그대로 둡니다)`
+      )
+    }
+
     const newDays = {}
     let count = 0
     for (let d = 1; d <= daysInMonth; d++) {
@@ -712,7 +736,8 @@ export default function Home() {
       if (!applyDows.includes(dow)) continue   // 선택한 요일만
       const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
       const cur = wd0[ds]
-      if (cur && cur.type && cur.type !== '평') continue   // 휴무·연차·결근·휴일 지정일은 보존
+      if (cur && KEEP_TYPES.includes(cur.type)) continue          // 연차·결근·휴일근로는 항상 보존
+      if (cur && cur.type === '공' && !overwriteDayOff) continue   // 휴무는 사용자가 원할 때만 덮어씀
       newDays[ds] = {
         type: '평', basicH: 0, restH: 0, overtimeH: 0,
         holidayH: 0, holidayRestH: 0, holidayOtH: 0, holidayNightH: 0,
@@ -726,7 +751,15 @@ export default function Home() {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
     const dowLabel = [...applyDows].sort().map(x => ['일','월','화','수','목','금','토'][x]).join('·')
-    alert(`${dowLabel}요일 ${count}일에 ${start}~${end} 를 적용했어요.\n(휴무·연차로 지정한 날은 그대로 뒀어요)\n확인 후 저장하세요.`)
+    if (count === 0) {
+      alert(
+        `적용된 날이 없어요.\n\n` +
+        `${dowLabel}요일이 모두 연차·결근·휴일근로로 지정돼 있거나` +
+        (dayOffCount > 0 ? `, 휴무 ${dayOffCount}일을 그대로 두기로 하셨어요.\n\n다시 눌러서 "확인"을 선택하면 휴무일에도 적용됩니다.` : ` 해당 요일이 이 달에 없어요.`)
+      )
+      return
+    }
+    alert(`${dowLabel}요일 ${count}일에 ${start}~${end} 를 적용했어요.\n(연차·결근·휴일근로로 지정한 날은 그대로 뒀어요)\n확인 후 저장하세요.`)
   }
 
   // ── 수정 #2: 시간 입력 포커스 아웃 시 자동 포맷 + 기본시간 자동계산 ──
@@ -1426,14 +1459,21 @@ export default function Home() {
 
   // ── 직전 달 소득세(+지방세)를 이번 달 '소급 소득세'로 자동 입력 (직원 전체 · 부양가족 1명 기준) ──
   const [retroBusy, setRetroBusy] = useState(false)
-  async function applyPrevMonthTaxRetro() {
+  //   onlyActive=true 면 지금 보고 있는 직원 1명에게만 적용 (전체 일괄 적용과 분리)
+  async function applyPrevMonthTaxRetro(onlyActive = false) {
     if (retroBusy || saving || !selectedBranch) return
-    const staff = employees.filter(e => e.empType === '직원' && e.name && e.name.trim())
-    if (!staff.length) { alert('이 지점에 직원이 없습니다.'); return }
     const cur = employees.find(e => e.id === activeEmpId) || employees[0]
+    const staff = onlyActive
+      ? (cur && cur.empType === '직원' && cur.name && cur.name.trim() ? [cur] : [])
+      : employees.filter(e => e.empType === '직원' && e.name && e.name.trim())
+    if (!staff.length) {
+      alert(onlyActive ? '지금 선택된 사람이 이름이 있는 "직원"이 아니에요.' : '이 지점에 직원이 없습니다.')
+      return
+    }
     let py = cur.year, pm = cur.month - 1
     if (pm < 1) { pm = 12; py -= 1 }
-    if (!confirm(`${staff.length}명 직원의 ${pm}월 소득세(+지방소득세)를 ${cur.month}월 '소급 소득세'로 자동 입력합니다.\n· 간이세액표 · 부양가족 1명 기준\n· ${pm}월 과세급여를 불러와 자동 계산\n계속할까요?`)) return
+    const who = onlyActive ? `${staff[0].name} 님만` : `${staff.length}명 직원(지점 전체)의`
+    if (!confirm(`${who} ${pm}월 소득세(+지방소득세)를 ${cur.month}월 '소급 소득세'로 자동 입력합니다.\n· 간이세액표 · 부양가족 1명 기준\n· ${pm}월 과세급여를 불러와 자동 계산\n계속할까요?`)) return
     setRetroBusy(true)
     // 1) 각 직원 직전 달 과세급여 → 소급액(소득세+지방세) 계산
     const results = []
@@ -1482,7 +1522,7 @@ export default function Home() {
     ).join('\n')
     const notFound = results.filter(x => !x.found).map(x => x.name)
     alert(
-      (failed.length ? `⚠️ ${failed.length}명 저장 실패: ${failed.join(', ')}\n\n` : `✅ ${cur.month}월 소급 소득세 자동 적용 + 저장 완료 (직원 ${results.length}명)\n\n`) +
+      (failed.length ? `⚠️ ${failed.length}명 저장 실패: ${failed.join(', ')}\n\n` : `✅ ${cur.month}월 소급 소득세 자동 적용 + 저장 완료 (${onlyActive ? staff[0].name + ' 님 1명' : '직원 ' + results.length + '명'})\n\n`) +
       lines +
       (notFound.length ? `\n\n※ ${pm}월 기록을 못 찾은 직원: ${notFound.join(', ')}\n   - 그 달 입사 전이면 소급 없음(정상)\n   - 이름이 달랐으면(예: 5월 '손수형님g') ${pm}월 탭에서 이름을 6월과 똑같이 정정·저장한 뒤 이 버튼을 다시 누르세요.` : '')
     )
@@ -3325,18 +3365,28 @@ export default function Home() {
               {employees.some(e => e.empType === '직원' && e.name && e.name.trim()) && (
                 <div style={{ marginTop: '24px', padding: '14px 16px', border: '1px dashed #c9a24a', borderRadius: 12, background: '#fbf6ea' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#8a6d24', marginBottom: 8 }}>
-                    직전 달 소득세 소급 (직원 전체)
+                    직전 달 소득세 소급
                   </div>
                   <div style={{ fontSize: 11.5, color: '#a1873f', lineHeight: 1.5, marginBottom: 10 }}>
-                    이 지점 직원들의 <b>직전 달 소득세 + 지방소득세</b>를 간이세액표(부양가족 1명)로 계산해 이번 달 <b>소급 소득세</b> 칸에 자동으로 채우고 <b>바로 저장</b>까지 합니다. (버튼 한 번 · 직전 달 급여가 앱에 저장돼 있어야 계산됨)
+                    <b>직전 달 소득세 + 지방소득세</b>를 간이세액표(부양가족 1명)로 계산해 이번 달 <b>소급 소득세</b> 칸에 자동으로 채우고 <b>바로 저장</b>까지 합니다. (직전 달 급여가 앱에 저장돼 있어야 계산됨)<br />
+                    <b>한 명만</b> 하려면 왼쪽 버튼을 누르세요. 오른쪽 버튼은 이 지점 직원 전체에 적용됩니다.
                   </div>
-                  <button
-                    onClick={applyPrevMonthTaxRetro}
-                    disabled={retroBusy || !!saving}
-                    style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#b8954a', color: '#fff', cursor: (retroBusy || saving) ? 'wait' : 'pointer', opacity: (retroBusy || saving) ? 0.6 : 1 }}
-                  >
-                    {retroBusy ? '계산 중…' : '↩ 직전 달 소득세 자동 소급 적용'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => applyPrevMonthTaxRetro(true)}
+                      disabled={retroBusy || !!saving || !(activeEmp?.empType === '직원' && activeEmp?.name?.trim())}
+                      style={{ padding: '10px 16px', fontSize: 13, fontWeight: 700, borderRadius: 8, border: 'none', background: '#b8954a', color: '#fff', cursor: (retroBusy || saving) ? 'wait' : 'pointer', opacity: (retroBusy || saving || !(activeEmp?.empType === '직원' && activeEmp?.name?.trim())) ? 0.5 : 1 }}
+                    >
+                      {retroBusy ? '계산 중…' : `↩ 이 직원만${activeEmp?.name ? ` (${activeEmp.name})` : ''}`}
+                    </button>
+                    <button
+                      onClick={() => applyPrevMonthTaxRetro(false)}
+                      disabled={retroBusy || !!saving}
+                      style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '1px solid #c9a24a', background: '#fff', color: '#8a6d24', cursor: (retroBusy || saving) ? 'wait' : 'pointer', opacity: (retroBusy || saving) ? 0.6 : 1 }}
+                    >
+                      지점 전체 직원
+                    </button>
+                  </div>
                 </div>
               )}
 
