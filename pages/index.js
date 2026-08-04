@@ -1868,6 +1868,9 @@ export default function Home() {
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=DM+Sans:wght@300;400;500;600&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* 스크롤바 자리를 항상 확보 → 콘텐츠 높이가 화면과 딱 걸칠 때 스크롤바가
+       나타났다 사라지며 가로폭이 흔들리던(화면 파르르 떨림) 현상 방지 (특히 최대창) */
+    html { overflow-y: scroll; scrollbar-gutter: stable; }
     body { background: #f8f7f4; color: #1a1a1a; font-family: 'Pretendard', 'DM Sans', sans-serif; min-height: 100vh; }
     .wrap { min-height: 100vh; display: flex; flex-direction: column; }
 
@@ -2297,6 +2300,8 @@ export default function Home() {
       display: flex; justify-content: space-between; align-items: center;
       margin-top: 18px; padding: 20px 22px; border-radius: 12px;
       background: linear-gradient(135deg, #b8954a 0%, #9c7d36 100%);
+      /* 큰 대각선 그라데이션이 리페인트마다 어른거리지 않도록 GPU 레이어 고정 */
+      transform: translateZ(0); backface-visibility: hidden;
     }
     .net-pay-label { font-size: 17px; color: #fff; letter-spacing: 0.06em; font-weight: 600; }
     .net-pay-val { font-family: 'Pretendard', sans-serif; font-size: 34px; color: #fff; font-weight: 700; letter-spacing: -0.01em; }

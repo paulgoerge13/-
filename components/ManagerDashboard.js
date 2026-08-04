@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES } from '../lib/branches'
@@ -77,6 +77,31 @@ export default function ManagerDashboard({ onBack }) {
   }
 
   useEffect(() => { load() }, [branch, year, month])
+
+  // ── 마지막으로 보던 연·월·지점 기억 ──
+  //   관리자 페이지는 열 때마다 '오늘 기준 이번 달'로 초기화됐다. 그래서 7월 급여를
+  //   이체완료로 찍고 로그아웃 후 다시 오면 화면이 8월로 열려 "이체완료가 풀렸다"처럼
+  //   보였다(데이터는 DB에 그대로 있음). 마지막 보던 화면을 복원해 이 혼동을 없앤다.
+  const viewRestored = useRef(false)
+  useEffect(() => {
+    try {
+      const y = Number(localStorage.getItem('admin_last_year'))
+      const m = Number(localStorage.getItem('admin_last_month'))
+      const b = localStorage.getItem('admin_last_branch')
+      if (y >= 2020 && y <= 2100) setYear(y)
+      if (m >= 1 && m <= 12) setMonth(m)
+      if (b) setBranch(b)
+    } catch (e) {}
+    viewRestored.current = true
+  }, [])
+  useEffect(() => {
+    if (!viewRestored.current) return   // 복원 전(초기 기본값)에는 저장하지 않음
+    try {
+      localStorage.setItem('admin_last_year', String(year))
+      localStorage.setItem('admin_last_month', String(month))
+      localStorage.setItem('admin_last_branch', branch)
+    } catch (e) {}
+  }, [year, month, branch])
 
   // ── 합산 지점(폐업 등): 지정한 월들의 레코드를 미리 불러온다 (이체 보드에서 사람별 합산 표시) ──
   useEffect(() => {
@@ -369,7 +394,10 @@ export default function ManagerDashboard({ onBack }) {
 
   // 유닛 상태를 선택한 값으로 바로 변경 (드롭다운에서 선택)
   async function setUnitStatus(u, next) {
-    setStatusMap(m => { const n = { ...m }; for (const r of u.recs) n[r.id] = next; return n })
+    const ids = u.recs.map(r => r.id)
+    setStatusMap(m => { const n = { ...m }; for (const id of ids) n[id] = next; return n })
+    // 로컬 records 도 같이 갱신 → records 초기화 effect 가 옛 값으로 되돌리는 경합 방지
+    setRecords(prev => prev.map(r => ids.includes(r.id) ? { ...r, transfer_status: next } : r))
     for (const r of u.recs) {
       const { error } = await supabase.from('payroll').update({ transfer_status: next }).eq('id', r.id)
       if (error) setTxUnavailable(true)
@@ -397,6 +425,7 @@ export default function ManagerDashboard({ onBack }) {
     for (const u of units) for (const r of u.recs) ids.push(r.id)
     if (ids.length === 0) return
     setStatusMap(m => { const n = { ...m }; for (const id of ids) n[id] = next; return n })
+    setRecords(prev => prev.map(r => ids.includes(r.id) ? { ...r, transfer_status: next } : r))
     const { error } = await supabase.from('payroll').update({ transfer_status: next }).in('id', ids)
     if (error) setTxUnavailable(true)
   }
