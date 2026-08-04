@@ -892,6 +892,21 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 주휴수당 차감(원): workData._whCut 에 저장 ──
+  //   예) 마지막 주가 월말에 걸쳐 다음 주 근로가 없어 주휴를 빼야 할 때. 그 달에만 적용.
+  function setWhCut(val) {
+    const amt = Math.max(0, Math.round(Number(val) || 0))
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (amt > 0) wd._whCut = amt
+      else delete wd._whCut
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   // ── 추가 지급(소급·미지급 정산): workData._retroPay 에 저장 (과세, 그 달만 적용, DB work_data로 동기화) ──
   function setRetroPay(val) {
     const amt = Math.max(0, Math.round(Number(val) || 0))
@@ -1087,7 +1102,16 @@ export default function Home() {
   function calcTotal(emp) {
     const weeks = getWeeksInMonth(emp.year, emp.month)
     let totalWeeklyHoliday = 0
-    weeks.forEach(week => { totalWeeklyHoliday += calcWeekPay(week, emp).weeklyHolidayPay })
+    // 주별 주휴수당 내역(화면 표시·마지막 주 제외용)
+    const weeklyHolidayList = weeks.map((week, i) => {
+      const p = calcWeekPay(week, emp).weeklyHolidayPay
+      const days = week.filter(d => d !== null)
+      return { idx: i, pay: p, from: days[0], to: days[days.length - 1] }
+    })
+    weeklyHolidayList.forEach(w => { totalWeeklyHoliday += w.pay })
+    // 주휴수당 차감(원): workData._whCut — 마지막 주 주휴를 빼야 하는 경우 등 수동 조정
+    const whCut = Math.max(0, Number(emp.workData?._whCut) || 0)
+    totalWeeklyHoliday = Math.max(0, totalWeeklyHoliday - whCut)
 
     // ── 시간 집계 (기본·휴일근로 칸 폐지, 휴게는 근무시간에서 제외) ──
     let hoursDay = 0, hoursNight = 0, hoursRest = 0, hoursOvertime = 0
@@ -1095,7 +1119,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct' || ds === '_basicHours') return   // 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct' || ds === '_basicHours' || ds === '_whCut') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -1179,15 +1203,15 @@ export default function Home() {
     //   연차 없는 직원이 무단결근하면 209기준 기본급에서 하루치 + 그 주 주휴를 차감.
     const absentHours = isStaff ? (absentDays * 8 + absentWeekSet.size * 8) : 0
     const absentDeduction = Math.round(absentHours * baseWage)
-    // ── 기본급 수동 차감 (직원만): 조퇴·지각 등 차감 시간(시간) × 시급을 기본급에서 차감 ──
-    const manualDeductHours = isStaff ? (emp.workData?._deduct?.hours || 0) : 0
+    // ── 기본급 수동 차감: 조퇴·지각 등 차감 시간(시간) × 시급을 기본급에서 차감 (직원·알바 공통) ──
+    const manualDeductHours = (emp.workData?._deduct?.hours || 0)
     const manualDeduction = Math.round(manualDeductHours * baseWage)
     // 시급제 직원: 식대를 기본급 안에서 분리(총액 불변). 과세 기본급 = 시급×209 − 식대. (월급제는 이미 월급−식대라 제외)
     const mealFromBasicOn = !!(emp.workData?._mealFromBasic || emp.mealFromBasic)
     const mealCutFromBasic = (isStaff && !isMonthlySalary && mealFromBasicOn) ? (emp.mealAllowance || 0) : 0
     const totalBasic           = isStaff
       ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
-      : Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0)
+      : Math.max(0, Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0) - manualDeduction)
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight
     const totalHoliday         = (emp.manualHoliday || 0) + autoHoliday   // 휴일 전체근무(주간+야간) × 시급 × 1.5 자동계산
@@ -1215,7 +1239,7 @@ export default function Home() {
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic, isMonthlySalary, baseWage,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
-      manualDeductHours, manualDeduction,
+      manualDeductHours, manualDeduction, weeklyHolidayList, whCut,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -1506,10 +1530,24 @@ export default function Home() {
       alert(onlyActive ? '지금 선택된 사람이 이름이 있는 "직원"이 아니에요.' : '이 지점에 직원이 없습니다.')
       return
     }
+    // 기본은 직전 달이지만, 몇 달 전 것을 못 뗀 경우도 있어(예: 5월분을 7월에) 월을 고를 수 있게 한다.
     let py = cur.year, pm = cur.month - 1
     if (pm < 1) { pm = 12; py -= 1 }
     const who = onlyActive ? `${staff[0].name} 님만` : `${staff.length}명 직원(지점 전체)의`
-    if (!confirm(`${who} ${pm}월 소득세(+지방소득세)를 ${cur.month}월 '소급 소득세'로 자동 입력합니다.\n· 간이세액표 · 부양가족 1명 기준\n· ${pm}월 과세급여를 불러와 자동 계산\n계속할까요?`)) return
+    const ans = prompt(
+      `${who} 소득세(+지방소득세)를 ${cur.month}월 '소급 소득세'로 자동 입력합니다.\n` +
+      `· 간이세액표 · 부양가족 1명 기준\n\n` +
+      `몇 월분 소득세를 소급할까요? (숫자만, 예: 5)\n` +
+      `※ 그 달 급여가 앱에 저장돼 있어야 계산됩니다.`,
+      String(pm)
+    )
+    if (ans === null) return
+    const want = Math.round(Number(String(ans).replace(/[^0-9]/g, '')))
+    if (!(want >= 1 && want <= 12)) { alert('1~12 사이의 월을 입력해주세요.'); return }
+    // 고른 달이 이번 달보다 크면 작년으로 본다 (예: 이번 8월인데 12월 선택 → 작년 12월)
+    py = cur.year; pm = want
+    if (want >= cur.month) py = cur.year - 1
+    if (!confirm(`${who} ${py}년 ${pm}월 소득세(+지방소득세)를 ${cur.year}년 ${cur.month}월 '소급 소득세'로 넣습니다.\n\n계속할까요?`)) return
     setRetroBusy(true)
     // 1) 각 직원 직전 달 과세급여 → 소급액(소득세+지방세) 계산
     const results = []
@@ -3147,8 +3185,49 @@ export default function Home() {
                 })}
               </div>
 
-              {/* ── 기본급 차감 (시간): 달력 아래, 직원만 ── */}
-              {activeEmp.empType === '직원' && (
+              {/* ── 주휴수당 차감 (원): 알바 — 마지막 주 주휴를 빼야 할 때 등 ── */}
+              {(activeEmp.empType || '알바') !== '직원' && totals && (
+                <div className="info-card" style={{ marginBottom: 16 }}>
+                  <div className="info-card-label">주휴수당 차감 (원)</div>
+                  <input
+                    type="number" min="0" step="10"
+                    inputMode="numeric"
+                    value={activeEmp.workData?._whCut || ''}
+                    onChange={e => setWhCut(e.target.value)}
+                    placeholder="예) 39216"
+                  />
+                  <div style={{ fontSize: 11, color: '#8a8170', marginTop: 6, lineHeight: 1.6 }}>
+                    자동 계산된 주휴수당에서 이 금액만큼 뺍니다. (이 달에만 적용)
+                    {(() => {
+                      const list = (totals.weeklyHolidayList || []).filter(w => w.pay > 0)
+                      if (!list.length) return <span style={{ display: 'block', marginTop: 2 }}>이 달은 주휴수당이 없어요.</span>
+                      const last = list[list.length - 1]
+                      return (
+                        <>
+                          <span style={{ display: 'block', marginTop: 4 }}>
+                            주별 주휴: {list.map(w => `${w.from}~${w.to}일 ${w.pay.toLocaleString()}원`).join(' · ')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setWhCut(last.pay)}
+                            style={{ marginTop: 6, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, borderRadius: 6, border: '1px solid #d9b3b3', background: '#fff', color: '#a35b5b', cursor: 'pointer' }}
+                          >
+                            마지막 주({last.from}~{last.to}일) 주휴 {last.pay.toLocaleString()}원 빼기
+                          </button>
+                        </>
+                      )
+                    })()}
+                    {activeEmp.workData?._whCut > 0 && (
+                      <b style={{ color: '#c0392b', display: 'block', marginTop: 4 }}>
+                        현재 차감: −{Number(activeEmp.workData._whCut).toLocaleString()}원 → 주휴수당 합계 {totals.totalWeeklyHoliday.toLocaleString()}원
+                      </b>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── 기본급 차감 (시간): 달력 아래, 직원·알바 공통 (조퇴·지각 등) ── */}
+              {(
                 <div className="info-card" style={{ marginBottom: 16 }}>
                   <div className="info-card-label">기본급 차감 (시간) — 조퇴·지각 등</div>
                   <input
