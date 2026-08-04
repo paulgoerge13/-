@@ -8,6 +8,14 @@ const ALL = '전체 지점'
 const THECOMMA = '더콤마 전체'   // 더콤마라운지(카페) 6개 지점만 묶은 보기
 // 폐업 등으로 여러 달을 한 번에 지급하는 지점 → 이체 보드에서 해당 월들을 사람별로 합산 표시
 const MERGE_BRANCHES = { '시흥집': [6, 7] }
+// 합산 지점의 '기준월' = 합산 대상 월 중 가장 이른 달(예: 시흥집 → 6월). 합산 결과는 이 달에만 표시한다.
+function mergeAnchorMonth(b) { return MERGE_BRANCHES[b] ? Math.min(...MERGE_BRANCHES[b]) : null }
+// 합산 지점의 '기준월이 아닌' 합산월 레코드(예: 시흥집 7월)는 관리자 화면에서 숨긴다.
+// (6+7월을 6월에 합산해 한 번에 처리하므로, 7월에 또 보이면 중복이라 안 보이게 함)
+function isHiddenMergeRecord(r) {
+  const months = r && MERGE_BRANCHES[r.branch]
+  return !!(months && months.includes(Number(r.month)) && Number(r.month) !== Math.min(...months))
+}
 // 선택된 필터에 해당하는 지점 이름 목록
 function branchesFor(sel) {
   return sel === ALL ? BRANCHES : sel === THECOMMA ? THECOMMA_BRANCH_NAMES : [sel]
@@ -68,7 +76,8 @@ export default function ManagerDashboard({ onBack }) {
         .order('branch', { ascending: true })
         .order('emp_name', { ascending: true })
       if (error) throw error
-      setRecords((data || []).filter(r => !r.deleted_at))   // 휴지통 제외
+      // 휴지통 제외 + 합산 지점의 비기준월(시흥집 7월 등) 숨김 → 합산은 기준월(6월)에만 표시
+      setRecords((data || []).filter(r => !r.deleted_at && !isHiddenMergeRecord(r)))
     } catch (e) {
       console.error('데이터 로드 오류:', e.message)
     } finally {
@@ -128,7 +137,8 @@ export default function ManagerDashboard({ onBack }) {
       setYearLoading(true)
       try {
         const { data, error } = await supabase.from('payroll').select('*').eq('year', year)
-        if (!error && !cancelled) setYearRecords((data || []).filter(r => !r.deleted_at))   // 휴지통 제외
+        // 휴지통 제외 + 합산 지점 비기준월(시흥집 7월 등) 숨김 → 월별 표에서도 7월 시흥 안 보이게
+        if (!error && !cancelled) setYearRecords((data || []).filter(r => !r.deleted_at && !isHiddenMergeRecord(r)))
       } catch (e) { console.error('연간 데이터 로드 오류:', e.message) }
       finally { if (!cancelled) setYearLoading(false) }
     })()
@@ -363,7 +373,10 @@ export default function ManagerDashboard({ onBack }) {
   }
   // 지점의 이체 유닛: 합산 지점이고 현재 보는 달이 합산 대상 월이면 여러 달 합산, 아니면 그 달만
   function unitsForBranch(b) {
-    if (MERGE_BRANCHES[b] && MERGE_BRANCHES[b].includes(month)) return combinedUnitsForMergeBranch(b)
+    if (MERGE_BRANCHES[b] && MERGE_BRANCHES[b].includes(month)) {
+      // 합산 결과(6+7월)는 기준월(6월)에만 표시, 다른 합산월(7월)에는 아무것도 표시하지 않음
+      return month === mergeAnchorMonth(b) ? combinedUnitsForMergeBranch(b) : []
+    }
     return buildUnits(records.filter(r => r.branch === b && !isRecordOnly(r)))
   }
   function unitAmt(u) { return u.recs.reduce((s, r) => s + transferAmt(r), 0) }
