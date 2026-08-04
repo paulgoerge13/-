@@ -267,15 +267,20 @@ export default function ManagerDashboard({ onBack }) {
   useEffect(() => {
     let stored = {}
     try { stored = JSON.parse(localStorage.getItem(notesKey) || '{}') } catch (e) { stored = {} }
+    // 합산 지점(시흥집 6·7월 등)의 레코드도 포함해야 한다. 안 그러면 합산 유닛에 묶인
+    // 다른 달 레코드의 상태가 statusMap 에 없어 항상 '확정'으로 취급 → 유닛이 절대
+    // '이체완료'가 되지 않고, 클릭해도 되돌아간다.
+    const all = [...records]
+    for (const b of Object.keys(mergeRecs)) for (const r of (mergeRecs[b] || [])) all.push(r)
     const m = {}, nm = {}
-    for (const r of records) {
+    for (const r of all) {
       m[r.id] = (r.transfer_status === '이체완료') ? '이체완료' : '확정'   // 옛 상태(작성중/보류 등)는 확정으로 정규화
       // DB 값이 있으면 우선, 없으면 이 브라우저에 저장된 값 사용
       nm[r.id] = (r.transfer_note != null && r.transfer_note !== '') ? r.transfer_note : (stored[r.id] || '')
     }
     setStatusMap(m)
     setNoteMap(nm)
-  }, [records, notesKey])
+  }, [records, mergeRecs, notesKey])
 
   function txStatus(r) {
     const v = statusMap[r.id]
@@ -393,11 +398,22 @@ export default function ManagerDashboard({ onBack }) {
   }
 
   // 유닛 상태를 선택한 값으로 바로 변경 (드롭다운에서 선택)
+  // 상태 변경 시 로컬 3곳(statusMap·records·mergeRecs)을 함께 갱신 → 초기화 effect 가
+  // 옛 값으로 되돌리는 경합 방지. mergeRecs 까지 갱신해야 합산 지점도 유지된다.
+  function applyStatusLocal(ids, next) {
+    const idSet = new Set(ids)
+    setStatusMap(m => { const n = { ...m }; for (const id of ids) n[id] = next; return n })
+    setRecords(prev => prev.map(r => idSet.has(r.id) ? { ...r, transfer_status: next } : r))
+    setMergeRecs(prev => {
+      const o = {}
+      for (const k of Object.keys(prev)) o[k] = prev[k].map(r => idSet.has(r.id) ? { ...r, transfer_status: next } : r)
+      return o
+    })
+  }
+
   async function setUnitStatus(u, next) {
     const ids = u.recs.map(r => r.id)
-    setStatusMap(m => { const n = { ...m }; for (const id of ids) n[id] = next; return n })
-    // 로컬 records 도 같이 갱신 → records 초기화 effect 가 옛 값으로 되돌리는 경합 방지
-    setRecords(prev => prev.map(r => ids.includes(r.id) ? { ...r, transfer_status: next } : r))
+    applyStatusLocal(ids, next)
     for (const r of u.recs) {
       const { error } = await supabase.from('payroll').update({ transfer_status: next }).eq('id', r.id)
       if (error) setTxUnavailable(true)
@@ -424,8 +440,7 @@ export default function ManagerDashboard({ onBack }) {
     const ids = []
     for (const u of units) for (const r of u.recs) ids.push(r.id)
     if (ids.length === 0) return
-    setStatusMap(m => { const n = { ...m }; for (const id of ids) n[id] = next; return n })
-    setRecords(prev => prev.map(r => ids.includes(r.id) ? { ...r, transfer_status: next } : r))
+    applyStatusLocal(ids, next)
     const { error } = await supabase.from('payroll').update({ transfer_status: next }).in('id', ids)
     if (error) setTxUnavailable(true)
   }
