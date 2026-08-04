@@ -1528,6 +1528,42 @@ export default function Home() {
     )
   }
 
+  // ── 소급 소득세 되돌리기(0원으로) — 잘못 눌렀을 때 취소용 ──
+  //   onlyActive=true 면 지금 보고 있는 직원만, false 면 소급이 들어간 직원 전체
+  async function clearPrevMonthTaxRetro(onlyActive = false) {
+    if (retroBusy || saving || !selectedBranch) return
+    const cur = employees.find(e => e.id === activeEmpId) || employees[0]
+    // 소급이 실제로 들어가 있는 사람만 대상 (0원인 사람은 저장할 필요 없음)
+    const targets = (onlyActive ? [cur] : employees)
+      .filter(e => e && e.name && e.name.trim() && (Number(e.retroIncomeTax) || 0) !== 0)
+    if (!targets.length) {
+      alert(onlyActive
+        ? `${cur?.name || '이 직원'} 님은 소급 소득세가 이미 0원이에요.`
+        : '이 지점에 소급 소득세가 들어간 직원이 없어요.')
+      return
+    }
+    const list = targets.map(e => `· ${e.name}: ${(Number(e.retroIncomeTax) || 0).toLocaleString()}원 → 0원`).join('\n')
+    if (!confirm(`아래 ${targets.length}명의 소급 소득세를 0원으로 되돌리고 바로 저장합니다.\n\n${list}\n\n계속할까요?`)) return
+    setRetroBusy(true)
+    const ids = targets.map(e => e.id)
+    const patched = employees.map(emp => ids.includes(emp.id) ? { ...emp, retroIncomeTax: 0, _dirty: true } : emp)
+    setEmployees(patched)
+    setSaving({ done: 0, total: targets.length })
+    let done = 0
+    const failed = []
+    for (const t of targets) {
+      const emp = patched.find(x => x.id === t.id)
+      const ok = await doSaveEmp(emp, emp.status === 'final' ? 'final' : 'saved')
+      if (!ok) failed.push(t.name)
+      setSaving({ done: ++done, total: targets.length })
+    }
+    setSaving(null)
+    setRetroBusy(false)
+    alert(failed.length
+      ? `⚠️ ${failed.length}명 저장 실패: ${failed.join(', ')}`
+      : `✅ 소급 소득세를 0원으로 되돌렸어요 (${targets.length}명)\n\n${list}`)
+  }
+
   function handleTabSwitch(id) {
     // 탭 전환 시 로컬스토리지만 저장 (Supabase 호출 없음)
     if (selectedBranch) {
@@ -3386,6 +3422,27 @@ export default function Home() {
                     >
                       지점 전체 직원
                     </button>
+                    <span style={{ width: 1, background: '#e3d6b4', margin: '2px 4px' }} />
+                    {/* 잘못 눌렀을 때 되돌리기 — 소급 소득세를 0원으로 */}
+                    <button
+                      onClick={() => clearPrevMonthTaxRetro(true)}
+                      disabled={retroBusy || !!saving || !(Number(activeEmp?.retroIncomeTax) || 0)}
+                      title="지금 보고 있는 직원의 소급 소득세를 0원으로 되돌립니다"
+                      style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '1px solid #d9b3b3', background: '#fff', color: '#a35b5b', cursor: (retroBusy || saving) ? 'wait' : 'pointer', opacity: (retroBusy || saving || !(Number(activeEmp?.retroIncomeTax) || 0)) ? 0.45 : 1 }}
+                    >
+                      ✕ 취소 (이 직원)
+                    </button>
+                    <button
+                      onClick={() => clearPrevMonthTaxRetro(false)}
+                      disabled={retroBusy || !!saving || !employees.some(e => Number(e.retroIncomeTax) || 0)}
+                      title="이 지점에서 소급 소득세가 들어간 직원 전체를 0원으로 되돌립니다"
+                      style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '1px solid #d9b3b3', background: '#fff', color: '#a35b5b', cursor: (retroBusy || saving) ? 'wait' : 'pointer', opacity: (retroBusy || saving || !employees.some(e => Number(e.retroIncomeTax) || 0)) ? 0.45 : 1 }}
+                    >
+                      ✕ 취소 (전체)
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#b09a6a', marginTop: 8 }}>
+                    ※ 취소 버튼은 <b>소급 소득세만</b> 0원으로 되돌립니다. (근무기록·기본급은 그대로)
                   </div>
                 </div>
               )}
