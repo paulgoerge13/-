@@ -1013,11 +1013,18 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ branch: selectedBranch.name, empName: dbName, year: target.year, month: target.month }),
         })
+        const rj = await r.json().catch(() => ({}))
         if (!r.ok) {
-          const ej = await r.json().catch(() => ({}))
-          alert(`'${dbName}' 삭제 실패: ${ej.error || '서버 오류'}`)
+          // 이름이 달라 못 찾은 경우: 그 달에 있는 이름들을 보여줘 어떤 이름으로 저장돼 있는지 알려준다
+          const cands = Array.isArray(rj.candidates) && rj.candidates.length
+            ? `\n\n이 달 ${selectedBranch.name}에 저장된 이름:\n${rj.candidates.join(', ')}\n\n(이름을 DB와 똑같이 고쳐 저장한 뒤 다시 삭제해 주세요)`
+            : ''
+          alert(`'${dbName}' 삭제 실패: ${rj.error || '서버 오류'}${cands}`)
           setDeleteConfirm(null)
           return
+        }
+        if (rj.matchedName && rj.matchedName !== dbName) {
+          alert(`'${rj.matchedName}' 으로 저장돼 있어 그 기록을 삭제했어요.`)
         }
         logChange({ action: '삭제', emp_name: dbName, year: target.year, month: target.month, detail: `${target.year}년 ${target.month}월 레코드 삭제` })
       } catch (e) {
