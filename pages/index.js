@@ -3185,46 +3185,6 @@ export default function Home() {
                 })}
               </div>
 
-              {/* ── 주휴수당 차감 (원): 알바 — 마지막 주 주휴를 빼야 할 때 등 ── */}
-              {(activeEmp.empType || '알바') !== '직원' && totals && (
-                <div className="info-card" style={{ marginBottom: 16 }}>
-                  <div className="info-card-label">주휴수당 차감 (원)</div>
-                  <input
-                    type="number" min="0" step="10"
-                    inputMode="numeric"
-                    value={activeEmp.workData?._whCut || ''}
-                    onChange={e => setWhCut(e.target.value)}
-                    placeholder="예) 39216"
-                  />
-                  <div style={{ fontSize: 11, color: '#8a8170', marginTop: 6, lineHeight: 1.6 }}>
-                    자동 계산된 주휴수당에서 이 금액만큼 뺍니다. (이 달에만 적용)
-                    {(() => {
-                      const list = (totals.weeklyHolidayList || []).filter(w => w.pay > 0)
-                      if (!list.length) return <span style={{ display: 'block', marginTop: 2 }}>이 달은 주휴수당이 없어요.</span>
-                      const last = list[list.length - 1]
-                      return (
-                        <>
-                          <span style={{ display: 'block', marginTop: 4 }}>
-                            주별 주휴: {list.map(w => `${w.from}~${w.to}일 ${w.pay.toLocaleString()}원`).join(' · ')}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setWhCut(last.pay)}
-                            style={{ marginTop: 6, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, borderRadius: 6, border: '1px solid #d9b3b3', background: '#fff', color: '#a35b5b', cursor: 'pointer' }}
-                          >
-                            마지막 주({last.from}~{last.to}일) 주휴 {last.pay.toLocaleString()}원 빼기
-                          </button>
-                        </>
-                      )
-                    })()}
-                    {activeEmp.workData?._whCut > 0 && (
-                      <b style={{ color: '#c0392b', display: 'block', marginTop: 4 }}>
-                        현재 차감: −{Number(activeEmp.workData._whCut).toLocaleString()}원 → 주휴수당 합계 {totals.totalWeeklyHoliday.toLocaleString()}원
-                      </b>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* ── 기본급 차감 (시간): 달력 아래, 직원·알바 공통 (조퇴·지각 등) ── */}
               {(
@@ -3334,6 +3294,46 @@ export default function Home() {
                 )}
                 {(activeEmp.empType || '알바') !== '직원' && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#bbb' }}>※ 사업소득세 3% + 지방소득세 0.3% 자동 공제</div>
+                )}
+                {/* 주휴수당 차감 — 마지막 주 주휴를 빼야 할 때 등 (알바) */}
+                {(activeEmp.empType || '알바') !== '직원' && totals && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                    주휴수당 차감
+                    <input
+                      type="number" min="0" step="10"
+                      value={activeEmp.workData?._whCut || ''}
+                      placeholder="0"
+                      onChange={e => setWhCut(e.target.value)}
+                      style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                    />
+                    원 <span style={{ color: '#bbb' }}>(자동 계산된 주휴수당에서 뺌 · 이 달만 적용)</span>
+                    {(() => {
+                      const list = (totals.weeklyHolidayList || []).filter(w => w.pay > 0)
+                      if (!list.length) return null
+                      const last = list[list.length - 1]
+                      return (
+                        <span style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                          <button
+                            type="button"
+                            onClick={() => setWhCut(last.pay)}
+                            style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, borderRadius: 6, border: '1px solid #d9b3b3', background: '#fff', color: '#a35b5b', cursor: 'pointer' }}
+                          >
+                            마지막 주({last.from}~{last.to}일) 주휴 {last.pay.toLocaleString()}원 빼기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWhCut(list.reduce((s, w) => s + w.pay, 0))}
+                            style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, borderRadius: 6, border: '1px solid #d9b3b3', background: '#fff', color: '#a35b5b', cursor: 'pointer' }}
+                          >
+                            이 달 주휴 전부 빼기
+                          </button>
+                          {activeEmp.workData?._whCut > 0 && (
+                            <b style={{ color: '#c0392b' }}>→ 주휴수당 {totals.totalWeeklyHoliday.toLocaleString()}원</b>
+                          )}
+                        </span>
+                      )
+                    })()}
+                  </label>
                 )}
                 {/* 소급 소득세 — 지난달 미징수분을 이번 달에 추가 공제 (직원 4대·알바 3.3 모두 공제 대상) */}
                 {true && (
