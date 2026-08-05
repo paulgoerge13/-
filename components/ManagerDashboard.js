@@ -217,6 +217,23 @@ export default function ManagerDashboard({ onBack }) {
   }
 
   // ── 공제: 4대보험 / 원천세 분리 (2026 요율, 근로자 부담분) — 메인 앱과 동일 ──
+  // ── 4대보험 회사(사업주) 부담분 ──
+  //   국민연금·건강보험·장기요양은 근로자와 같은 요율, 고용보험은 실업급여(0.9%)에
+  //   고용안정·직업능력개발(150인 미만 0.25%)이 더 붙고, 산재보험은 전액 회사 부담이다.
+  //   ※ 산재 요율은 업종·사업장마다 다름 → 고지서 요율이 다르면 아래 숫자만 고치면 된다.
+  const RATE_ACCIDENT = 0.010      // 산재보험 1.0% (음식점업 기준 · 전액 회사 부담)
+  const RATE_EMP_STABLE = 0.0025   // 고용안정·직업능력개발 0.25% (150인 미만 · 회사만)
+  function recMajorInsCompany(r) {
+    if (isFixed(r)) return 0
+    if (r.emp_type !== '직원') return 0
+    const taxable = fixGrand(r)
+    const pension    = Math.floor(taxable * 0.0475 / 10) * 10
+    const health     = Math.floor(taxable * 0.03595 / 10) * 10
+    const care       = Math.floor(health * 0.1314 / 10) * 10
+    const employment = Math.floor(taxable * (0.009 + RATE_EMP_STABLE) / 10) * 10
+    const accident   = Math.floor(taxable * RATE_ACCIDENT / 10) * 10
+    return pension + health + care + employment + accident
+  }
   function recMajorIns(r) {   // 4대보험 (직원만)
     if (isFixed(r)) return 0   // 과거 확정 금액은 이미 net → 공제 없음
     if (r.emp_type !== '직원') return 0
@@ -607,6 +624,7 @@ export default function ManagerDashboard({ onBack }) {
   const netAll = staffNetAll + albaNetAll
   const majorAll = payRecords.reduce((s, r) => s + recMajorIns(r), 0)     // 4대보험 공제 합계
   const withholdAll = payRecords.reduce((s, r) => s + recWithholding(r), 0) // 원천세 공제 합계
+  const majorCoAll = payRecords.reduce((s, r) => s + recMajorInsCompany(r), 0) // 4대보험 회사 부담분 합계
   const totalPeople = byBranch.reduce((s, x) => s + x.count, 0)
   const totalFinal = byBranch.reduce((s, x) => s + x.finalCount, 0)
 
@@ -982,7 +1000,10 @@ export default function ManagerDashboard({ onBack }) {
     /* 세금·보험 요약: 3칸 · 이체액보다 한 단계 작게 (주인공은 이체 금액) */
     .tx-stats.tx-stats-3 { grid-template-columns: repeat(3, 1fr); }
     .tx-stat-v.sm { font-size: 18px; }
-    @media (max-width: 720px) { .tx-stats.tx-stats-3 { grid-template-columns: 1fr; } }
+    /* 회사 부담분: 급여와 별개로 나가는 돈이라 살짝 구분되게 */
+    .tx-stats.tx-stats-2co { grid-template-columns: repeat(2, 1fr); }
+    .tx-stat.co { background: #fdfaf3; border-color: #ecdcb0; }
+    @media (max-width: 720px) { .tx-stats.tx-stats-3, .tx-stats.tx-stats-2co { grid-template-columns: 1fr; } }
     .tx-stat-bar { margin-top: 10px; height: 6px; border-radius: 4px; background: #eee; overflow: hidden; }
     .tx-stat-fill { height: 100%; background: #6fae87; border-radius: 4px; transition: width 0.3s; }
 
@@ -1466,6 +1487,18 @@ export default function ManagerDashboard({ onBack }) {
                   <div className="tx-stat">
                     <div className="tx-stat-k">원천세 <em style={{ fontStyle: 'normal', color: '#bbb' }}>소득세+지방세 · 알바 3.3%</em></div>
                     <div className="tx-stat-v sm">{fmt(withholdAll)}<small>원</small></div>
+                  </div>
+                </div>
+
+                {/* 회사가 실제로 더 부담하는 돈 — 4대보험 사업주 부담분 (급여와 별개로 나가는 비용) */}
+                <div className="tx-stats tx-stats-2co">
+                  <div className="tx-stat co">
+                    <div className="tx-stat-k">4대보험 <b style={{ color: '#a8763a' }}>회사 부담분</b> <em style={{ fontStyle: 'normal', color: '#bbb' }}>산재 1.0% 포함</em></div>
+                    <div className="tx-stat-v sm">{fmt(majorCoAll)}<small>원</small></div>
+                  </div>
+                  <div className="tx-stat co">
+                    <div className="tx-stat-k">총 인건비 <em style={{ fontStyle: 'normal', color: '#bbb' }}>세전 인건비 + 회사 부담분</em></div>
+                    <div className="tx-stat-v sm">{fmt(grandAll + majorCoAll)}<small>원</small></div>
                   </div>
                 </div>
 
