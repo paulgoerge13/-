@@ -1012,6 +1012,10 @@ export default function ManagerDashboard({ onBack }) {
     .bd-card { background: #fff; border: 1px solid #d8d3c8; border-radius: 9px; overflow: hidden; }
     .bd-head { display: flex; align-items: center; gap: 7px; padding: 5px 10px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
     .bd-bname { font-size: 12.5px; font-weight: 800; color: #1a1a1a; }
+    /* 지점명 클릭 = 그 지점만 보기 */
+    .bd-bname-link { cursor: pointer; transition: color 0.15s; }
+    .bd-bname-link:hover { color: #b8954a; text-decoration: underline; }
+    .bd-bname-arrow { color: #c4b58c; font-weight: 700; }
     .bd-bcount { margin-left: auto; font-size: 10.5px; font-weight: 700; color: #8a8170; }
     .bd-allbtn { font-size: 10px; font-weight: 700; color: #fff; background: #2f7d54; border: none; border-radius: 6px; padding: 3px 8px; cursor: pointer; white-space: nowrap; transition: background .12s; }
     .bd-allbtn:hover { background: #245f40; }
@@ -1432,6 +1436,11 @@ export default function ManagerDashboard({ onBack }) {
 
             return (
               <>
+                {/* 지점명을 눌러 들어온 경우 되돌아가는 길 */}
+                {branch !== ALL && (
+                  <button className="md-back-inline" onClick={() => setBranch(ALL)}>← 전 지점으로</button>
+                )}
+
                 {/* 진행 요약 — 총 이체 필요액 → 완료 금액 (색은 차분하게) */}
                 <div className="tx-stats">
                   <div className="tx-stat">
@@ -1498,7 +1507,16 @@ export default function ManagerDashboard({ onBack }) {
                         return (
                           <div key={g.branch} className="bd-card">
                             <div className="bd-head">
-                              <span className="bd-bname">{g.branch}</span>
+                              {/* 지점명을 누르면 그 지점만 보기로 이동 (전 지점 보기일 때만) */}
+                              {branch === g.branch ? (
+                                <span className="bd-bname">{g.branch}</span>
+                              ) : (
+                                <span
+                                  className="bd-bname bd-bname-link"
+                                  onClick={() => { setBranch(g.branch); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                                  title={`${g.branch}만 보기`}
+                                >{g.branch} <span className="bd-bname-arrow">›</span></span>
+                              )}
                               <span className="bd-bcount">{gDone}/{g.units.length}건</span>
                               {gDone < g.units.length ? (
                                 <button
