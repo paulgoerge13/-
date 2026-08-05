@@ -1208,7 +1208,12 @@ export default function Home() {
     const manualDeduction = Math.round(manualDeductHours * baseWage)
     // 시급제 직원: 식대를 기본급 안에서 분리(총액 불변). 과세 기본급 = 시급×209 − 식대. (월급제는 이미 월급−식대라 제외)
     const mealFromBasicOn = !!(emp.workData?._mealFromBasic || emp.mealFromBasic)
-    const mealCutFromBasic = (isStaff && !isMonthlySalary && mealFromBasicOn) ? (emp.mealAllowance || 0) : 0
+    // 식대를 기본급에서 분리할 때 빼는 금액은 '실제 지급하는 식대'와 같아야 한다.
+    //   중도 입·퇴사로 식대를 일할 지급하는데 기본급에선 전액을 빼면 그 차액만큼 급여가 사라진다.
+    //   (예: 양영주 7/14 입사 → 식대 116,130원만 주면서 기본급에선 200,000원을 빼 83,871원 증발)
+    const mealCutFromBasic = (isStaff && !isMonthlySalary && mealFromBasicOn)
+      ? Math.round((emp.mealAllowance || 0) * proration.ratio)
+      : 0
     const totalBasic           = isStaff
       ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
       : Math.max(0, Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0) - manualDeduction)
@@ -1239,7 +1244,7 @@ export default function Home() {
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic, isMonthlySalary, baseWage,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
-      manualDeductHours, manualDeduction, weeklyHolidayList, whCut,
+      manualDeductHours, manualDeduction, weeklyHolidayList, whCut, mealCutFromBasic,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -3441,8 +3446,8 @@ export default function Home() {
                       totals.isStaff
                         ? { label: '기본급',  total: totals.totalBasic, hours: totals.basicHours,
                             desc: totals.proration.partial
-                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
-                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간 (직원 고정·주휴 포함)${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
+                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
+                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간 (직원 고정·주휴 포함)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
