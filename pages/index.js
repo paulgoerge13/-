@@ -3410,7 +3410,13 @@ export default function Home() {
                       <b>식대를 기본급에서 분리</b> (총액 안 늘리고 과세만 낮춤)
                       {(activeEmp.workData?._mealFromBasic || activeEmp.mealFromBasic) && totals && (
                         <span style={{ display: 'block', color: '#2f6bbf', marginTop: 2 }}>
-                          → 과세 기본급 {Number(totals.totalBasic).toLocaleString()}원 + 식대 {Number(activeEmp.mealAllowance).toLocaleString()}원 (지급 총액 불변)
+                          {/* 중도 입·퇴사면 식대도 일할 지급 → 설정값(20만)이 아니라 '실제 지급 식대'를 보여준다 */}
+                          → 과세 기본급 {Number(totals.totalBasic).toLocaleString()}원 + 식대 {Number(totals.meal).toLocaleString()}원 (지급 총액 불변)
+                          {totals.proration?.partial && (
+                            <span style={{ display: 'block', color: '#a08a5e' }}>
+                              ※ 중도 입·퇴사라 식대도 일할: {Number(activeEmp.mealAllowance).toLocaleString()}원 × {totals.proration.activeDays}/{totals.proration.monthDays}일 = {Number(totals.meal).toLocaleString()}원
+                            </span>
+                          )}
                         </span>
                       )}
                       {!(activeEmp.workData?._mealFromBasic || activeEmp.mealFromBasic) && (
