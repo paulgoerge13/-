@@ -3578,6 +3578,24 @@ export default function Home() {
                 </div>
               )}
 
+              {/* ── 저장 안 된 변경 경고 ──
+                  입력 중 자동저장은 '이 기기'에만 되고 DB에는 안 들어간다. 저장 전에는
+                  관리자 페이지가 옛 금액을 보여줘 "개인 화면과 이체 금액이 다르다"는 혼란이 생겼다.
+                  → 저장이 필요한 상태를 눈에 띄게 알린다. */}
+              {employees.some(e => e._dirty && e.name && e.name.trim()) && (
+                <div style={{
+                  marginTop: 16, padding: '12px 16px', borderRadius: 10,
+                  background: '#fdf3f3', border: '1px solid #e8c4c4', color: '#a3452f',
+                  fontSize: 13, fontWeight: 600, lineHeight: 1.6,
+                }}>
+                  ⚠ 아직 저장되지 않은 변경이 있어요
+                  <span style={{ display: 'block', fontWeight: 500, fontSize: 12, color: '#b5705c', marginTop: 2 }}>
+                    {employees.filter(e => e._dirty && e.name && e.name.trim()).map(e => e.name).join(', ')} —
+                    저장해야 <b>관리자 페이지 이체 금액</b>에 반영됩니다. (입력 중 자동저장은 이 기기에만 임시 보관)
+                  </span>
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                 <button
                   className="btn outline"
