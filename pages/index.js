@@ -1455,6 +1455,37 @@ export default function Home() {
   }
 
   // ── DB에서 해당 지점 이번달 전체 직원 데이터 불러오기 ──
+  // ── 관리자 이체표에서 이름을 눌렀을 때: 그 사람의 근무 달력으로 바로 이동 ──
+  //   지점·연월을 그대로 열고 해당 직원 탭을 선택한다. (관리자로 되돌아갈 수 있게 표시도 남김)
+  const [fromAdmin, setFromAdmin] = useState(false)
+  async function openEmployeeFromAdmin(branchName, empName, yr, mo) {
+    const br = BRANCHES.find(b => b.name === branchName)
+    if (!br) { alert(`'${branchName}' 지점을 찾을 수 없어요.`); return }
+    try {
+      const res = await fetch(`/api/load-all?branch=${encodeURIComponent(branchName)}&year=${yr}&month=${mo}`)
+      const result = await res.json()
+      const rows = (result && result.success && result.data) ? result.data : []
+      if (!rows.length) { alert(`${branchName} ${yr}년 ${mo}월 기록이 없어요.`); return }
+      const loaded = parseEmployeesFromDB(rows, branchName, yr, mo)
+      // 이름 그대로 → 정규화(존칭·마커 제거) 순으로 찾는다
+      const hit = loaded.find(e => e.name === empName)
+        || loaded.find(e => normName(e.name) === normName(empName))
+        || loaded[0]
+      setEmployees(loaded)
+      setActiveEmpId(hit.id)
+      try { localStorage.setItem(`payroll_backup_${branchName}`, JSON.stringify(loaded)) } catch (e) {}
+      setSelectedBranch(br)
+      setAuthed(true)
+      setAppMode('payroll')
+      setBranchTab('payroll')
+      setFromAdmin(true)
+      setStep('main')
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0 })
+    } catch (e) {
+      alert('직원 화면을 여는 중 오류가 났어요. 다시 시도해 주세요.')
+    }
+  }
+
   async function loadAllEmployees(branchName) {
     const now = new Date()
     const yr = now.getFullYear()
@@ -2602,7 +2633,7 @@ export default function Home() {
 
           {/* STEP 1-B: 관리자 통합 대시보드 (메인 앱 내 표시) */}
           {step === 'admin' && (
-            <ManagerDashboard onBack={() => setStep('branch')} />
+            <ManagerDashboard onBack={() => setStep('branch')} onOpenEmployee={openEmployeeFromAdmin} />
           )}
 
           {/* STEP 2: 로그인 */}
@@ -2639,7 +2670,15 @@ export default function Home() {
                   }}>💰 급여 계산{!authed ? ' 🔒' : ''}</button>
                   <button className={`bvt${branchTab === 'inventory' ? ' active' : ''}`} onClick={() => setBranchTab('inventory')}>📦 재고 관리</button>
                 </div>
-                <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
+                {/* 관리자 이체표에서 이름을 눌러 들어온 경우 → 관리자로 되돌아가는 길 */}
+                {fromAdmin ? (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn accent" onClick={() => { setFromAdmin(false); setStep('admin') }}>← 관리자 페이지로</button>
+                    <button className="btn outline" onClick={handleBranchChange}>지점 변경</button>
+                  </div>
+                ) : (
+                  <button className="btn outline" onClick={handleBranchChange}>← 지점 변경</button>
+                )}
               </div>
 
               {branchTab === 'inventory' && (

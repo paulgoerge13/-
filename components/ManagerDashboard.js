@@ -26,7 +26,7 @@ function isRecordOnly(r) { return !!(r && r.work_data && r.work_data._recordOnly
 // ── 전 지점 통합 관리 대시보드 (재사용 컴포넌트) ──
 // manager.js(별도 페이지)와 index.js(메인 앱의 관리자 화면) 양쪽에서 공통 사용.
 // 로그인/인증은 부모가 처리. onBack(선택): 상단 뒤로가기 버튼 표시.
-export default function ManagerDashboard({ onBack }) {
+export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   const [branch, setBranch] = useState(ALL)   // 기본은 전 지점 통합 대시보드
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1053,6 +1053,9 @@ export default function ManagerDashboard({ onBack }) {
     .bd-pt.alba { color: #fff; background: #c79026; }
     .bd-pt.staff { color: #6b7785; background: #e7ecf2; }
     .bd-name { font-size: 11.5px; font-weight: 500; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* 이름 클릭 = 그 사람 근무 달력 열기 */
+    .bd-name-link { cursor: pointer; text-decoration: underline; text-decoration-color: #d8cfb4; text-underline-offset: 2px; }
+    .bd-name-link:hover { color: #8a6d24; text-decoration-color: #b8954a; }
     .bd-amt { font-size: 11.5px; font-weight: 500; color: #111; text-align: right; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
     .bd-bank { font-size: 10px; font-weight: 500; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bd-acct { font-size: 10.5px; font-weight: 500; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1577,7 +1580,16 @@ export default function ManagerDashboard({ onBack }) {
                                     title="누르면 확정 ↔ 이체완료가 바뀝니다"
                                   >
                                     <span className={`bd-pt ${unitIsAlba(u) ? 'alba' : 'staff'}`}>{unitIsAlba(u) ? 'pt' : '직원'}</span>
-                                    <span className="bd-name">{unitNames(u)}</span>
+                                    {/* 이름을 누르면 그 사람의 근무 달력으로 이동 (행 클릭=상태변경과 겹치지 않게 stopPropagation) */}
+                                    {onOpenEmployee && u.recs[0] ? (
+                                      <span
+                                        className="bd-name bd-name-link"
+                                        onClick={e => { e.stopPropagation(); const r0 = u.recs[0]; onOpenEmployee(r0.branch, r0.emp_name, r0.year, r0.month) }}
+                                        title={`${unitNames(u)} 근무 달력 열기`}
+                                      >{unitNames(u)}</span>
+                                    ) : (
+                                      <span className="bd-name">{unitNames(u)}</span>
+                                    )}
                                     <span className="bd-amt">{fmt(unitAmt(u))}</span>
                                     <span className="bd-bank">{a.bank}</span>
                                     <span
