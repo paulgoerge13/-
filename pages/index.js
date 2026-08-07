@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
-import BranchInventory from '../components/BranchInventory'
 import { BRANCHES } from '../lib/branches'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
@@ -457,8 +456,7 @@ const HOLIDAYS = {
 }
 
 export default function Home() {
-  const [step, setStep] = useState('home')          // home → branch → (login) → main
-  const [appMode, setAppMode] = useState('payroll') // 홈에서 고른 업무: payroll | inventory
+  const [step, setStep] = useState('branch')        // branch → (login) → main  (재고는 별도 사이트로 분리돼 홈 화면 폐지)
   const [authed, setAuthed] = useState(false)       // 이 지점 급여 비밀번호 통과 여부
   const [selectedBranch, setSelectedBranch] = useState(null)
   const [pw, setPw] = useState('')
@@ -472,7 +470,6 @@ export default function Home() {
   const [applyDows, setApplyDows] = useState([1, 2, 3, 4, 5]) // 일괄 적용할 요일 (0=일 … 6=토, 기본 월~금)
   const [importing, setImporting] = useState(false)
   const [saving, setSaving] = useState(null)   // null | {done, total} 전원 저장 진행상황
-  const [branchTab, setBranchTab] = useState('payroll') // 지점 화면 탭: payroll | inventory
   const [branchLogs, setBranchLogs] = useState([])      // 이 지점 수정 이력
   const [logsLoading, setLogsLoading] = useState(false)
   const [showLogs, setShowLogs] = useState(false)       // 이력 패널 펼침/접힘
@@ -635,11 +632,7 @@ export default function Home() {
   }, [employees, selectedBranch])
 
   const handleBranchChange = () => {
-    // 재고 화면이면 저장 안내 불필요(즉시 저장됨). 급여 화면일 때만 확인.
-    const msg = branchTab === 'inventory'
-      ? '지점을 변경하시겠습니까?'
-      : '지점을 변경하시겠습니까? 현재 입력 중인 내용은 이 지점에 자동 저장됩니다.'
-    if (confirm(msg)) {
+    if (confirm('지점을 변경하시겠습니까? 현재 입력 중인 내용은 이 지점에 자동 저장됩니다.')) {
       setStep('branch')
       setSelectedBranch(null)
       setAuthed(false)
@@ -1476,8 +1469,6 @@ export default function Home() {
       try { localStorage.setItem(`payroll_backup_${branchName}`, JSON.stringify(loaded)) } catch (e) {}
       setSelectedBranch(br)
       setAuthed(true)
-      setAppMode('payroll')
-      setBranchTab('payroll')
       setFromAdmin(true)
       setStep('main')
       if (typeof window !== 'undefined') window.scrollTo({ top: 0 })
@@ -2083,23 +2074,6 @@ export default function Home() {
     @media (max-width: 640px) { .branch-grid { grid-template-columns: repeat(2, 1fr); } }
 
     /* 홈 — 업무 선택 카드 */
-    .home-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; max-width: 760px; margin: 8px auto 0; }
-    @media (max-width: 640px) { .home-grid { grid-template-columns: 1fr; } }
-    .home-card { position: relative; background: #fff; border: 1px solid #ebe9e4; border-radius: 18px; padding: 32px 28px 30px; cursor: pointer; transition: all 0.18s; overflow: hidden; }
-    .home-card:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(0,0,0,0.08); border-color: #d9d4ca; }
-    .home-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; }
-    .home-card.payroll::before { background: #b8954a; }
-    .home-card.inventory::before { background: #5a8a6a; }
-    .home-card-icon { font-size: 38px; margin-bottom: 16px; }
-    .home-card-title { font-size: 22px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
-    .home-card-sub { font-size: 13px; color: #9a9286; line-height: 1.5; }
-    .home-card-chev { position: absolute; right: 24px; top: 32px; font-size: 26px; color: #d0ccc5; font-weight: 300; }
-    .home-card.soon { background: #faf9f6; }
-    .home-card-badge { position: absolute; right: 18px; top: 18px; font-size: 11.5px; font-weight: 700; color: #8a6f3c; background: #f3ead2; border: 1px solid #e6d6ad; padding: 3px 10px; border-radius: 999px; }
-    .home-card.soon .home-card-chev { top: 46px; }
-    .home-card-soon { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 600; color: #b08a2e; }
-    .home-card:hover .home-card-chev { color: #b8954a; }
-    .home-card.inventory:hover .home-card-chev { color: #5a8a6a; }
     .branch-card {
       background: #fff; border: 1px solid #ebe9e4; border-radius: 14px;
       padding: 22px 20px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
@@ -2541,55 +2515,23 @@ export default function Home() {
       <div className="wrap">
         <header className="header">
           <img src="/logo.png" alt="THE COMMA' LOUNGE" className="logo-img"
-            onClick={() => { setStep('home'); setSelectedBranch(null); setPw(''); setPwError(false) }}
-            title="처음 화면으로" />
+            onClick={() => { setStep('branch'); setSelectedBranch(null); setPw(''); setPwError(false) }}
+            title="지점 선택으로" />
           <span className="header-tag">CREW PAYROLL</span>
         </header>
 
         <main className={`main ${step === 'admin' ? 'main-admin' : ''}`}>
 
-          {/* STEP 0: 홈 — 업무 선택 (급여 / 재고) */}
-          {step === 'home' && (
-            <div>
-              <h2 className="page-title">무엇을 하시겠어요?</h2>
-              <p className="page-sub">업무를 선택하면 지점을 고를 수 있어요</p>
-              <div className="home-grid">
-                <div className="home-card payroll" onClick={() => { setAppMode('payroll'); setStep('branch') }}>
-                  <div className="home-card-icon">💰</div>
-                  <div className="home-card-title">급여 계산</div>
-                  <div className="home-card-sub">근무시간 입력 · 급여/공제 자동 계산 · 명세서</div>
-                  <div className="home-card-chev">›</div>
-                </div>
-                <div className="home-card inventory soon" onClick={() => { setAppMode('inventory'); setStep('branch') }}>
-                  <span className="home-card-badge">🚧 준비 중</span>
-                  <div className="home-card-icon">📦</div>
-                  <div className="home-card-title">재고 관리</div>
-                  <div className="home-card-sub">품목별 현재고 · 입출고 기록 · 부족 알림<br/><span className="home-card-soon">현재 준비 중이에요 · 곧 열릴 예정입니다</span></div>
-                  <div className="home-card-chev">›</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 1: 지점 선택 (급여/재고 공통) */}
+          {/* STEP 1: 지점 선택 */}
           {step === 'branch' && (
             <div>
-              <button className="btn outline" style={{ marginBottom: 18 }} onClick={() => setStep('home')}>← 처음으로</button>
-              <h2 className="page-title">{appMode === 'inventory' ? '📦 재고 관리' : '💰 급여 계산'} · 지점 선택</h2>
-              <p className="page-sub">
-                {appMode === 'inventory' ? '재고를 관리할 지점을 선택해주세요 (비밀번호 없이 바로 진입)' : '급여 계산할 지점을 선택해주세요'}
-              </p>
+              <h2 className="page-title">💰 급여 계산 · 지점 선택</h2>
+              <p className="page-sub">급여 계산할 지점을 선택해주세요</p>
               <div className="branch-grid">
-                {(appMode === 'inventory' ? BRANCHES.filter(b => b.brand === 'thecomma') : BRANCHES).map((b, i) => (
+                {BRANCHES.map((b, i) => (
                   <div key={b.id} className="branch-card" onClick={() => {
                     setSelectedBranch(b)
-                    if (appMode === 'inventory') {
-                      // 재고: 로그인 없이 바로 진입
-                      setAuthed(false); setBranchTab('inventory'); setStep('main')
-                    } else {
-                      // 급여: 지점 비밀번호 로그인
-                      setBranchTab('payroll'); setStep('login'); setPw(''); setPwError(false)
-                    }
+                    setStep('login'); setPw(''); setPwError(false)
                   }}>
                     <div className="branch-num">0{i + 1}</div>
                     <div className="branch-name">{b.name}</div>
@@ -2597,8 +2539,8 @@ export default function Home() {
                 ))}
               </div>
 
-              {/* 급여 모드에서만 — 전 지점 인건비 통합 관리자 진입 (마스터 비밀번호) */}
-              {appMode === 'payroll' && (
+              {/* 전 지점 인건비 통합 관리자 진입 (마스터 비밀번호) */}
+              {true && (
                 <div className="admin-entry" onClick={() => { setStep('adminLogin'); setPw(''); setPwError(false) }}>
                   <div className="admin-entry-icon">📊</div>
                   <div className="admin-entry-texts">
@@ -2646,29 +2588,23 @@ export default function Home() {
                 <input type="password" className="text-input" placeholder="비밀번호 입력"
                   value={pw} onChange={e => setPw(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') { if (pw === selectedBranch.password) { setAuthed(true); setAppMode('payroll'); setBranchTab('payroll'); setStep('main'); setPwError(false); loadAllEmployees(selectedBranch.name) } else setPwError(true) }
+                    if (e.key === 'Enter') { if (pw === selectedBranch.password) { setAuthed(true); setStep('main'); setPwError(false); loadAllEmployees(selectedBranch.name) } else setPwError(true) }
                   }}
                 />
                 {pwError && <p className="error-msg">비밀번호가 틀렸습니다.</p>}
-                <button className="btn full" onClick={() => { if (pw === selectedBranch.password) { setAuthed(true); setAppMode('payroll'); setBranchTab('payroll'); setStep('main'); setPwError(false); loadAllEmployees(selectedBranch.name) } else setPwError(true) }}>입장</button>
+                <button className="btn full" onClick={() => { if (pw === selectedBranch.password) { setAuthed(true); setStep('main'); setPwError(false); loadAllEmployees(selectedBranch.name) } else setPwError(true) }}>입장</button>
                 <br /><br />
                 <button className="btn outline full" onClick={() => setStep('branch')}>← 지점 재선택</button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: 급여 계산 / 재고 관리 */}
+          {/* STEP 3: 급여 계산 */}
           {step === 'main' && (
             <div>
-              {/* 지점 화면 탭: 급여 / 재고 */}
               <div className="branch-view-tabs">
                 <div className="bvt-group">
-                  <button className={`bvt${branchTab === 'payroll' ? ' active' : ''}`} onClick={() => {
-                    // 급여는 비밀번호 보호 — 미인증(재고로 바로 들어온) 상태면 로그인 먼저
-                    if (authed) setBranchTab('payroll')
-                    else { setStep('login'); setPw(''); setPwError(false) }
-                  }}>💰 급여 계산{!authed ? ' 🔒' : ''}</button>
-                  <button className={`bvt${branchTab === 'inventory' ? ' active' : ''}`} onClick={() => setBranchTab('inventory')}>📦 재고 관리</button>
+                  <button className="bvt active">💰 급여 계산</button>
                 </div>
                 {/* 관리자 이체표에서 이름을 눌러 들어온 경우 → 관리자로 되돌아가는 길 */}
                 {fromAdmin ? (
@@ -2681,11 +2617,7 @@ export default function Home() {
                 )}
               </div>
 
-              {branchTab === 'inventory' && (
-                <BranchInventory branch={selectedBranch?.name} actor={selectedBranch?.name} />
-              )}
-
-              {branchTab === 'payroll' && activeEmp && (
+              {activeEmp && (
               <div>
               <div className="section-header">
                 <div>
