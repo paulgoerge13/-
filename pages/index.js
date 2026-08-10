@@ -2917,8 +2917,10 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 입사일 / 퇴사일 (직원만) — 중도 입·퇴사 시 기본급 자동 일할계산 */}
-              {activeEmp.empType === '직원' && (
+              {/* 입사일 / 퇴사일 — 직원은 항상(일할계산용), 알바는 값이 남아 있을 때만 보여준다.
+                  (퇴사했던 사람이 알바로 다시 오면 '퇴사 후'로 입력이 막히는데,
+                   알바 화면에선 칸이 안 보여 지울 수가 없던 문제 해결) */}
+              {(activeEmp.empType === '직원' || activeEmp.hireDate || activeEmp.resignDate) && (
                 <div className="info-grid-2" style={{ marginTop: 10 }}>
                   <div className="info-card">
                     <div className="info-card-label">입사일 (선택)</div>
@@ -3064,7 +3066,11 @@ export default function Home() {
                                 <div
                                   className={`day-date ${holidayName ? 'gov-holiday' : ''} ${isHolidayWork ? 'holiday-type' : ''} ${isAbsent ? 'absent-type' : isAnnual ? 'annual-type' : isDayOff ? 'off-type' : ''}`}
                                   onClick={() => { if (!outOfEmp) toggleDayType(ds) }}
-                                  title={outOfEmp ? (beforeHire ? '입사 전' : '퇴사 후') : (holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환')}
+                                  title={outOfEmp
+                                    ? (beforeHire
+                                        ? `입사일(${activeEmp.hireDate}) 이전이라 입력할 수 없어요. 다시 근무한다면 위 '입사일' 칸을 고치거나 비우세요.`
+                                        : `퇴사일(${activeEmp.resignDate}) 이후라 입력할 수 없어요. 다시 근무한다면 위 '퇴사일' 칸을 고치거나 비우세요.`)
+                                    : (holidayName ? `${holidayName} · 클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환` : '클릭: 평일 → 휴일근로 → 휴무 → 연차 → 결근 전환')}
                                 >{day}</div>
                                 {holidayName && <div className="gov-holiday-name">{holidayName}</div>}
                               </div>
