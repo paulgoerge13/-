@@ -81,9 +81,12 @@ export default async function handler(req, res) {
   }
 
   const opts = { onConflict: 'branch,emp_name,year,month' }
+  // 휴지통에 있던 사람을 다시 저장하면 자동으로 되살린다.
+  //   (삭제된 레코드에 그대로 덮어써지면서 deleted_at 이 남아, 데이터는 들어갔는데
+  //    관리자 화면에는 안 보이는 상태가 생겼다 — 예: 익산 조승운 7월)
   let { data, error } = await supabase
     .from('payroll')
-    .upsert({ ...baseData, ...extraData }, opts)
+    .upsert({ ...baseData, ...extraData, deleted_at: null }, opts)
     .select()
     .single()
 
