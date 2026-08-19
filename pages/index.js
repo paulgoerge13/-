@@ -2533,7 +2533,7 @@ export default function Home() {
                     setSelectedBranch(b)
                     setStep('login'); setPw(''); setPwError(false)
                   }}>
-                    <div className="branch-num">0{i + 1}</div>
+                    <div className="branch-num">{String(i + 1).padStart(2, '0')}</div>
                     <div className="branch-name">{b.name}</div>
                   </div>
                 ))}
