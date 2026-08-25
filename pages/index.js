@@ -1082,7 +1082,7 @@ export default function Home() {
     })
     const weekHolidayH = weekHolidayDayH + weekHolidayNightH  // 휴일근무 총합(연장은 포함분이라 제외)
     const weekWorkH = weekDayH + weekNightH + weekHolidayH // 휴게·연장 제외(연장은 주간/야간 안에 포함됨), 휴일 포함
-    const isStaffNoCalc = emp.empType === '직원' // 직원은 기본급(시급×209)에 주휴 포함 → 주휴 별도계산 안 함
+    const isStaffNoCalc = emp.empType === '직원' || emp.salaryType === 'monthly' // 직원·월급제는 기본급에 주휴 포함 → 별도계산 안 함
     // 주휴수당: 소정근로(주간+야간) 시간 기준으로 계산
     return {
       weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH, weekHolidayH,
@@ -1160,7 +1160,9 @@ export default function Home() {
     // ── 월급제(포괄임금제) 직원: 월급에 연장·야간·휴일수당이 이미 포함된 고정급 ──
     //    → 자동 수당을 위에 더하지 않는다(이중지급 방지). 결근·일할 공제 기준시급만 월급÷209로 환산.
     //    월급(총액)에는 식대(비과세)가 포함 → 과세 기본급 = 월급 − 식대. (시급제/알바는 시급 그대로)
-    const isMonthlySalary = emp.empType === '직원' && emp.salaryType === 'monthly'
+    // 월급제(고정급): 직원뿐 아니라 알바(3.3% 대상)도 쓸 수 있다.
+    //   근무기록 없이 '이 금액으로 정해진' 사람 — 시급×시간으로 재계산되면 안 되는 경우.
+    const isMonthlySalary = emp.salaryType === 'monthly'
     // 수습 감액: work_data._probationPct(예:90)면 임금(기본급·수당)을 그 %로 지급. 식대·퇴직금은 감액 안 함. (직원만)
     const probPct = (emp.empType === '직원' && Number(emp.workData?._probationPct) > 0) ? Number(emp.workData._probationPct) : 100
     const probMult = probPct / 100
@@ -1181,7 +1183,7 @@ export default function Home() {
     const autoHolidayNightPay = isMonthlySalary ? 0 : calcHolidayNight(mHolidayNightH, baseWage)
 
     const isStaff = emp.empType === '직원'
-    const isStaffNoCalc = isStaff // 직원은 기본급(시급×209)에 주휴 포함
+    const isStaffNoCalc = isStaff || isMonthlySalary // 직원·월급제(고정급)는 기본급에 주휴 포함 → 별도계산 안 함
     // ── 중도 입·퇴사 일할계산 (직원만): 재직일수 / 그 달 총일수 ──
     const proration = calcProration(emp)
     // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 주간 근무 × 시급 (야간은 '야간근로' 줄에서 1.5배 별도) ──
@@ -1207,7 +1209,7 @@ export default function Home() {
     const mealCutFromBasic = (isStaff && !isMonthlySalary && mealFromBasicOn)
       ? Math.round((emp.mealAllowance || 0) * proration.ratio)
       : 0
-    const totalBasic           = isStaff
+    const totalBasic           = (isStaff || isMonthlySalary)
       ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
       : Math.max(0, Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0) - manualDeduction)
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
@@ -2759,15 +2761,15 @@ export default function Home() {
                     </span>
                   </label>
                 )}
-                {activeEmp.empType === '직원' && (
+                {/* 기본급 방식 — 알바도 '고정 월급'을 쓸 수 있다 (근무기록 없이 금액이 정해진 사람) */}
+                {true && (
                   <div style={{ marginTop: 10 }}>
-                    {/* 기본급 방식: 시급×209 자동 / 월급 직접입력 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
                       <span>기본급 방식</span>
                       <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none' }}>
                         {[
-                          { v: 'hourly',  t: '시급 × 209' },
-                          { v: 'monthly', t: '월급(포괄임금)' },
+                          { v: 'hourly',  t: activeEmp.empType === '직원' ? '시급 × 209' : '시급 × 근무시간' },
+                          { v: 'monthly', t: activeEmp.empType === '직원' ? '월급(포괄임금)' : '고정 월급' },
                         ].map(({ v, t }) => (
                           <button
                             key={v}
