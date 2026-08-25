@@ -2086,6 +2086,13 @@ export default function Home() {
     .branch-card:hover::after { transform: scaleX(1); }
     .branch-num { font-size: 10px; color: #ccc; letter-spacing: 0.18em; margin-bottom: 8px; font-weight: 500; }
     .branch-name { font-size: 19px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.01em; }
+    /* 운영 종료 지점 — 흐리게. 지난 기록은 그대로 볼 수 있어 클릭은 열어둔다. */
+    .branch-card.inactive { background: #f4f3f0; border-color: #e6e4df; }
+    .branch-card.inactive .branch-name { color: #a8a49c; font-weight: 600; }
+    .branch-card.inactive .branch-num { color: #d5d2cb; }
+    .branch-card.inactive::after { background: #c9c5bc; }
+    .branch-card.inactive:hover { border-color: #d5d2cb; box-shadow: 0 6px 20px rgba(0,0,0,0.05); }
+    .branch-closed { margin-top: 6px; font-size: 11px; color: #b3aea4; letter-spacing: 0.01em; }
 
     /* 6개 지점 아래 — 전지점 관리(관리자 페이지) 진입 */
     .admin-entry {
@@ -2529,12 +2536,13 @@ export default function Home() {
               <p className="page-sub">급여 계산할 지점을 선택해주세요</p>
               <div className="branch-grid">
                 {BRANCHES.map((b, i) => (
-                  <div key={b.id} className="branch-card" onClick={() => {
+                  <div key={b.id} className={`branch-card${b.inactive ? ' inactive' : ''}`} onClick={() => {
                     setSelectedBranch(b)
                     setStep('login'); setPw(''); setPwError(false)
                   }}>
                     <div className="branch-num">{String(i + 1).padStart(2, '0')}</div>
                     <div className="branch-name">{b.name}</div>
+                    {b.inactive && <div className="branch-closed">운영 종료 · 지난 기록만</div>}
                   </div>
                 ))}
               </div>
