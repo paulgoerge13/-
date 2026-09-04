@@ -102,10 +102,15 @@ function restTakenFromNight(startStr) {
   return breakHour >= 22 || breakHour < 6
 }
 // day/night 에서 rest 를 위 규칙대로 빼고, 한쪽이 모자라면 다른 쪽에서 마저 뺀다.
-function applyRest(day, night, rest, startStr) {
+// restFrom: 'auto'(시각으로 추정·기본) | 'day'(항상 주간에서) | 'night'(항상 야간에서)
+//   야간 근무자라도 휴게를 주간대에 쓰는 사람이 있어, 직원별로 고정할 수 있게 열어둔다.
+function applyRest(day, night, rest, startStr, restFrom) {
   const restH = Number(rest) || 0
   if (restH <= 0) return { day: Math.max(0, day), night: Math.max(0, night) }
-  if (restTakenFromNight(startStr)) {
+  const fromNight = restFrom === 'night' ? true
+    : restFrom === 'day' ? false
+    : restTakenFromNight(startStr)
+  if (fromNight) {
     const n = Math.max(0, night - restH)
     const leftover = Math.max(0, restH - night)
     return { day: Math.max(0, day - leftover), night: n }
@@ -114,10 +119,10 @@ function applyRest(day, night, rest, startStr) {
   const leftover = Math.max(0, restH - day)
   return { day: d, night: Math.max(0, night - leftover) }
 }
-function netSplit(startStr, endStr, rest) {
+function netSplit(startStr, endStr, rest, restFrom) {
   const split = calcDayNightHours(startStr, endStr)
   if (!split) return null
-  return applyRest(split.day, split.night, rest, startStr)
+  return applyRest(split.day, split.night, rest, startStr, restFrom)
 }
 
 // ── 주간/야간 보정 (보수적: 수동 입력값은 절대 안 건드림) ──
@@ -698,7 +703,7 @@ export default function Home() {
     if (!start || !end || start === end) { alert('먼저 위 "기본 근무 시간"을 입력해주세요. (예: 09:00 ~ 18:00)'); return }
     if (!applyDows.length) { alert('적용할 요일을 하나 이상 선택해주세요.'); return }
     const y = activeEmp.year, m = activeEmp.month
-    const split = netSplit(start, end, 0)
+    const split = netSplit(start, end, 0, activeEmp.workData?._restFrom)
     const daysInMonth = new Date(y, m, 0).getDate()
     const wd0 = activeEmp.workData || {}
 
@@ -769,7 +774,7 @@ export default function Home() {
 
     const isHol = (currentData.type || '평') === '휴'
     const rest = isHol ? (currentData.holidayRestH || 0) : (currentData.restH || 0)
-    const split = netSplit(start, end, rest) // 휴게를 야간에서 먼저 차감
+    const split = netSplit(start, end, rest, activeEmp.workData?._restFrom)
     if (split) {
       // 시작~종료 시간을 주간/야간으로 자동 분리 (휴일이면 휴일주간/휴일야간)
       if (isHol) {
@@ -805,14 +810,14 @@ export default function Home() {
     const end   = currentData.timeEnd   || activeEmp.defaultTimeEnd
     if (isHol) {
       updateWorkDay(dateStr, 'holidayRestH', restVal)
-      const split = netSplit(start, end, restVal)
+      const split = netSplit(start, end, restVal, activeEmp.workData?._restFrom)
       if (split) {
         updateWorkDay(dateStr, 'holidayDaytimeH', split.day)
         updateWorkDay(dateStr, 'holidayNightH', split.night)
       }
     } else {
       updateWorkDay(dateStr, 'restH', restVal)
-      const split = netSplit(start, end, restVal)
+      const split = netSplit(start, end, restVal, activeEmp.workData?._restFrom)
       if (split) {
         updateWorkDay(dateStr, 'daytimeH', split.day)
         updateWorkDay(dateStr, 'nightH', split.night)
@@ -880,6 +885,33 @@ export default function Home() {
       if (hours > 0) wd._deduct = { hours }
       else delete wd._deduct
       return { ...e, workData: wd, _dirty: true } // 미저장 수정 표시
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
+  // ── 휴게 차감 위치: workData._restFrom = 'day' | 'night' (없으면 자동) ──
+  //   야간 근무자라도 휴게를 주간대에 쓰는 사람이 있어 직원별로 고정할 수 있게 한다.
+  //   (야간에서 빼면 야간수당 0.5배가 줄고, 주간에서 빼면 야간수당이 유지된다)
+  function setRestFrom(val) {
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (val === 'day' || val === 'night') wd._restFrom = val
+      else delete wd._restFrom
+      // 이미 입력된 날들의 주간/야간을 새 규칙으로 다시 나눈다
+      for (const [ds, d] of Object.entries(wd)) {
+        if (ds.startsWith('_') || !d || typeof d !== 'object') continue
+        const isHol = d.type === '휴'
+        const rest = isHol ? (d.holidayRestH || 0) : (d.restH || 0)
+        if (!rest || !d.timeStart || !d.timeEnd) continue
+        const ns = netSplit(d.timeStart, d.timeEnd, rest, wd._restFrom)
+        if (!ns) continue
+        wd[ds] = isHol
+          ? { ...d, holidayDaytimeH: ns.day, holidayNightH: ns.night }
+          : { ...d, daytimeH: ns.day, nightH: ns.night }
+      }
+      return { ...e, workData: wd, _dirty: true }
     }))
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => autoSave(), 1500)
@@ -1112,7 +1144,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct' || ds === '_basicHours' || ds === '_whCut') return   // 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct' || ds === '_basicHours' || ds === '_whCut' || ds === '_restFrom') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -3061,7 +3093,7 @@ export default function Home() {
                               if (Math.abs(got - expectTotal) > 0.01) {
                                 inputWarn = `시계시간 ${g.total}h − 휴게 ${rest}h = ${expectTotal}h 인데, 입력한 주간+야간 합은 ${got}h 입니다. 확인해 주세요.`
                               } else {
-                                const ns = netSplit(tStart, tEnd, rest)
+                                const ns = netSplit(tStart, tEnd, rest, activeEmp.workData?._restFrom)
                                 if (ns && (Math.abs(ns.day - dDay) > 0.01 || Math.abs(ns.night - dNight) > 0.01)) {
                                   inputWarn = `주간/야간 나눔이 시계시간과 다릅니다. 시계 기준 예상: 주간 ${ns.day}h / 야간 ${ns.night}h.`
                                 }
@@ -3177,6 +3209,34 @@ export default function Home() {
                 })}
               </div>
 
+
+              {/* ── 휴게 차감 위치 (야간 근무자용) ── */}
+              <div className="info-card" style={{ marginBottom: 16 }}>
+                <div className="info-card-label">휴게시간을 어디서 뺄까요</div>
+                <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none', marginTop: 4 }}>
+                  {[
+                    { v: '',      t: '자동' },
+                    { v: 'day',   t: '주간에서' },
+                    { v: 'night', t: '야간에서' },
+                  ].map(({ v, t }) => (
+                    <button
+                      key={v || 'auto'}
+                      className={`emp-type-tab${(activeEmp.workData?._restFrom || '') === v ? ' active' : ''}`}
+                      style={{ padding: '6px 14px', fontSize: 12.5 }}
+                      onClick={() => setRestFrom(v)}
+                    >{t}</button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#8a8170', marginTop: 8, lineHeight: 1.6 }}>
+                  자동은 쉬는 시각(근무 시작 5시간 후)을 어림해 그 시간대에서 뺍니다.<br />
+                  <b>주간에서</b> 를 고르면 야간 근무자라도 휴게를 주간에서 빼서 <b>야간수당(0.5배)이 줄지 않습니다.</b>
+                  {activeEmp.workData?._restFrom && (
+                    <b style={{ color: '#2f6bbf', display: 'block', marginTop: 3 }}>
+                      → 이 달은 휴게를 항상 {activeEmp.workData._restFrom === 'day' ? '주간' : '야간'}에서 뺍니다. (이미 입력한 날도 다시 계산됨)
+                    </b>
+                  )}
+                </div>
+              </div>
 
               {/* ── 기본급 차감 (시간): 달력 아래, 직원·알바 공통 (조퇴·지각 등) ── */}
               {(
