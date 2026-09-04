@@ -46,6 +46,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   const [sevOpen, setSevOpen] = useState(false)     // 퇴직금 계산기 팝업
   const [statusMap, setStatusMap] = useState({})    // { [recId]: '작성중'|'수정중'|'확정'|'이체완료'|'보류' }
   const [statusFilter, setStatusFilter] = useState('all')  // all | 작성중 | 수정중 | 확정 | 이체완료 | 보류
+  // 지급일 구분: 매니저·직원은 10일, 알바는 15일에 지급한다 (2026-08~)
+  const [payDay, setPayDay] = useState('all')   // all | staff(10일) | alba(15일)
   const [noteMap, setNoteMap] = useState({})        // { [recId]: '비고 메모' }
   const [noteUnavailable, setNoteUnavailable] = useState(false)
   const [txMemo, setTxMemo] = useState('')          // 이체 화면 우측 자유 메모 (월별, 브라우저 저장)
@@ -409,6 +411,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     return types
   }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
+  // 지급일 필터: 직원(매니저 포함)=10일 / 알바=15일
+  function matchPayDay(u) {
+    if (payDay === 'all') return true
+    return payDay === 'alba' ? unitIsAlba(u) : !unitIsAlba(u)
+  }
+  const PAYDAY_LABEL = { all: '전체', staff: '10일 · 매니저/직원', alba: '15일 · 알바' }
   function unitMixed(u) { return u.recs.length > 1 }
   // ── 이체자가 "공제 전(세전) → 공제 → 실제 이체액" 을 한눈에 확인할 수 있도록 ──
   function unitGross(u) { return u.recs.reduce((s, r) => s + fixGrand(r) + recMeal(r), 0) } // 공제 전(세전+식대)
@@ -678,8 +686,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
   function downloadTransferXlsx() {
+    // 화면에서 고른 지급일(10일 직원 / 15일 알바)만 내려받는다
     const groups = branchesFor(branch)
-      .map(b => ({ branch: b, units: unitsForBranch(b) }))
+      .map(b => ({ branch: b, units: unitsForBranch(b).filter(matchPayDay) }))
       .filter(g => g.units.length > 0)
       .map(g => ({
         branch: g.branch,
@@ -759,7 +768,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, `${month}월`)
-    XLSX.writeFile(wb, `급여정리_전지점_${year}년${month}월.xlsx`)
+    // 지급일을 고른 상태면 파일명에도 드러나게 (10일치·15일치를 따로 보관하기 좋게)
+    const pdTag = payDay === 'staff' ? '_10일(직원)' : payDay === 'alba' ? '_15일(알바)' : ''
+    XLSX.writeFile(wb, `급여정리_전지점_${year}년${month}월${pdTag}.xlsx`)
   }
 
   const css = `
@@ -991,6 +1002,23 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     @media (max-width: 640px) { .md-pw-grid { grid-template-columns: 1fr; } }
 
     /* ───── 이체 처리 ───── */
+    /* 지급일 탭 — 매니저·직원 10일 / 알바 15일 */
+    .payday-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 720px) { .payday-tabs { grid-template-columns: 1fr; } }
+    .payday-tab {
+      background: #fff; border: 1px solid #e6e3dd; border-radius: 12px; padding: 12px 16px;
+      cursor: pointer; text-align: left; font-family: 'Pretendard', sans-serif; transition: all 0.15s;
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .payday-tab:hover { border-color: #d4b87a; }
+    .payday-tab .pd-t { font-size: 13px; font-weight: 700; color: #6b6560; }
+    .payday-tab .pd-n { font-size: 12px; color: #a8a29a; font-variant-numeric: tabular-nums; }
+    .payday-tab.on { border-color: #b8954a; background: #fdfaf3; box-shadow: 0 0 0 1px #b8954a inset; }
+    .payday-tab.on .pd-t { color: #8a6d24; }
+    .payday-tab.on .pd-n { color: #b08c45; }
+    .payday-tab.on.alba { border-color: #3f7d5a; background: #f4faf6; box-shadow: 0 0 0 1px #3f7d5a inset; }
+    .payday-tab.on.alba .pd-t { color: #2f6b49; }
+    .payday-tab.on.alba .pd-n { color: #4d8a68; }
     .tx-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; }
     .tx-stat { background: #fff; border: 1px solid #ebe9e4; border-radius: 12px; padding: 11px 18px; }
     .tx-stat-k { font-size: 11px; letter-spacing: 0.06em; color: #999; margin-bottom: 4px; }
@@ -1441,9 +1469,14 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
           (() => {
             // 지점별 → 같은 계좌끼리 묶은 '이체 단위(유닛)' 생성
             const groups = branchesFor(branch)
-              .map(b => ({ branch: b, units: unitsForBranch(b) }))
+              .map(b => ({ branch: b, units: unitsForBranch(b).filter(matchPayDay) }))
               .filter(g => g.units.length > 0)
             const allUnits = groups.flatMap(g => g.units)
+            // 지급일 탭에 보여줄 건수·금액 (필터와 무관하게 전체 기준으로 센다)
+            const everyUnit = branchesFor(branch).flatMap(b => unitsForBranch(b))
+            const staffUnits = everyUnit.filter(u => !unitIsAlba(u))
+            const albaUnits  = everyUnit.filter(u => unitIsAlba(u))
+            const sumUnits = us => us.reduce((s, u) => s + unitAmt(u), 0)
             const doneUnits = allUnits.filter(u => unitStatus(u) === '이체완료')
             const doneCount = doneUnits.length
             const doneAmt = doneUnits.reduce((s, u) => s + unitAmt(u), 0)
@@ -1464,6 +1497,24 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                 {branch !== ALL && (
                   <button className="md-back-inline" onClick={() => setBranch(ALL)}>← 전 지점으로</button>
                 )}
+
+                {/* 지급일 구분 — 매니저·직원 10일 / 알바 15일 */}
+                <div className="payday-tabs">
+                  {[
+                    { k: 'all',   t: '전체',            n: everyUnit.length,  amt: sumUnits(everyUnit) },
+                    { k: 'staff', t: '10일 · 매니저/직원', n: staffUnits.length, amt: sumUnits(staffUnits) },
+                    { k: 'alba',  t: '15일 · 알바',      n: albaUnits.length,  amt: sumUnits(albaUnits) },
+                  ].map(x => (
+                    <button
+                      key={x.k}
+                      className={`payday-tab${payDay === x.k ? ' on' : ''}${x.k === 'alba' ? ' alba' : x.k === 'staff' ? ' staff' : ''}`}
+                      onClick={() => setPayDay(x.k)}
+                    >
+                      <span className="pd-t">{x.t}</span>
+                      <span className="pd-n">{x.n}건 · {fmt(x.amt)}원</span>
+                    </button>
+                  ))}
+                </div>
 
                 {/* 진행 요약 — 총 이체 필요액 → 완료 금액 (색은 차분하게) */}
                 <div className="tx-stats">
