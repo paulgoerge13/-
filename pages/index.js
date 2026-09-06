@@ -1988,7 +1988,7 @@ export default function Home() {
 
     // 지급 항목: [라벨, 금액, 산출식]
     const payItems = [
-      ['기본급', t.totalBasic, t.isStaff ? (t.isMonthlySalary ? `포괄임금제 · 월급 고정(식대 제외 과세분, 연장·야간·주휴 포함)` : `통상시급 × 월 ${t.basicHours}시간 (주휴 포함)`) : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
+      ['기본급', t.totalBasic, t.isActualHours ? `실근무 ${t.hoursBaseAlba}시간 × 시급 (주휴수당 별도)` : t.isStaff ? (t.isMonthlySalary ? `포괄임금제 · 월급 고정(식대 제외 과세분, 연장·야간·주휴 포함)` : `통상시급 × 월 ${t.basicHours}시간 (주휴 포함)`) : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
       ['주휴수당', t.totalWeeklyHoliday, '주간근로시간 ÷ 40 × 8 × 통상시급'],
       ['식대', t.meal, '비과세 식대'],
       ['연장근로수당', t.totalOvertime, `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
@@ -3542,7 +3542,10 @@ export default function Home() {
                   <div className="summary-title">급여 내역 — 캘린더 입력값으로 자동 계산됩니다</div>
                   <div className="summary-list">
                     {[
-                      totals.isStaff
+                      totals.isActualHours
+                        ? { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,
+                            desc: `실근무 ${totals.hoursBaseAlba}시간 × 시급 ${activeEmp.hourlyWage.toLocaleString()}원 (실근무 시급제 · 주휴수당 별도)${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
+                      : totals.isStaff
                         ? { label: '기본급',  total: totals.totalBasic, hours: totals.basicHours,
                             desc: totals.proration.partial
                               ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
