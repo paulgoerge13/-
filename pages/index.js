@@ -890,6 +890,20 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 식대를 '하루 얼마'로 주기: workData._mealPerDay (근무일 × 금액, 비과세 20만원 한도) ──
+  function setMealPerDay(val) {
+    const amt = Math.max(0, Math.round(Number(val) || 0))
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (amt > 0) wd._mealPerDay = amt
+      else delete wd._mealPerDay
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   // ── 휴게 차감 위치: workData._restFrom = 'day' | 'night' (없으면 자동) ──
   //   야간 근무자라도 휴게를 주간대에 쓰는 사람이 있어 직원별로 고정할 수 있게 한다.
   //   (야간에서 빼면 야간수당 0.5배가 줄고, 주간에서 빼면 야간수당이 유지된다)
@@ -1114,7 +1128,7 @@ export default function Home() {
     })
     const weekHolidayH = weekHolidayDayH + weekHolidayNightH  // 휴일근무 총합(연장은 포함분이라 제외)
     const weekWorkH = weekDayH + weekNightH + weekHolidayH // 휴게·연장 제외(연장은 주간/야간 안에 포함됨), 휴일 포함
-    const isStaffNoCalc = emp.empType === '직원' || emp.salaryType === 'monthly' // 직원·월급제는 기본급에 주휴 포함 → 별도계산 안 함
+    const isStaffNoCalc = (emp.empType === '직원' && emp.salaryType !== 'actual') || emp.salaryType === 'monthly' // 실근무 시급제는 주휴 별도 계산
     // 주휴수당: 소정근로(주간+야간) 시간 기준으로 계산
     return {
       weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH, weekHolidayH,
@@ -1144,7 +1158,7 @@ export default function Home() {
     let workDays = 0, offDays = 0, annualDays = 0, holidayDays = 0, absentDays = 0
     const absentWeekSet = new Set()  // 결근이 포함된 주(주휴 1회씩만 차감)
     Object.entries(emp.workData).forEach(([ds, d]) => {
-      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct' || ds === '_basicHours' || ds === '_whCut' || ds === '_restFrom') return   // 메타데이터(근무일 아님)
+      if (ds === '_deduct' || ds === '_retroPay' || ds === '_recordOnly' || ds === '_mealFromBasic' || ds === '_probationPct' || ds === '_basicHours' || ds === '_whCut' || ds === '_restFrom' || ds === '_mealPerDay') return   // 메타데이터(근무일 아님)
       if (d.type === '결') {                          // 결근
         absentDays++
         const dd = parseYMD(ds)
@@ -1195,6 +1209,8 @@ export default function Home() {
     // 월급제(고정급): 직원뿐 아니라 알바(3.3% 대상)도 쓸 수 있다.
     //   근무기록 없이 '이 금액으로 정해진' 사람 — 시급×시간으로 재계산되면 안 되는 경우.
     const isMonthlySalary = emp.salaryType === 'monthly'
+    // 'actual' = 직원인데 실근무 시간 × 시급 + 주휴수당 (계산은 알바식, 공제는 직원 4대보험)
+    const isActualHours = emp.salaryType === 'actual'
     // 수습 감액: work_data._probationPct(예:90)면 임금(기본급·수당)을 그 %로 지급. 식대·퇴직금은 감액 안 함. (직원만)
     const probPct = (emp.empType === '직원' && Number(emp.workData?._probationPct) > 0) ? Number(emp.workData._probationPct) : 100
     const probMult = probPct / 100
@@ -1203,7 +1219,7 @@ export default function Home() {
       : 0
     const baseWage = isMonthlySalary ? Math.round(monthlyTaxableBasic / 209) : Math.round((emp.hourlyWage || 0) * probMult)
     // 연장수당은 직원만. 포괄임금제면 월급에 포함되어 자동 가산 안 함.
-    const autoOvertime        = (emp.empType === '직원' && !isMonthlySalary) ? calcOvertime(mOtH, baseWage) : 0
+    const autoOvertime        = (emp.empType === '직원' && !isMonthlySalary) ? calcOvertime(mOtH, baseWage) : 0  // actual 도 직원이므로 연장 가산 적용
     // 야간수당: 직원 = 야간시간 × 시급 × 0.5(가산). 알바 = 야간시간 × 시급 × 1.5. 포괄임금제면 0(월급 포함).
     const autoNight           = emp.empType === '직원'
       ? (isMonthlySalary ? 0 : calcNight(mNightH, baseWage))
@@ -1215,7 +1231,7 @@ export default function Home() {
     const autoHolidayNightPay = isMonthlySalary ? 0 : calcHolidayNight(mHolidayNightH, baseWage)
 
     const isStaff = emp.empType === '직원'
-    const isStaffNoCalc = isStaff || isMonthlySalary // 직원·월급제(고정급)는 기본급에 주휴 포함 → 별도계산 안 함
+    const isStaffNoCalc = (isStaff && !isActualHours) || isMonthlySalary // 실근무 시급제는 주휴를 따로 계산한다
     // ── 중도 입·퇴사 일할계산 (직원만): 재직일수 / 그 달 총일수 ──
     const proration = calcProration(emp)
     // ── 기본수당: 직원 = 시급 × 209 (중도 입·퇴사 시 일할계산) / 알바 = 주간 근무 × 시급 (야간은 '야간근로' 줄에서 1.5배 별도) ──
@@ -1241,9 +1257,9 @@ export default function Home() {
     const mealCutFromBasic = (isStaff && !isMonthlySalary && mealFromBasicOn)
       ? Math.round((emp.mealAllowance || 0) * proration.ratio)
       : 0
-    const totalBasic           = (isStaff || isMonthlySalary)
-      ? Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
-      : Math.max(0, Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0) - manualDeduction)
+    const totalBasic           = (isActualHours || !(isStaff || isMonthlySalary))
+      ? Math.max(0, Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0) - manualDeduction)
+      : Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight
     const totalHoliday         = (emp.manualHoliday || 0) + autoHoliday   // 휴일 전체근무(주간+야간) × 시급 × 1.5 자동계산
@@ -1258,7 +1274,12 @@ export default function Home() {
 
     // ── 식대(비과세) · 퇴직금 · 지급액계 · 공제 · 실수령액 ──
     // 식대 일할: 직원 중도 입·퇴사면 근무일 비례로 식대도 줄임 (기본급 일할과 동일 비율). 만근이면 그대로.
-    const meal = Math.round((emp.mealAllowance || 0) * (isStaff ? proration.ratio : 1))
+    // 식대: 기본은 '월 고정액'(중도 입·퇴사면 일할). _mealPerDay 가 있으면 '근무일 × 하루 금액'으로 준다.
+    //   (예: 하루 1만원씩 실제 나온 날만 지급 — 비과세 한도 월 20만원은 넘지 않게 자른다)
+    const mealPerDay = Math.max(0, Number(emp.workData?._mealPerDay) || 0)
+    const meal = mealPerDay > 0
+      ? Math.min(200000, Math.round(mealPerDay * workDays))
+      : Math.round((emp.mealAllowance || 0) * (isStaff ? proration.ratio : 1))
     const severance = emp.severancePay || 0                   // 퇴직금 (4대보험·소득세 제외)
     const grossPay = grandTotal + meal + severance            // 지급액계 (과세 + 비과세 + 퇴직금)
     const deductions = calcDeductions(grandTotal, emp)        // 공제는 과세급여(식대·퇴직금 제외) 기준
@@ -1266,8 +1287,8 @@ export default function Home() {
 
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
       retroPay, basicHours,
-      meal, severance, grossPay,
-      hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff,
+      meal, mealPerDay, severance, grossPay,
+      hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff, isActualHours,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic, isMonthlySalary, baseWage,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
@@ -2801,6 +2822,7 @@ export default function Home() {
                       <div className="emp-type-tabs" style={{ display: 'inline-flex', flex: 'none' }}>
                         {[
                           { v: 'hourly',  t: activeEmp.empType === '직원' ? '시급 × 209' : '시급 × 근무시간' },
+                          ...(activeEmp.empType === '직원' ? [{ v: 'actual', t: '실근무 시급제' }] : []),
                           { v: 'monthly', t: activeEmp.empType === '직원' ? '월급(포괄임금)' : '고정 월급' },
                         ].map(({ v, t }) => (
                           <button
@@ -2812,6 +2834,12 @@ export default function Home() {
                         ))}
                       </div>
                     </div>
+                    {(activeEmp.salaryType || 'hourly') === 'actual' && (
+                      <div style={{ marginTop: 8, fontSize: 11.5, color: '#2f6bbf', background: '#eaf2fc', border: '1px solid #cfe0f5', borderRadius: 8, padding: '9px 12px', lineHeight: 1.6 }}>
+                        <b>실근무 시급제</b> — 달력에 입력한 <b>실제 근무시간 × 시급</b>으로 기본급을 계산하고,
+                        <b>주휴수당도 따로 붙입니다.</b> (계산은 알바와 같고, 공제는 직원이라 <b>4대보험</b>이 적용됩니다)
+                      </div>
+                    )}
                     {(activeEmp.salaryType || 'hourly') === 'monthly' ? (
                       <div style={{ marginTop: 8 }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
@@ -3426,6 +3454,24 @@ export default function Home() {
                     style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
                   />
                   원 <span style={{ color: '#bbb' }}>(4대보험·소득세 산정 제외)</span>
+                </label>
+                {/* 식대를 '하루 얼마'로 주는 경우 — 실제 나온 날만 지급 */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                  식대 (하루 얼마)
+                  <input
+                    type="number" min="0" step="1000"
+                    value={activeEmp.workData?._mealPerDay || ''}
+                    placeholder="0"
+                    onChange={e => setMealPerDay(e.target.value)}
+                    style={{ width: 110, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                  />
+                  원 <span style={{ color: '#bbb' }}>(넣으면 위 식대 대신 <b>근무일 × 이 금액</b>으로 지급)</span>
+                  {activeEmp.workData?._mealPerDay > 0 && totals && (
+                    <b style={{ color: '#2f6bbf', width: '100%' }}>
+                      → 근무 {totals.workDays}일 × {Number(activeEmp.workData._mealPerDay).toLocaleString()}원 = {Number(totals.meal).toLocaleString()}원
+                      {totals.mealPerDay * totals.workDays > 200000 && ' (비과세 한도 20만원까지만)'}
+                    </b>
+                  )}
                 </label>
                 {/* 수습 감액(%) — 직원만. 임금(기본급·수당)만 그 %로, 식대·퇴직금은 감액 안 함 */}
                 {(activeEmp.empType || '알바') === '직원' && (
