@@ -1249,6 +1249,19 @@ export default function Home() {
     // ── 기본급 수동 차감: 조퇴·지각 등 차감 시간(시간) × 시급을 기본급에서 차감 (직원·알바 공통) ──
     const manualDeductHours = (emp.workData?._deduct?.hours || 0)
     const manualDeduction = Math.round(manualDeductHours * baseWage)
+    // ── 조퇴 공제 (직원 고정급만): 날짜별 earlyH(조퇴 시간)를 모아 기본급에서 뺀다.
+    //   직원은 기본급이 209(또는 지정) 시간 고정이라, 일찍 간 시간이 저절로 빠지지 않는다 → 여기서 뺀다.
+    //   알바·실근무 시급제는 '일한 시간 × 시급'이라 조퇴가 이미 반영돼 있으므로 빼지 않는다(이중 차감 방지).
+    //   ※ 조퇴는 결근이 아니므로 주휴수당에는 영향을 주지 않는다(근로기준법상 개근으로 봄).
+    const earlyDays = []
+    Object.entries(emp.workData).forEach(([ds, d]) => {
+      if (ds.startsWith('_') || !d || typeof d !== 'object') return
+      if (d.type === '공' || d.type === '연' || d.type === '결') return
+      const h = Number(d.earlyH) || 0
+      if (h > 0) earlyDays.push({ date: ds, hours: h })
+    })
+    const earlyHours = earlyDays.reduce((s, x) => s + x.hours, 0)
+    const earlyDeduction = (isStaff && !isActualHours) ? Math.round(earlyHours * baseWage) : 0
     // 시급제 직원: 식대를 기본급 안에서 분리(총액 불변). 과세 기본급 = 시급×209 − 식대. (월급제는 이미 월급−식대라 제외)
     const mealFromBasicOn = !!(emp.workData?._mealFromBasic || emp.mealFromBasic)
     // 식대를 기본급에서 분리할 때 빼는 금액은 '실제 지급하는 식대'와 같아야 한다.
@@ -1259,7 +1272,7 @@ export default function Home() {
       : 0
     const totalBasic           = (isActualHours || !(isStaff || isMonthlySalary))
       ? Math.max(0, Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0) - manualDeduction)
-      : Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - mealCutFromBasic)
+      : Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - earlyDeduction - mealCutFromBasic)
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + autoOvertime) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight
     const totalHoliday         = (emp.manualHoliday || 0) + autoHoliday   // 휴일 전체근무(주간+야간) × 시급 × 1.5 자동계산
@@ -1292,7 +1305,8 @@ export default function Home() {
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic, isMonthlySalary, baseWage,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction,
-      manualDeductHours, manualDeduction, weeklyHolidayList, whCut, mealCutFromBasic,
+      manualDeductHours, manualDeduction, earlyHours, earlyDeduction, earlyDays,
+      weeklyHolidayList, whCut, mealCutFromBasic,
       deductions, netPay, totalDeduction: deductions.total,
       workDays, offDays, annualDays, holidayDays }
   }
@@ -1893,6 +1907,9 @@ export default function Home() {
       : ['급여합계', Math.round(totals.totalBasic), Math.round(totals.totalWeeklyHoliday), Math.round(totals.totalNight), Math.round(totals.meal), Math.round(totals.grossPay)]
 
     const deductInfoRows = []
+    if (totals.earlyDeduction > 0) {
+      deductInfoRows.push(['조퇴 공제', `-${Math.round(totals.earlyDeduction)}`, `${totals.earlyDays.map(x => `${Number(x.date.slice(8))}일 ${x.hours}시간`).join(', ')} = ${totals.earlyHours}시간 × 시급 (기본급에 반영됨)`])
+    }
     if (totals.manualDeduction > 0) {
       deductInfoRows.push(['기본급 차감(조퇴·지각)', `-${Math.round(totals.manualDeduction)}`, `${totals.manualDeductHours}시간 × 시급 (기본급에 반영됨)`])
     }
@@ -2477,6 +2494,13 @@ export default function Home() {
       font-size: 14px; font-weight: 700; color: #b8954a; text-align: center; letter-spacing: 0.03em;
     }
     .day-total.is-zero { color: #c4c0b8; font-weight: 600; }
+    /* 조퇴: 라벨은 주황, 값이 들어간 날은 총시간 아래에 배지로 표시 */
+    .hour-label.early-label { color: #d97706; font-weight: 600; cursor: help; }
+    .early-badge {
+      display: block; margin-top: 4px; font-size: 10.5px; font-weight: 700;
+      color: #b45309; background: #fef3c7; border: 1px solid #fcd34d;
+      border-radius: 6px; padding: 1px 0; letter-spacing: 0;
+    }
 
     .hour-label { font-size: 11px; color: #8a8378; font-weight: 500; text-align: center; margin-bottom: 2px; letter-spacing: 0.04em; }
     .hour-input {
@@ -3054,6 +3078,9 @@ export default function Home() {
                     )}
                     <div className="month-stat"><span className="ms-val">{totals.offDays}<small>일</small></span><span className="ms-label">휴무</span></div>
                     <div className="month-stat"><span className="ms-val">{totals.annualDays}<small>일</small></span><span className="ms-label">연차</span></div>
+                    {totals.earlyHours > 0 && (
+                      <div className="month-stat"><span className="ms-val" style={{ color:'#d97706' }}>{totals.earlyHours}<small>시간</small></span><span className="ms-label">조퇴 ({totals.earlyDays.length}일)</span></div>
+                    )}
                     {totals.absentDays > 0 && (
                       <div className="month-stat"><span className="ms-val" style={{ color:'#e05555' }}>{totals.absentDays}<small>일</small></span><span className="ms-label">결근</span></div>
                     )}
@@ -3185,6 +3212,8 @@ export default function Home() {
                                         <>
                                           <div className="hour-label">연장</div>
                                           {numInput(d.overtimeH, v => updateWorkDay(ds, 'overtimeH', v))}
+                                          <div className="hour-label early-label" title="예정보다 일찍 퇴근한 시간. 기본급에서 그만큼 빠집니다. (주휴수당은 그대로)">조퇴</div>
+                                          {numInput(d.earlyH, v => updateWorkDay(ds, 'earlyH', v))}
                                         </>
                                       )}
                                     </>
@@ -3198,11 +3227,14 @@ export default function Home() {
                                       {numInput(d.holidayRestH, v => handleRestChange(ds, v, true))}
                                       <div className="hour-label" style={{color:'#e05555'}}>휴일연장</div>
                                       {numInput(d.holidayOtH, v => updateWorkDay(ds, 'holidayOtH', v))}
+                                      <div className="hour-label early-label" title="예정보다 일찍 퇴근한 시간. 기본급에서 그만큼 빠집니다. (주휴수당은 그대로)">조퇴</div>
+                                      {numInput(d.earlyH, v => updateWorkDay(ds, 'earlyH', v))}
                                     </>
                                   )}
                                   {/* 하루 총 근무시간 (휴게 제외) */}
                                   <div className={`day-total ${isEmptyWork ? 'is-zero' : ''}`}>
                                     {isEmptyWork ? '미입력' : `일 ${dayTotal}시간`}
+                                    {(d.earlyH > 0) && <span className="early-badge">조퇴 {d.earlyH}h</span>}
                                   </div>
                                 </>
                               )}
@@ -3548,12 +3580,16 @@ export default function Home() {
                       : totals.isStaff
                         ? { label: '기본급',  total: totals.totalBasic, hours: totals.basicHours,
                             desc: totals.proration.partial
-                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
-                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간 (직원 고정·주휴 포함)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
+                              ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
+                              : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간 (직원 고정·주휴 포함)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
                             desc: `결근 ${totals.absentDays}일 × 8시간 + 주휴 ${totals.absentWeeks}주 × 8시간 = ${(totals.absentDays*8 + totals.absentWeeks*8)}시간 × 시급 (기본급에서 차감됨)` }]
+                        : []),
+                      ...(totals.isStaff && totals.earlyDeduction > 0
+                        ? [{ label: '└ 조퇴 공제', total: 0, hours: null, neg: -totals.earlyDeduction,
+                            desc: `${totals.earlyDays.map(x => `${Number(x.date.slice(8))}일 ${x.hours}시간`).join(' · ')} = ${totals.earlyHours}시간 × 시급 (기본급에서 차감 · 주휴수당은 그대로)` }]
                         : []),
                       ...(totals.isStaff && totals.manualDeduction > 0
                         ? [{ label: '└ 기본급 차감', total: 0, hours: null, neg: -totals.manualDeduction,
