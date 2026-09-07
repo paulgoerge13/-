@@ -275,7 +275,28 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if ((!hire || hire <= mStart) && (!resign || resign >= mEnd)) return 1
     return (Math.round((end - start) / 86400000) + 1) / monthDays
   }
-  function recMeal(r) { return Math.round((Number(r.meal_allowance) || 0) * recProrationRatio(r)) }
+  // 근무일수: work_data 의 날짜 항목 중 실제로 일한 날(근무시간 > 0)만 센다.
+  // (_로 시작하는 키는 메타데이터 · 결/공/연 은 근무일 아님) — 지점 화면 calcTotal 과 같은 기준
+  function recWorkDays(r) {
+    const wd = r && r.work_data
+    if (!wd) return 0
+    let n = 0
+    for (const [k, d] of Object.entries(wd)) {
+      if (k.startsWith('_') || !d || typeof d !== 'object') continue
+      if (d.type === '결' || d.type === '공' || d.type === '연') continue
+      const h = (d.daytimeH || 0) + (d.nightH || 0) + (d.overtimeH || 0)
+        + (d.holidayDaytimeH || 0) + (d.holidayNightH || 0) + (d.holidayOtH || 0)
+      if (h > 0) n++
+    }
+    return n
+  }
+  // 식대: 하루 얼마(_mealPerDay)로 설정된 사람은 "근무일수 × 하루 식대"(비과세 20만원 한도),
+  // 그 외에는 월 식대 × 일할 비율. → 지점 화면과 금액이 어긋나지 않게 한다.
+  function recMeal(r) {
+    const perDay = Math.max(0, Number(r && r.work_data && r.work_data._mealPerDay) || 0)
+    if (perDay > 0) return Math.min(200000, Math.round(perDay * recWorkDays(r)))
+    return Math.round((Number(r.meal_allowance) || 0) * recProrationRatio(r))
+  }
   function recNet(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) }
   // 퇴직금: 4대보험·근로소득세 공제 대상이 아니며(퇴직소득세 별도), 입력된 금액 그대로 이체액에 더한다.
   function recSeverance(r) { return Number(r.severance_pay) || 0 }
