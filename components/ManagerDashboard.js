@@ -706,10 +706,15 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   }
 
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
-  function downloadTransferXlsx() {
-    // 화면에서 고른 지급일(10일 직원 / 15일 알바)만 내려받는다
+  // kind: 'all' = 화면에서 고른 지급일 그대로 / 'staff' = 직원(10일)만 / 'alba' = 알바(15일)만
+  //   ※ 한 사람이 직원+알바로 나뉘어 있어도 계좌가 같으면 한 줄로 합쳐지고(예: 김현준 + 김현준P3),
+  //     그 합친 줄은 '직원'으로 분류돼 직원 엑셀에 합계 금액으로 딱 한 번만 나온다. (이중 이체 방지)
+  function downloadTransferXlsx(kind = 'all') {
+    const pick = (u) => kind === 'staff' ? !unitIsAlba(u)
+                      : kind === 'alba'  ? unitIsAlba(u)
+                      : matchPayDay(u)
     const groups = branchesFor(branch)
-      .map(b => ({ branch: b, units: unitsForBranch(b).filter(matchPayDay) }))
+      .map(b => ({ branch: b, units: unitsForBranch(b).filter(pick) }))
       .filter(g => g.units.length > 0)
       .map(g => ({
         branch: g.branch,
@@ -717,7 +722,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         sorted: [...g.units].sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko')),
         total: g.units.reduce((s, u) => s + unitAmt(u), 0),
       }))
-    if (groups.length === 0) { alert('이 달에 이체할 데이터가 없습니다.'); return }
+    if (groups.length === 0) {
+      alert(kind === 'staff' ? '이 달에 이체할 직원이 없습니다.'
+          : kind === 'alba'  ? '이 달에 이체할 알바가 없습니다.'
+          : '이 달에 이체할 데이터가 없습니다.')
+      return
+    }
 
     // 상태별 옅은 배경색(보기 편하라고만, 색 자체는 중요치 않음)
     const FILL = { '작성중': 'FDE9D0', '수정중': 'FFFFFF', '확정': 'FDF6C4', '이체완료': 'D6F1DE', '보류': 'ECDCFA' }
@@ -736,7 +746,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const row5 = (r, vals, base) => vals.forEach((v, c) => put(r, c, v, typeof base === 'function' ? base(c) : base))
 
     // 제목
-    put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)`, { font: { sz: 11 } })
+    const kindLabel = kind === 'staff' ? ' · 직원(10일 지급)' : kind === 'alba' ? ' · 알바(15일 지급)' : ''
+    put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)${kindLabel}`, { font: { sz: 11 } })
 
     const rowH = []                 // 행 높이를 촘촘하게(한 페이지에 최대한 많이)
     rowH[0] = 16; rowH[1] = 6
@@ -789,8 +800,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, `${month}월`)
-    // 지급일을 고른 상태면 파일명에도 드러나게 (10일치·15일치를 따로 보관하기 좋게)
-    const pdTag = payDay === 'staff' ? '_10일(직원)' : payDay === 'alba' ? '_15일(알바)' : ''
+    // 파일명에 구분을 남긴다 (10일치·15일치를 따로 보관하기 좋게)
+    const pdTag = kind === 'staff' ? '_직원(10일)'
+                : kind === 'alba'  ? '_알바(15일)'
+                : (payDay === 'staff' ? '_10일(직원)' : payDay === 'alba' ? '_15일(알바)' : '')
     XLSX.writeFile(wb, `급여정리_전지점_${year}년${month}월${pdTag}.xlsx`)
   }
 
@@ -1074,6 +1087,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     .tx-progress-fill { display: block; height: 100%; background: #6fae87; border-radius: 4px; transition: width .3s; }
     .tx-xlsx { font-size: 13px; font-weight: 800; color: #fff; background: #1d7044; border: none; border-radius: 999px; padding: 9px 18px; cursor: pointer; box-shadow: 0 2px 6px rgba(29,112,68,0.3); transition: background .15s; }
     .tx-xlsx:hover { background: #155634; }
+    /* 엑셀 버튼 3종: 직원(10일) · 알바(15일) · 전체 */
+    .tx-xlsx-group { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+    .tx-xlsx.alba { background: #b07a1e; box-shadow: 0 2px 6px rgba(176,122,30,0.3); }
+    .tx-xlsx.alba:hover { background: #8d6116; }
+    .tx-xlsx.all { background: #6b7785; box-shadow: 0 2px 6px rgba(107,119,133,0.3); padding: 9px 14px; }
+    .tx-xlsx.all:hover { background: #55606c; }
     .tx-board-note { font-size: 12px; color: #9a9286; margin: 0 2px 14px; }
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
@@ -1587,7 +1606,14 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                     이체 진행 <b>{doneCount}</b>/{totalUnits}건
                     <span className="tx-progress-bar"><span className="tx-progress-fill" style={{ width: `${totalUnits ? Math.round(doneCount / totalUnits * 100) : 0}%` }} /></span>
                   </span>
-                  <button className="tx-xlsx" onClick={downloadTransferXlsx}>⬇ 엑셀 다운로드</button>
+                  <span className="tx-xlsx-group">
+                    <button className="tx-xlsx staff" onClick={() => downloadTransferXlsx('staff')}
+                      title="매니저·직원(10일 지급)만 엑셀로 내려받습니다">⬇ 직원 엑셀</button>
+                    <button className="tx-xlsx alba" onClick={() => downloadTransferXlsx('alba')}
+                      title="알바(15일 지급)만 엑셀로 내려받습니다">⬇ 알바 엑셀</button>
+                    <button className="tx-xlsx all" onClick={() => downloadTransferXlsx('all')}
+                      title="지금 화면에 보이는 그대로 내려받습니다">⬇ 전체</button>
+                  </span>
                 </div>
                 <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바</div>
 
