@@ -1484,8 +1484,12 @@ export default function Home() {
   // ── 연도/월을 전체 직원에 한 번에 적용하고 그 기간 데이터를 모두 불러오기 ──
   //   (직원마다 따로 바꾸지 않고, 한 번 바꾸면 같은 지점 전 직원이 같은 기간으로 이동)
   async function changeAllPeriod(newYear, newMonth) {
+    // 달을 바꾸면 '그 달에만 해당하는 값'은 비운다.
+    //   근무표(workData) · 이달의 특이사항(specialNote) · 소급 소득세(retroIncomeTax)
+    //   → 안 비우면 7월 특이사항이 8·9월에 그대로 따라붙어 그대로 저장돼 버린다.
+    const freshMonth = (e) => ({ ...e, year: newYear, month: newMonth, workData: {}, specialNote: '', retroIncomeTax: 0 })
     if (!selectedBranch) {
-      setEmployees(prev => prev.map(e => ({ ...e, year: newYear, month: newMonth, workData: {} })))
+      setEmployees(prev => prev.map(freshMonth))
       return
     }
     const storageKey = `payroll_backup_${selectedBranch.name}`
@@ -1502,7 +1506,7 @@ export default function Home() {
       const merged = employees.map(e => {
         const hit = byName[e.name]
         if (hit) { delete byName[e.name]; return { ...hit, id: e.id } }
-        return { ...e, year: newYear, month: newMonth, workData: {} }
+        return freshMonth(e)
       })
       // 현재 로스터에 없던 DB 직원은 새로 추가
       Object.keys(byName).forEach(n => merged.push(byName[n]))
@@ -1512,7 +1516,7 @@ export default function Home() {
       try { localStorage.setItem(storageKey, JSON.stringify(merged)) } catch (e) {}
     } catch (e) {
       console.error('기간 변경 로드 실패:', e)
-      setEmployees(prev => prev.map(emp => ({ ...emp, year: newYear, month: newMonth, workData: {} })))
+      setEmployees(prev => prev.map(freshMonth))
     }
   }
 
