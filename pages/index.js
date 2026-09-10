@@ -469,6 +469,8 @@ export default function Home() {
   const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
   const [activeEmpId, setActiveEmpId] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  // 이번 달 기록이 아직 없어 지난달 기록을 띄운 상태 — { shownY, shownM, curY, curM } | null
+  const [prevMonthNotice, setPrevMonthNotice] = useState(null)
   const [tooltipInfo, setTooltipInfo] = useState(null)
   // ── 수정 #2: 시간 입력 임시 상태 (셀별) ──
   const [timeInputs, setTimeInputs] = useState({}) // { [ds]: { start, end } }
@@ -1068,6 +1070,16 @@ export default function Home() {
           body: JSON.stringify({ branch: selectedBranch.name, empName: dbName, year: target.year, month: target.month }),
         })
         const rj = await r.json().catch(() => ({}))
+        // 그 달엔 이 사람 기록이 아예 없음 (예: 8월 퇴사자가 9월 명단에 따라와 있는 경우)
+        //   → DB에서 지울 게 없으니 명단에서만 빼면 된다. 다른 달 기록은 전혀 건드리지 않는다.
+        if (r.status === 404 && rj.matches === 0) {
+          const remaining = employees.filter(e => e.id !== deleteConfirm)
+          setEmployees(remaining)
+          if (activeEmpId === deleteConfirm) setActiveEmpId(remaining[0].id)
+          setDeleteConfirm(null)
+          alert(`${dbName} 님은 ${target.year}년 ${target.month}월에 저장된 기록이 없어 명단에서만 뺐어요.\n지난달 기록은 그대로 남아 있습니다.`)
+          return
+        }
         if (!r.ok) {
           // 이름이 달라 못 찾은 경우: 그 달에 있는 이름들을 보여줘 어떤 이름으로 저장돼 있는지 알려준다
           const cands = Array.isArray(rj.candidates) && rj.candidates.length
@@ -1488,6 +1500,7 @@ export default function Home() {
     //   근무표(workData) · 이달의 특이사항(specialNote) · 소급 소득세(retroIncomeTax)
     //   → 안 비우면 7월 특이사항이 8·9월에 그대로 따라붙어 그대로 저장돼 버린다.
     const freshMonth = (e) => ({ ...e, year: newYear, month: newMonth, workData: {}, specialNote: '', retroIncomeTax: 0 })
+    setPrevMonthNotice(null)   // 직접 달을 고르면 '지난달 표시 중' 안내는 닫는다
     if (!selectedBranch) {
       setEmployees(prev => prev.map(freshMonth))
       return
@@ -1551,6 +1564,7 @@ export default function Home() {
   }
 
   async function loadAllEmployees(branchName) {
+    setPrevMonthNotice(null)   // 지점을 새로 열 때마다 초기화 (지난달을 띄울 때만 아래에서 다시 켬)
     const now = new Date()
     const yr = now.getFullYear()
     const mo = now.getMonth() + 1
@@ -1576,12 +1590,15 @@ export default function Home() {
       }
 
       // 2) 현재 달 데이터 없으면 이전 달 시도
+      //    (월초엔 지난달 급여를 마무리하는 경우가 많아 지난달을 띄운다.
+      //     단, 이번 달 화면인 줄 알고 지우거나 고치면 '지난달' 기록이 바뀌므로 화면 위에 크게 알린다)
       const prevMo = mo === 1 ? 12 : mo - 1
       const prevYr = mo === 1 ? yr - 1 : yr
       const res2 = await fetch(`/api/load-all?branch=${encodeURIComponent(branchName)}&year=${prevYr}&month=${prevMo}`)
       const result2 = await res2.json()
       if (result2.success && result2.data && result2.data.length > 0) {
         applyLoaded(parseEmployees(result2.data, prevYr, prevMo))
+        setPrevMonthNotice({ shownY: prevYr, shownM: prevMo, curY: yr, curM: mo })
         return true
       }
     } catch (e) {
@@ -2286,6 +2303,25 @@ export default function Home() {
     .modal-icon { font-size: 36px; margin-bottom: 16px; }
     .modal-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 19px; margin-bottom: 10px; color: #1a1a1a; }
     .modal-desc { font-size: 13px; color: #888; line-height: 1.6; margin-bottom: 28px; }
+    /* 이번 달 기록이 없어 지난달을 띄운 상태 안내 */
+    .prev-month-banner {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      margin: 0 0 18px; padding: 14px 18px; border-radius: 12px;
+      background: #fff4d6; border: 1.5px solid #e9c46a; color: #6b4e00; font-size: 14px; line-height: 1.55;
+    }
+    .prev-month-banner .pmb-sub { font-size: 12.5px; margin-top: 4px; color: #7a5c10; }
+    .pmb-btn {
+      flex-shrink: 0; border: none; border-radius: 999px; padding: 10px 18px; cursor: pointer;
+      background: #b8860b; color: #fff; font-weight: 800; font-size: 13.5px;
+    }
+    .pmb-btn:hover { background: #946c08; }
+    @media (max-width: 720px) { .prev-month-banner { flex-direction: column; align-items: stretch; } }
+    /* 지난달 기록 삭제 경고 — 9월에 8월 퇴사자를 지우다 8월 급여가 사라진 사고 방지 */
+    .modal-past-warn {
+      margin: -12px 0 4px; padding: 12px 14px; border-radius: 10px; text-align: left;
+      background: #fdecea; border: 1.5px solid #e8a19a; color: #8c2a20;
+      font-size: 13px; line-height: 1.65;
+    }
     .modal-emp-name { font-weight: 700; color: #e05555; }
     .modal-btns { display: flex; gap: 10px; }
     .modal-btns .btn { flex: 1; }
@@ -2569,26 +2605,44 @@ export default function Home() {
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
 
-      {deleteConfirm && (
+      {deleteConfirm && (() => {
+        const t = employees.find(e => e.id === deleteConfirm) || {}
+        const now = new Date()
+        const curY = now.getFullYear(), curM = now.getMonth() + 1
+        // 지난달 기록인가? (예: 9월에 앱을 열었는데 9월 기록이 없어 8월이 떠 있는 상태)
+        const isPast = t.year && t.month && (t.year * 12 + t.month) < (curY * 12 + curM)
+        const isFinal = t.status === 'final'
+        return (
         <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-icon">⚠️</div>
             <div className="modal-title">직원 삭제</div>
             <div className="modal-desc">
-              <span className="modal-emp-name">
-                {employees.find(e => e.id === deleteConfirm)?.name || '이름 미입력'}
-              </span>
-              님의 <b>{employees.find(e => e.id === deleteConfirm)?.year}년 {employees.find(e => e.id === deleteConfirm)?.month}월</b> 데이터를 삭제하시겠습니까?<br />
-              이 달 기록만 지워지며 <b>다른 달 기록은 그대로 남습니다.</b><br />
-              삭제된 데이터는 복구할 수 없습니다.
+              <span className="modal-emp-name">{t.name || '이름 미입력'}</span>
+              님의 <b style={{ fontSize: 18, color: '#c0392b' }}>{t.year}년 {t.month}월</b> 기록을 삭제하시겠습니까?<br />
+              이 달 기록만 지워지며 <b>다른 달 기록은 그대로 남습니다.</b>
+            </div>
+            {isPast && (
+              <div className="modal-past-warn">
+                <b>⚠ 지금 보고 계신 건 {t.month}월(지난달) 기록입니다.</b><br />
+                {isFinal && <>이미 <b>마감된 급여</b>라, 지우면 {t.month}월 급여대장·이체 목록에서도 빠집니다.<br /></>}
+                퇴사자를 <b>{curM}월 명단에서 빼려는 거라면</b> 취소하고,
+                위의 <b>월</b>을 <b>{curM}월</b>로 바꾼 뒤 삭제하세요.
+              </div>
+            )}
+            <div className="modal-desc" style={{ fontSize: 12, color: '#8a8378', marginTop: 8 }}>
+              실수로 지웠다면 관리자 페이지 휴지통에서 30일 안에 되살릴 수 있어요.
             </div>
             <div className="modal-btns">
               <button className="btn outline" onClick={() => setDeleteConfirm(null)}>취소</button>
-              <button className="btn danger" onClick={doDelete}>삭제하기</button>
+              <button className="btn danger" onClick={doDelete}>
+                {isPast ? `그래도 ${t.month}월 기록 삭제` : '삭제하기'}
+              </button>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* ⚠️ 경고 아이콘 탭 시 사유 표시 (모바일에서도 즉시 뜨도록 네이티브 title 대신 커스텀) */}
       {tooltipInfo && (
@@ -2710,6 +2764,22 @@ export default function Home() {
 
               {activeEmp && (
               <div>
+              {/* 이번 달 기록이 없어 지난달이 떠 있을 때 — 이번 달인 줄 알고 지우거나 고치는 사고 방지 */}
+              {prevMonthNotice && (
+                <div className="prev-month-banner">
+                  <div>
+                    <b>📌 지금 보고 계신 건 {prevMonthNotice.shownM}월 기록입니다.</b>
+                    <span> {prevMonthNotice.curM}월 기록이 아직 하나도 없어서 {prevMonthNotice.shownM}월을 띄웠어요.</span>
+                    <div className="pmb-sub">
+                      여기서 직원을 지우거나 고치면 <b>{prevMonthNotice.shownM}월 급여</b>가 바뀝니다.
+                      {prevMonthNotice.curM}월 작업(퇴사자 빼기 등)은 오른쪽 버튼을 먼저 눌러주세요.
+                    </div>
+                  </div>
+                  <button className="pmb-btn" onClick={() => changeAllPeriod(prevMonthNotice.curY, prevMonthNotice.curM)}>
+                    {prevMonthNotice.curM}월로 가기 →
+                  </button>
+                </div>
+              )}
               <div className="section-header">
                 <div>
                   <div className="section-title">{selectedBranch?.name} 급여 계산</div>

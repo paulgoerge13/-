@@ -54,9 +54,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, deleted: d2 ? d2.length : 0, matchedName: cands[0].emp_name })
     }
     // 못 찾음 → 화면이 "지웠다"고 착각하지 않도록 실패로 응답 (그 달 이름 목록을 함께 준다)
+    //   matches: 0 이면 '그 달엔 이 사람 기록이 아예 없다'는 뜻 (예: 8월 퇴사자를 9월 명단에서 빼는 경우)
+    //            → 화면은 DB를 건드릴 필요 없이 명단에서만 빼면 된다.
     return res.status(404).json({
       error: `'${empName}' 을(를) ${year}년 ${month}월 ${branch} 기록에서 찾지 못했습니다.`,
       candidates: alive.map(r => r.emp_name),
+      matches: cands.length,
       deleted: 0,
     })
   }
