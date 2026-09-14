@@ -6,6 +6,8 @@ import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES } from '..
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
 const THECOMMA = '더콤마 전체'   // 더콤마라운지(카페) 6개 지점만 묶은 보기
+// 직원도 15일에 지급하는 지점 — 구복만두는 직원·알바 구분 없이 전원 15일
+const PAY15_BRANCHES = BRANCH_LIST.filter(b => b.brand === 'gubok').map(b => b.name)
 // 폐업 등으로 여러 달을 한 번에 지급하는 지점 → 이체 보드에서 해당 월들을 사람별로 합산 표시
 const MERGE_BRANCHES = { '시흥집': [6, 7] }
 // 합산 지점의 '기준월' = 합산 대상 월 중 가장 이른 달(예: 시흥집 → 6월). 합산 결과는 이 달에만 표시한다.
@@ -432,12 +434,17 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     return types
   }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
+  // ── 지급일: 직원 10일 / 알바 15일. 단 구복만두는 직원·알바 모두 15일에 지급한다 ──
+  function isPay15(u) {
+    if (u.recs.some(r => PAY15_BRANCHES.includes(r.branch))) return true
+    return unitIsAlba(u)
+  }
   // 지급일 필터: 직원(매니저 포함)=10일 / 알바=15일
   function matchPayDay(u) {
     if (payDay === 'all') return true
-    return payDay === 'alba' ? unitIsAlba(u) : !unitIsAlba(u)
+    return payDay === 'alba' ? isPay15(u) : !isPay15(u)
   }
-  const PAYDAY_LABEL = { all: '전체', staff: '10일 · 매니저/직원', alba: '15일 · 알바' }
+  const PAYDAY_LABEL = { all: '전체', staff: '10일 지급', alba: '15일 지급' }
   function unitMixed(u) { return u.recs.length > 1 }
   // ── 이체자가 "공제 전(세전) → 공제 → 실제 이체액" 을 한눈에 확인할 수 있도록 ──
   function unitGross(u) { return u.recs.reduce((s, r) => s + fixGrand(r) + recMeal(r), 0) } // 공제 전(세전+식대)
@@ -710,8 +717,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   //   ※ 한 사람이 직원+알바로 나뉘어 있어도 계좌가 같으면 한 줄로 합쳐지고(예: 김현준 + 김현준P3),
   //     그 합친 줄은 '직원'으로 분류돼 직원 엑셀에 합계 금액으로 딱 한 번만 나온다. (이중 이체 방지)
   function downloadTransferXlsx(kind = 'all') {
-    const pick = (u) => kind === 'staff' ? !unitIsAlba(u)
-                      : kind === 'alba'  ? unitIsAlba(u)
+    const pick = (u) => kind === 'staff' ? !isPay15(u)
+                      : kind === 'alba'  ? isPay15(u)
                       : matchPayDay(u)
     const groups = branchesFor(branch)
       .map(b => ({ branch: b, units: unitsForBranch(b).filter(pick) }))
@@ -723,8 +730,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         total: g.units.reduce((s, u) => s + unitAmt(u), 0),
       }))
     if (groups.length === 0) {
-      alert(kind === 'staff' ? '이 달에 이체할 직원이 없습니다.'
-          : kind === 'alba'  ? '이 달에 이체할 알바가 없습니다.'
+      alert(kind === 'staff' ? '이 달에 10일 지급 대상이 없습니다.'
+          : kind === 'alba'  ? '이 달에 15일 지급 대상이 없습니다.'
           : '이 달에 이체할 데이터가 없습니다.')
       return
     }
@@ -746,7 +753,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const row5 = (r, vals, base) => vals.forEach((v, c) => put(r, c, v, typeof base === 'function' ? base(c) : base))
 
     // 제목
-    const kindLabel = kind === 'staff' ? ' · 직원(10일 지급)' : kind === 'alba' ? ' · 알바(15일 지급)' : ''
+    const kindLabel = kind === 'staff' ? ' · 10일 지급' : kind === 'alba' ? ' · 15일 지급' : ''
     put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)${kindLabel}`,
         { font: { sz: 16, bold: true }, alignment: { vertical: 'center' } })
 
@@ -803,9 +810,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, `${month}월`)
     // 파일명에 구분을 남긴다 (10일치·15일치를 따로 보관하기 좋게)
-    const pdTag = kind === 'staff' ? '_직원(10일)'
-                : kind === 'alba'  ? '_알바(15일)'
-                : (payDay === 'staff' ? '_10일(직원)' : payDay === 'alba' ? '_15일(알바)' : '')
+    const pdTag = kind === 'staff' ? '_10일지급'
+                : kind === 'alba'  ? '_15일지급'
+                : (payDay === 'staff' ? '_10일지급' : payDay === 'alba' ? '_15일지급' : '')
     XLSX.writeFile(wb, `급여정리_전지점_${year}년${month}월${pdTag}.xlsx`)
   }
 
@@ -1516,8 +1523,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
             const allUnits = groups.flatMap(g => g.units)
             // 지급일 탭에 보여줄 건수·금액 (필터와 무관하게 전체 기준으로 센다)
             const everyUnit = branchesFor(branch).flatMap(b => unitsForBranch(b))
-            const staffUnits = everyUnit.filter(u => !unitIsAlba(u))
-            const albaUnits  = everyUnit.filter(u => unitIsAlba(u))
+            const staffUnits = everyUnit.filter(u => !isPay15(u))
+            const albaUnits  = everyUnit.filter(u => isPay15(u))
             const sumUnits = us => us.reduce((s, u) => s + unitAmt(u), 0)
             const doneUnits = allUnits.filter(u => unitStatus(u) === '이체완료')
             const doneCount = doneUnits.length
@@ -1544,8 +1551,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                 <div className="payday-tabs">
                   {[
                     { k: 'all',   t: '전체',            n: everyUnit.length,  amt: sumUnits(everyUnit) },
-                    { k: 'staff', t: '10일 · 매니저/직원', n: staffUnits.length, amt: sumUnits(staffUnits) },
-                    { k: 'alba',  t: '15일 · 알바',      n: albaUnits.length,  amt: sumUnits(albaUnits) },
+                    { k: 'staff', t: '10일 지급', n: staffUnits.length, amt: sumUnits(staffUnits) },
+                    { k: 'alba',  t: '15일 지급', n: albaUnits.length,  amt: sumUnits(albaUnits) },
                   ].map(x => (
                     <button
                       key={x.k}
@@ -1610,14 +1617,14 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                   </span>
                   <span className="tx-xlsx-group">
                     <button className="tx-xlsx staff" onClick={() => downloadTransferXlsx('staff')}
-                      title="매니저·직원(10일 지급)만 엑셀로 내려받습니다">⬇ 직원 엑셀</button>
+                      title="10일에 지급하는 사람(직원)만 엑셀로 내려받습니다">⬇ 10일 급여 엑셀</button>
                     <button className="tx-xlsx alba" onClick={() => downloadTransferXlsx('alba')}
-                      title="알바(15일 지급)만 엑셀로 내려받습니다">⬇ 알바 엑셀</button>
+                      title="15일에 지급하는 사람(알바 + 구복만두 전원)만 엑셀로 내려받습니다">⬇ 15일 급여 엑셀</button>
                     <button className="tx-xlsx all" onClick={() => downloadTransferXlsx('all')}
                       title="지금 화면에 보이는 그대로 내려받습니다">⬇ 전체</button>
                   </span>
                 </div>
-                <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바</div>
+                <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바 · 구복만두는 전원 15일 지급</div>
 
                 {txUnavailable && (
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
