@@ -801,6 +801,24 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       rowH[r] = 26; r++
     })
 
+    // ── 맨 아래 전체 총 금액 (이 엑셀에 담긴 모든 지점 합계) ──
+    const grandCount = groups.reduce((s, g) => s + g.count, 0)
+    const grandTotal = groups.reduce((s, g) => s + g.total, 0)
+    rowH[r] = 10; r++                      // 지점 합계와 떨어뜨리는 빈 줄
+    const gf = { fgColor: { rgb: '6B6357' } }
+    const gFont = { sz: 14, bold: true, color: { rgb: 'FFFFFF' } }
+    put(r, 0, '', { fill: gf, border: allBd })
+    put(r, 1, `전체 총 금액 (${grandCount}건)`, {
+      fill: gf, font: gFont, alignment: { horizontal: 'left', vertical: 'center' }, border: allBd,
+    })
+    put(r, 2, grandTotal, {
+      fill: gf, numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'center' },
+      font: { sz: 16, bold: true, color: { rgb: 'FFFFFF' } }, border: allBd,
+    })
+    put(r, 3, '', { fill: gf, border: allBd })
+    put(r, 4, '', { fill: gf, border: allBd })
+    rowH[r] = 34; r++
+
     ws['!cols'] = [{ wch: 7 }, { wch: 22 }, { wch: 16 }, { wch: 13 }, { wch: 28 }]
     ws['!rows'] = rowH.map(h => ({ hpt: h || 26 }))
     ws['!merges'] = merges

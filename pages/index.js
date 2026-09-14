@@ -570,9 +570,11 @@ export default function Home() {
             workData: migrateWorkData(r.work_data || {}),
             specialNote: r.special_note || '',
             hourlyWage: r.hourly_wage || 10320,
-            // 월급제 설정은 브라우저 저장값(localStorage) 우선 → 재로그인/DB 0값에도 유지
-            salaryType:    pick(s.salaryType, r.salary_type, e.salaryType || 'hourly'),
-            monthlySalary: pick(s.monthlySalary, r.monthly_salary, e.monthlySalary || 0),
+            // 급여방식은 그 달 DB값이 우선. 브라우저 저장값은 DB가 비었을 때만 쓴다.
+            //   (예전엔 브라우저값이 먼저라, 관리자가 DB에서 고쳐둔 방식이 지점에서 저장할 때마다
+            //    옛 설정으로 되돌아갔다 — 이수림 8월 '실근무 시급제'가 209로 반복해서 풀린 원인)
+            salaryType:    pick(r.salary_type, s.salaryType, e.salaryType || 'hourly'),
+            monthlySalary: pick(r.monthly_salary, s.monthlySalary, e.monthlySalary || 0),
             // 기본급 시간: DB(work_data._basicHours) 우선 → 브라우저 저장값 → 기존값 (209 되돌아감 방지)
             staffBasicHours: (Number((r.work_data || {})._basicHours) > 0)
               ? Number((r.work_data || {})._basicHours)
@@ -1459,8 +1461,8 @@ export default function Home() {
         accountNumber: r.account_number || '',
         empType: r.emp_type || '알바',
         hourlyWage: r.hourly_wage || 10320,
-        salaryType: pick(s.salaryType, r.salary_type, 'hourly'),        // 월급제 설정은 브라우저 저장값 우선
-        monthlySalary: pick(s.monthlySalary, r.monthly_salary, 0),
+        salaryType: pick(r.salary_type, s.salaryType, 'hourly'),        // 급여방식은 그 달 DB값 우선
+        monthlySalary: pick(r.monthly_salary, s.monthlySalary, 0),
         // 기본급 시간: DB(work_data._basicHours) 우선 → 브라우저 저장값 → 209
         staffBasicHours: (Number((r.work_data || {})._basicHours) > 0)
           ? Number((r.work_data || {})._basicHours)
