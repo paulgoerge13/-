@@ -300,6 +300,36 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     return Math.round((Number(r.meal_allowance) || 0) * recProrationRatio(r))
   }
   function recNet(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) }
+  // ── 근태공제(결근·조퇴·수동차감) — 지점 화면 calcTotal 과 같은 기준. 직원 고정급만 ──
+  //   급여대장에는 '기본급(차감 전)'과 '근태공제'를 나눠 적어야 해서 되돌려 계산한다.
+  function recAttendanceCut(r) {
+    if (r.emp_type !== '직원' || r.salary_type === 'actual' || isFixed(r)) return 0
+    const wd = r.work_data || {}
+    const w = r.salary_type === 'monthly'
+      ? Math.round(((Number(r.monthly_salary) || 0) - (Number(r.meal_allowance) || 0)) / 209)
+      : (Number(r.hourly_wage) || 0)
+    let absentDays = 0, earlyH = 0
+    const weeks = new Set()
+    for (const [k, d] of Object.entries(wd)) {
+      if (k.startsWith('_') || !d || typeof d !== 'object') continue
+      if (d.type === '결') {
+        absentDays++
+        const m = String(k).match(/(\d{4})-(\d{1,2})-(\d{1,2})/)
+        if (m) {
+          const dt = new Date(+m[1], +m[2] - 1, +m[3])
+          const first = new Date(dt.getFullYear(), 0, 1)
+          weeks.add(Math.ceil(((dt - first) / 86400000 + first.getDay() + 1) / 7))
+        }
+        continue
+      }
+      if (d.type === '공' || d.type === '연') continue
+      earlyH += Number(d.earlyH) || 0
+    }
+    const manualH = Number((wd._deduct || {}).hours) || 0
+    return Math.round((absentDays * 8 + weeks.size * 8) * w) + Math.round(earlyH * w) + Math.round(manualH * w)
+  }
+  // 앱의 '추가 지급(소급)' — grand_total 에만 들어 있고 항목 칸엔 없다. 급여대장에선 연장근로수당에 넣는다.
+  function recRetroPay(r) { return Number((r.work_data || {})._retroPay) || 0 }
   // 퇴직금: 4대보험·근로소득세 공제 대상이 아니며(퇴직소득세 별도), 입력된 금액 그대로 이체액에 더한다.
   function recSeverance(r) { return Number(r.severance_pay) || 0 }
 
@@ -712,6 +742,157 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     URL.revokeObjectURL(url)
   }
 
+  // ── 세무사 제출용: 급여대장(직원) + 사업소득지급대장(알바)을 한 파일 두 시트로 ──
+  //   · 공제·차인지급액은 넣지 않는다 (세무사가 직접 계산) → 지급 항목까지만
+  //   · 알바 기록이 같은 지점·같은 계좌의 직원과 묶이면(예: 김현준P3) 그 직원 '연장근로수당'에 합산하고
+  //     사업소득지급대장에서는 뺀다. 앱에서 이미 '추가 지급'으로 합쳐둔 달(_retroPay)도 같은 자리에 넣는다.
+  function downloadTaxLedgerXlsx() {
+    const rows = records.filter(r => !isRecordOnly(r) && branchesFor(branch).includes(r.branch))
+    if (rows.length === 0) { alert('이 달에 내려받을 급여 자료가 없습니다.'); return }
+
+    // 같은 지점·같은 계좌에 직원이 있으면 그 알바 기록은 직원 쪽으로 합친다
+    const staffByAcct = {}
+    for (const r of rows) {
+      if (r.emp_type !== '직원') continue
+      const a = (r.account_number || '').trim()
+      if (a) staffByAcct[`${r.branch}|${a}`] = r
+    }
+    const mergedInto = new Map()    // 직원 record.id → 합산된 알바 지급액
+    const mergedName = new Map()
+    const albaRows = []
+    for (const r of rows) {
+      if (r.emp_type === '직원') continue
+      const a = (r.account_number || '').trim()
+      const host = a ? staffByAcct[`${r.branch}|${a}`] : null
+      if (host) {
+        const amt = fixGrand(r) + recMeal(r)
+        if (amt > 0) {
+          mergedInto.set(host.id, (mergedInto.get(host.id) || 0) + amt)
+          mergedName.set(host.id, [...(mergedName.get(host.id) || []), r.emp_name])
+        }
+      } else if (fixGrand(r) + recMeal(r) > 0) albaRows.push(r)
+    }
+    const staffRows = rows.filter(r => r.emp_type === '직원')
+      .sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || a.emp_name.localeCompare(b.emp_name, 'ko'))
+    albaRows.sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || a.emp_name.localeCompare(b.emp_name, 'ko'))
+
+    const bd = { style: 'thin', color: { rgb: '9A93A8' } }
+    const allBd = { top: bd, bottom: bd, left: bd, right: bd }
+    const HDR = { fgColor: { rgb: 'DCE3F0' } }
+    const TOT = { fgColor: { rgb: 'EDE9DC' } }
+    const mk = (ws, r, c, v, s) => {
+      ws[XLSX.utils.encode_cell({ r, c })] = {
+        v: (v === undefined || v === null || v === 0) ? '' : v,
+        t: typeof v === 'number' && v ? 'n' : 's', s: s || {},
+      }
+    }
+    const rid = r => {
+      const d = String(r.resident_id || '').replace(/\D/g, '')
+      return d.length === 13 ? `${d.slice(0, 6)}-${d.slice(6)}` : (r.resident_id || '')
+    }
+    const hdrS = { font: { sz: 9, bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, fill: HDR, border: allBd }
+    const cellS = (al) => ({ font: { sz: 9 }, alignment: { horizontal: al, vertical: 'center' }, border: allBd })
+    const numS = { font: { sz: 9 }, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0', border: allBd }
+    const totS = { font: { sz: 9, bold: true }, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0', fill: TOT, border: allBd }
+
+    // ───── 시트 1: 급여대장 (직원) ─────
+    const P = {}, pMerges = []
+    const PH1 = ['사원번호', '성  명', '주민등록번호', '기본급', '식대', '주휴수당', '연장근로수당',
+                 '야간근로수당', '휴일근로수당', '근태공제', '지급합계', '영수인']
+    const PH2 = ['입사일', '직  급', '', '', '', '', '', '', '', '', '', '']
+    const PH3 = ['퇴사일', '부  서', '', '', '', '', '', '', '', '', '지급합계', '']
+    mk(P, 0, 0, `${year}년${String(month).padStart(2, '0')}월분 급여대장`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
+    pMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: PH1.length - 1 } })
+    mk(P, 1, 0, branch === ALL ? '전 지점' : branch, { font: { sz: 9 } })
+    mk(P, 1, 6, `[귀속:${year}년${String(month).padStart(2, '0')}월]`, { font: { sz: 9 }, alignment: { horizontal: 'center' } })
+    ;[[0, 2, '인 적 사 항'], [3, 10, '기 본 급 여 및 제 수 당'], [11, 11, '영수인']].forEach(([c1, c2, lb]) => {
+      pMerges.push({ s: { r: 3, c: c1 }, e: { r: 3, c: c2 } })
+      mk(P, 3, c1, lb, hdrS)
+      for (let c = c1 + 1; c <= c2; c++) mk(P, 3, c, '', hdrS)
+    })
+    PH1.forEach((h, i) => { mk(P, 4, i, h, hdrS); mk(P, 5, i, PH2[i], hdrS); mk(P, 6, i, PH3[i], hdrS) })
+    pMerges.push({ s: { r: 4, c: 11 }, e: { r: 6, c: 11 } })
+    let pr = 7
+    const pT = { basic: 0, meal: 0, wh: 0, ot: 0, night: 0, hol: 0, cut: 0, pay: 0 }
+    const notes = []
+    staffRows.forEach((r, i) => {
+      const cut = recAttendanceCut(r)
+      const extra = (mergedInto.get(r.id) || 0) + recRetroPay(r)
+      const basic = (Number(r.basic_pay) || 0) + cut
+      const meal = recMeal(r)
+      const wh = Number(r.weekly_holiday_pay) || 0
+      const ot = (Number(r.overtime_pay) || 0) + extra
+      const night = Number(r.night_pay) || 0
+      const hol = (Number(r.holiday_pay) || 0) + (Number(r.holiday_overtime_pay) || 0) + (Number(r.holiday_night_pay) || 0)
+      const pay = basic + meal + wh + ot + night + hol - cut
+      mk(P, pr, 0, String(i + 1).padStart(3, '0'), cellS('center'))
+      mk(P, pr + 1, 0, r.hire_date || '', cellS('center'))
+      mk(P, pr + 2, 0, r.resign_date || '', cellS('center'))
+      mk(P, pr, 1, r.emp_name, cellS('center'))
+      mk(P, pr + 1, 1, '', cellS('center'))
+      mk(P, pr + 2, 1, r.branch, cellS('center'))
+      mk(P, pr, 2, rid(r), cellS('center'))
+      mk(P, pr + 1, 2, '', cellS('center')); mk(P, pr + 2, 2, '', cellS('center'))
+      ;[basic, meal, wh, ot, night, hol, cut ? -cut : 0].forEach((v, j) => {
+        mk(P, pr, 3 + j, v, numS); mk(P, pr + 1, 3 + j, '', numS); mk(P, pr + 2, 3 + j, '', numS)
+      })
+      mk(P, pr, 10, '', numS); mk(P, pr + 1, 10, '', numS); mk(P, pr + 2, 10, pay, { ...numS, font: { sz: 10, bold: true } })
+      pMerges.push({ s: { r: pr, c: 11 }, e: { r: pr + 2, c: 11 } })
+      mk(P, pr, 11, '', cellS('center')); mk(P, pr + 1, 11, '', cellS('center')); mk(P, pr + 2, 11, '', cellS('center'))
+      if (mergedInto.get(r.id)) notes.push(`※ ${r.emp_name}: ${(mergedName.get(r.id) || []).join('·')} ${mergedInto.get(r.id).toLocaleString()}원을 연장근로수당에 합산`)
+      else if (recRetroPay(r)) notes.push(`※ ${r.emp_name}: 추가지급 ${recRetroPay(r).toLocaleString()}원을 연장근로수당에 합산`)
+      pT.basic += basic; pT.meal += meal; pT.wh += wh; pT.ot += ot; pT.night += night
+      pT.hol += hol; pT.cut += cut; pT.pay += pay
+      pr += 3
+    })
+    pMerges.push({ s: { r: pr, c: 0 }, e: { r: pr + 2, c: 2 } })
+    mk(P, pr, 0, `합계 (${staffRows.length}명)`, { ...hdrS, fill: TOT })
+    for (let k = 0; k < 3; k++) for (let c = 0; c < 3; c++) if (!(k === 0 && c === 0)) mk(P, pr + k, c, '', { ...hdrS, fill: TOT })
+    ;[pT.basic, pT.meal, pT.wh, pT.ot, pT.night, pT.hol, pT.cut ? -pT.cut : 0].forEach((v, j) => {
+      mk(P, pr, 3 + j, v, totS); mk(P, pr + 1, 3 + j, '', totS); mk(P, pr + 2, 3 + j, '', totS)
+    })
+    mk(P, pr, 10, '', totS); mk(P, pr + 1, 10, '', totS); mk(P, pr + 2, 10, pT.pay, { ...totS, font: { sz: 11, bold: true } })
+    for (let k = 0; k < 3; k++) mk(P, pr + k, 11, '', totS)
+    let pEnd = pr + 3
+    notes.forEach(t => { mk(P, pEnd, 0, t, { font: { sz: 8, color: { rgb: '8A5A00' } } }); pEnd++ })
+    mk(P, pEnd + 1, 0, '※ 공제(4대보험·소득세)와 차인지급액은 넣지 않았습니다. 지급 항목까지만 표기.', { font: { sz: 8, color: { rgb: '777777' } } })
+    P['!cols'] = [{ wch: 10 }, { wch: 11 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 13 }, { wch: 8 }]
+    P['!merges'] = pMerges
+    P['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: pEnd + 1, c: PH1.length - 1 } })
+
+    // ───── 시트 2: 사업소득지급대장 (알바) ─────
+    const B = {}, bMerges = []
+    mk(B, 0, 0, `(${year}년${String(month).padStart(2, '0')}월) 사업소득지급대장(합계)`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
+    bMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } })
+    mk(B, 2, 0, `회사명 : ${branch === ALL ? '전 지점' : branch}`, { font: { sz: 9 } })
+    const BH = ['NO', '코드', '성   명', '귀속년월', '주민등록번호', '지급액']
+    BH.forEach((h, i) => mk(B, 4, i, h, hdrS))
+    let br_ = 5, bTot = 0
+    albaRows.forEach((r, i) => {
+      const amt = fixGrand(r) + recMeal(r)
+      mk(B, br_, 0, i + 1, cellS('center'))
+      mk(B, br_, 1, String(i + 1).padStart(6, '0'), cellS('center'))
+      mk(B, br_, 2, r.emp_name, cellS('center'))
+      mk(B, br_, 3, `${year}.${String(month).padStart(2, '0')}`, cellS('center'))
+      mk(B, br_, 4, rid(r), cellS('center'))
+      mk(B, br_, 5, amt, numS)
+      bTot += amt; br_++
+    })
+    bMerges.push({ s: { r: br_, c: 0 }, e: { r: br_, c: 4 } })
+    mk(B, br_, 0, `총   계 (${albaRows.length}명)`, { ...hdrS, fill: TOT })
+    for (let c = 1; c < 5; c++) mk(B, br_, c, '', { ...hdrS, fill: TOT })
+    mk(B, br_, 5, bTot, { ...totS, font: { sz: 11, bold: true } })
+    mk(B, br_ + 2, 0, '※ 소득세(3.3%)와 차인지급액은 넣지 않았습니다. 지급액까지만 표기.', { font: { sz: 8, color: { rgb: '777777' } } })
+    B['!cols'] = [{ wch: 6 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }]
+    B['!merges'] = bMerges
+    B['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: br_ + 2, c: 5 } })
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, P, '급여대장')
+    XLSX.utils.book_append_sheet(wb, B, '사업소득지급대장')
+    XLSX.writeFile(wb, `${year}년 ${String(month).padStart(2, '0')}월 급여대장_세무사제출.xlsx`)
+  }
+
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
   // kind: 'all' = 화면에서 고른 지급일 그대로 / 'staff' = 직원(10일)만 / 'alba' = 알바(15일)만
   //   ※ 한 사람이 직원+알바로 나뉘어 있어도 계좌가 같으면 한 줄로 합쳐지고(예: 김현준 + 김현준P3),
@@ -1120,6 +1301,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     .tx-xlsx.alba:hover { background: #8d6116; }
     .tx-xlsx.all { background: #6b7785; box-shadow: 0 2px 6px rgba(107,119,133,0.3); padding: 9px 14px; }
     .tx-xlsx.all:hover { background: #55606c; }
+    .tx-xlsx.tax { background: #3f5b8a; box-shadow: 0 2px 6px rgba(63,91,138,0.3); }
+    .tx-xlsx.tax:hover { background: #32496e; }
     .tx-board-note { font-size: 12px; color: #9a9286; margin: 0 2px 14px; }
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
@@ -1640,6 +1823,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                       title="15일에 지급하는 사람(알바 + 구복만두 전원)만 엑셀로 내려받습니다">⬇ 15일 급여 엑셀</button>
                     <button className="tx-xlsx all" onClick={() => downloadTransferXlsx('all')}
                       title="지금 화면에 보이는 그대로 내려받습니다">⬇ 전체</button>
+                    <button className="tx-xlsx tax" onClick={downloadTaxLedgerXlsx}
+                      title="세무사 제출용 — 급여대장(직원)과 사업소득지급대장(알바)을 한 파일 두 시트로. 공제·차인지급액은 뺀 지급 항목까지만.">
+                      📄 세무사 제출용</button>
                   </span>
                 </div>
                 <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바 · 구복만두는 전원 15일 지급</div>
