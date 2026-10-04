@@ -1501,7 +1501,18 @@ export default function Home() {
     // 달을 바꾸면 '그 달에만 해당하는 값'은 비운다.
     //   근무표(workData) · 이달의 특이사항(specialNote) · 소급 소득세(retroIncomeTax)
     //   → 안 비우면 7월 특이사항이 8·9월에 그대로 따라붙어 그대로 저장돼 버린다.
-    const freshMonth = (e) => ({ ...e, year: newYear, month: newMonth, workData: {}, specialNote: '', retroIncomeTax: 0 })
+    // 달이 바뀌어도 '그 사람의 설정'은 들고 간다. 근무표·그 달에만 쓰는 값만 버린다.
+    //   들고 감: 휴게 빼는 위치(_restFrom) · 하루 식대(_mealPerDay) · 식대 기본급분리(_mealFromBasic) · 기본급 기준시간(_basicHours)
+    //   버림  : 날짜별 근무기록 · 조퇴차감(_deduct) · 주휴차감(_whCut) · 추가지급(_retroPay) · 기록용(_recordOnly)
+    //   ※ 수습 감액(_probationPct)은 일부러 안 들고 간다 — 3개월이 지나도 계속 깎이면 임금체불이 되므로
+    //     매달 다시 확인해서 넣도록 한다.
+    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours']
+    const carrySettings = (wd) => {
+      const out = {}
+      for (const k of KEEP_SETTINGS) if (wd && wd[k] !== undefined && wd[k] !== null) out[k] = wd[k]
+      return out
+    }
+    const freshMonth = (e) => ({ ...e, year: newYear, month: newMonth, workData: carrySettings(e.workData), specialNote: '', retroIncomeTax: 0 })
     setPrevMonthNotice(null)   // 직접 달을 고르면 '지난달 표시 중' 안내는 닫는다
     if (!selectedBranch) {
       setEmployees(prev => prev.map(freshMonth))
