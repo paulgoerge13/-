@@ -462,6 +462,13 @@ const HOLIDAYS = {
 
 export default function Home() {
   const [step, setStep] = useState('branch')        // branch → (login) → main  (재고는 별도 사이트로 분리돼 홈 화면 폐지)
+  // ── 계약서 고정 조건 패널: 지점 화면에 그냥 두면 그 사람 계약 내용(고정 야간시간·전환 전 시급·
+  //   결근 공제액)이 지점 담당자에게 다 보인다. 본사만 아는 내용이라 평소엔 숨기고,
+  //   주소 뒤에 ?opt=1 을 붙여 들어왔을 때만 보이게 한다. (설정값 자체는 숨겨도 그대로 계산에 적용된다)
+  const [showContractOpts, setShowContractOpts] = useState(false)
+  useEffect(() => {
+    try { setShowContractOpts(new URLSearchParams(window.location.search).get('opt') === '1') } catch (e) {}
+  }, [])
   const [authed, setAuthed] = useState(false)       // 이 지점 급여 비밀번호 통과 여부
   const [selectedBranch, setSelectedBranch] = useState(null)
   const [pw, setPw] = useState('')
@@ -3751,7 +3758,7 @@ export default function Home() {
                   </label>
                 )}
                 {/* 식대 일할 안 함 — 중도 입·퇴사여도 정액 전액 */}
-                {(activeEmp.empType || '알바') === '직원' && (activeEmp.mealAllowance || 0) > 0 && !activeEmp.workData?._mealPerDay && (
+                {showContractOpts && (activeEmp.empType || '알바') === '직원' && (activeEmp.mealAllowance || 0) > 0 && !activeEmp.workData?._mealPerDay && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 6, marginLeft: 2, fontSize: 12, color: '#666' }}>
                     <input type="checkbox" checked={!!activeEmp.workData?._mealFlat} onChange={toggleMealFlat} />
                     식대는 일할하지 않고 <b>매월 정액</b>으로 지급 <span style={{ color: '#bbb' }}>(중도 입·퇴사해도 전액)</span>
@@ -3759,7 +3766,7 @@ export default function Home() {
                 )}
 
                 {/* ── 매니저·고정급 조건 (근로계약서에 수당이 정액으로 박혀 있는 경우) ── */}
-                {(activeEmp.empType || '알바') === '직원' && (activeEmp.salaryType || 'hourly') !== 'monthly' && (
+                {showContractOpts && (activeEmp.empType || '알바') === '직원' && (activeEmp.salaryType || 'hourly') !== 'monthly' && (
                   <div style={{ marginTop: 12, padding: '10px 12px', background: '#f7f5f1', border: '1px solid #e5e1d8', borderRadius: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#6b6357', marginBottom: 8 }}>
                       계약서 고정 조건 <span style={{ fontWeight: 400, color: '#aaa' }}>(필요한 사람만 — 비우면 평소대로)</span>
