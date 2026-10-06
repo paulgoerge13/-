@@ -370,6 +370,9 @@ function calcProration(emp) {
   return { ratio: isFull ? 1 : activeDays / monthDays, activeDays, monthDays, partial: !isFull }
 }
 
+// 공제 방식: 4대보험 / 3.3% 원천징수 / 공제없음 — work_data._dedType 으로 그 달만 바꿀 수 있다
+const DED_TYPES = ['4대', '3.3', 'none']
+
 // ── 4대보험 요율 (2026년 기준 · 근로자 부담분) ──
 // 매년 변동될 수 있어, 필요 시 이 숫자만 수정하면 전체에 반영됩니다.
 const RATE_PENSION    = 0.0475   // 국민연금 4.75% (2026: 9.5%의 절반)
@@ -380,7 +383,10 @@ const RATE_EMPLOYMENT = 0.009    // 고용보험 0.9% (2026 동결)
 // ── 공제 계산: 세전 총액(gross) 기준으로 항목별 공제액 산출 ──
 function calcDeductions(gross, emp) {
   // 직원=4대보험, 알바=3.3% 를 항상 자동 적용 (이체·명세서와 동일하게 입력화면 미리보기도 강제)
-  const dt = (emp.empType === '직원') ? '4대' : '3.3'
+  //   단 work_data._dedType 이 있으면 그 달만 그 방식으로 (예: 직원이지만 9월만 3.3% 원천징수).
+  //   신분(직원/알바)은 그대로 두고 공제 방식만 바꾸는 용도 — 매달 이어지지 않게 그 달에만 저장한다.
+  const dt = DED_TYPES.includes(emp.workData?._dedType) ? emp.workData._dedType
+    : ((emp.empType === '직원') ? '4대' : '3.3')
   let pension = 0, health = 0, care = 0, employment = 0, incomeTax = 0, localTax = 0, bizTax = 0
   // 소급 소득세: 지난달 미징수분을 이번 달에 추가 공제 (공제 대상자에게만)
   const retroTax = (dt !== 'none') ? (Number(emp.retroIncomeTax) || 0) : 0
@@ -1016,6 +1022,22 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 공제 방식 그 달만 바꾸기: workData._dedType ('4대' | '3.3') ──
+  //   신분은 직원 그대로 두고 공제만 3.3%로 하는 경우. 비우면 평소대로(직원 4대 / 알바 3.3).
+  //   달이 바뀌어도 안 따라간다(KEEP_SETTINGS 에 넣지 않음) — 한 달짜리 예외라서.
+  function setDedType(val) {
+    const v = String(val || '')
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (v === '4대' || v === '3.3') wd._dedType = v
+      else delete wd._dedType
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   // ── 1일 소정근로시간: workData._dayHours (결근 공제 기준, 비우면 8시간) ──
   //   주 40시간(209h)이면 하루 8시간이지만, 주 37시간(193h) 계약이면 하루 7.4시간이다.
   //   결근 1일당 8시간을 빼면 그만큼 과다공제가 되므로 계약에 맞춰 지정한다.
@@ -1476,7 +1498,8 @@ export default function Home() {
   //   (그래야 명세서의 '실지급액'이 실제 이체액과 정확히 일치한다.)
   function calcTotalForDoc(emp) {
     const t = calcTotal(emp)
-    const forcedType = (emp.empType === '직원') ? '4대' : '3.3'
+    const forcedType = DED_TYPES.includes(emp.workData?._dedType) ? emp.workData._dedType
+      : ((emp.empType === '직원') ? '4대' : '3.3')
     const ded = calcDeductions(t.grandTotal, { ...emp, deductionType: forcedType })
     return { ...t, deductions: ded, totalDeduction: ded.total, netPay: t.grossPay - ded.total }
   }
@@ -3790,6 +3813,27 @@ export default function Home() {
                           → 이 달 실제 야간 {totals.nightPoolH}시간 {totals.excessNightH > 0
                             ? `— 고정 ${totals.fixedNightLimit.toFixed(1)}시간을 ${totals.excessNightH.toFixed(1)}시간 초과 → 추가 ${Number(totals.excessNightPay).toLocaleString()}원`
                             : `— 고정 ${totals.fixedNightLimit.toFixed(1)}시간 안쪽이라 추가 지급 없음`}
+                        </b>
+                      )}
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
+                      공제 방식 (이 달만)
+                      <select
+                        value={activeEmp.workData?._dedType || ''}
+                        onChange={e => setDedType(e.target.value)}
+                        style={{ border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                      >
+                        <option value="">평소대로 (직원 4대보험)</option>
+                        <option value="4대">4대보험</option>
+                        <option value="3.3">3.3% 원천징수</option>
+                      </select>
+                      <span style={{ color: '#bbb' }}>(신분은 직원 그대로 · 다음 달엔 안 따라감)</span>
+                      {activeEmp.workData?._dedType === '3.3' && totals && (
+                        <b style={{ color: '#b07a1e', width: '100%', lineHeight: 1.7 }}>
+                          → 이 달은 4대보험 대신 3.3%만 공제합니다 — 공제 {Number(totals.totalDeduction).toLocaleString()}원 · 실지급 {Number(totals.netPay).toLocaleString()}원
+                          <br />
+                          <span style={{ fontWeight: 400, color: '#a08a5e' }}>※ 3.3%는 사업소득이라 세무사 자료에선 사업소득지급대장으로 들어갑니다. 4대보험 상실신고는 따로 확인하세요.</span>
                         </b>
                       )}
                     </label>

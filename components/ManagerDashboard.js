@@ -238,9 +238,16 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const accident   = Math.floor(taxable * RATE_ACCIDENT / 10) * 10
     return pension + health + care + employment + accident
   }
+  // 그 달만 공제 방식을 바꾼 경우(work_data._dedType) — 신분은 직원 그대로, 공제만 3.3%.
+  //   지점 화면 calcDeductions 와 같은 기준이라야 이체액·명세서가 어긋나지 않는다.
+  function recDedType(r) {
+    const v = r && r.work_data && r.work_data._dedType
+    if (v === '4대' || v === '3.3') return v
+    return r && r.emp_type === '직원' ? '4대' : '3.3'
+  }
   function recMajorIns(r) {   // 4대보험 (직원만)
     if (isFixed(r)) return 0   // 과거 확정 금액은 이미 net → 공제 없음
-    if (r.emp_type !== '직원') return 0
+    if (recDedType(r) !== '4대') return 0
     const taxable = fixGrand(r)
     const pension    = Math.floor(taxable * 0.0475 / 10) * 10
     const health     = Math.floor(taxable * 0.03595 / 10) * 10
@@ -252,7 +259,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (isFixed(r)) return 0   // 과거 확정 금액은 이미 net → 공제 없음
     const retro = Number(r.retro_income_tax) || 0   // 소급 소득세 (개인 화면과 동일하게 원천세에 포함)
     const taxable = fixGrand(r)
-    if (r.emp_type === '직원') {
+    if (recDedType(r) === '4대') {
       const incomeTax = r.income_tax || 0
       const localTax  = Math.floor((incomeTax * 0.1) / 10) * 10
       return incomeTax + localTax + retro
@@ -297,6 +304,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   function recMeal(r) {
     const perDay = Math.max(0, Number(r && r.work_data && r.work_data._mealPerDay) || 0)
     if (perDay > 0) return Math.min(200000, Math.round(perDay * recWorkDays(r)))
+    // _mealFlat: 중도 입·퇴사여도 식대는 일할하지 않고 정액 전액 (지점 화면과 동일)
+    if (r && r.work_data && r.work_data._mealFlat) return Math.round(Number(r.meal_allowance) || 0)
     return Math.round((Number(r.meal_allowance) || 0) * recProrationRatio(r))
   }
   function recNet(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) }
@@ -457,7 +466,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   // 유닛에 포함된 공제방식들(중복 제거). 직원=4대보험 / 알바=3.3% 로 표시.
   const DED_LABEL = { '4대': '4대보험', '3.3': '3.3%', 'none': '공제없음' }
   function unitDedTypes(u) {
-    const types = [...new Set(u.recs.map(r => (r.emp_type === '직원' ? '4대' : '3.3')))]
+    const types = [...new Set(u.recs.map(r => recDedType(r)))]
     // 한 사람을 직원분 + 별도분(예: 김현준 / 김현준p3)으로 나눠 합친 경우,
     // 4대보험(직원)·3.3%를 함께 띄우면 지급 담당자가 헷갈리므로 4대보험 하나로만 표시한다.
     if (types.includes('4대')) return ['4대']
@@ -754,7 +763,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     // 같은 지점·같은 계좌에 직원이 있으면 그 알바 기록은 직원 쪽으로 합친다
     const staffByAcct = {}
     for (const r of rows) {
-      if (r.emp_type !== '직원') continue
+      // 급여대장에 실제로 실릴 사람만 '합칠 대상'이 된다.
+      //   3.3%로 뗀 달의 직원은 사업소득지급대장으로 가므로 여기 넣으면 자기 자신에게 합쳐져
+      //   양쪽 대장에서 모두 사라진다.
+      if (r.emp_type !== '직원' || recDedType(r) !== '4대') continue
       const a = (r.account_number || '').trim()
       if (a) staffByAcct[`${r.branch}|${a}`] = r
     }
@@ -762,7 +774,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const mergedName = new Map()
     const albaRows = []
     for (const r of rows) {
-      if (r.emp_type === '직원') continue
+      // 3.3%로 원천징수한 달은 신분이 직원이어도 사업소득이라 사업소득지급대장으로 간다
+      if (r.emp_type === '직원' && recDedType(r) === '4대') continue
       const a = (r.account_number || '').trim()
       const host = a ? staffByAcct[`${r.branch}|${a}`] : null
       if (host) {
@@ -773,7 +786,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         }
       } else if (fixGrand(r) + recMeal(r) > 0) albaRows.push(r)
     }
-    const staffRows = rows.filter(r => r.emp_type === '직원')
+    const staffRows = rows.filter(r => r.emp_type === '직원' && recDedType(r) === '4대')
       .sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || a.emp_name.localeCompare(b.emp_name, 'ko'))
     albaRows.sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || a.emp_name.localeCompare(b.emp_name, 'ko'))
 
