@@ -742,11 +742,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     URL.revokeObjectURL(url)
   }
 
-  // ── 세무사 제출용: 급여대장(직원) + 사업소득지급대장(알바)을 한 파일 두 시트로 ──
+  // ── 세무사 제출용: 급여대장(직원) / 사업소득지급대장(알바) — 버튼마다 파일 하나씩 ──
   //   · 공제·차인지급액은 넣지 않는다 (세무사가 직접 계산) → 지급 항목까지만
   //   · 알바 기록이 같은 지점·같은 계좌의 직원과 묶이면(예: 김현준P3) 그 직원 '연장근로수당'에 합산하고
   //     사업소득지급대장에서는 뺀다. 앱에서 이미 '추가 지급'으로 합쳐둔 달(_retroPay)도 같은 자리에 넣는다.
-  function downloadTaxLedgerXlsx() {
+  //   kind: 'staff' = 급여대장(직원)만 / 'alba' = 사업소득지급대장(알바)만 — 파일을 따로 받는다
+  function downloadTaxLedgerXlsx(kind = 'staff') {
     const rows = records.filter(r => !isRecordOnly(r) && branchesFor(branch).includes(r.branch))
     if (rows.length === 0) { alert('이 달에 내려받을 급여 자료가 없습니다.'); return }
 
@@ -888,9 +889,16 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     B['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: br_ + 2, c: 5 } })
 
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, P, '급여대장')
-    XLSX.utils.book_append_sheet(wb, B, '사업소득지급대장')
-    XLSX.writeFile(wb, `${year}년 ${String(month).padStart(2, '0')}월 급여대장_세무사제출.xlsx`)
+    const ym = `${year}년 ${String(month).padStart(2, '0')}월`
+    if (kind === 'alba') {
+      if (albaRows.length === 0) { alert('이 달에 사업소득(알바) 지급 대상이 없습니다.'); return }
+      XLSX.utils.book_append_sheet(wb, B, '사업소득지급대장')
+      XLSX.writeFile(wb, `${ym} 사업소득지급대장_세무사제출.xlsx`)
+    } else {
+      if (staffRows.length === 0) { alert('이 달에 급여대장(직원) 대상이 없습니다.'); return }
+      XLSX.utils.book_append_sheet(wb, P, '급여대장')
+      XLSX.writeFile(wb, `${ym} 급여대장_세무사제출.xlsx`)
+    }
   }
 
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
@@ -1303,6 +1311,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     .tx-xlsx.all:hover { background: #55606c; }
     .tx-xlsx.tax { background: #3f5b8a; box-shadow: 0 2px 6px rgba(63,91,138,0.3); }
     .tx-xlsx.tax:hover { background: #32496e; }
+    .tx-xlsx.tax2 { background: #7a5ea8; box-shadow: 0 2px 6px rgba(122,94,168,0.3); }
+    .tx-xlsx.tax2:hover { background: #63498c; }
     .tx-board-note { font-size: 12px; color: #9a9286; margin: 0 2px 14px; }
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
@@ -1823,9 +1833,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                       title="15일에 지급하는 사람(알바 + 구복만두 전원)만 엑셀로 내려받습니다">⬇ 15일 급여 엑셀</button>
                     <button className="tx-xlsx all" onClick={() => downloadTransferXlsx('all')}
                       title="지금 화면에 보이는 그대로 내려받습니다">⬇ 전체</button>
-                    <button className="tx-xlsx tax" onClick={downloadTaxLedgerXlsx}
-                      title="세무사 제출용 — 급여대장(직원)과 사업소득지급대장(알바)을 한 파일 두 시트로. 공제·차인지급액은 뺀 지급 항목까지만.">
-                      📄 세무사 제출용</button>
+                    <button className="tx-xlsx tax" onClick={() => downloadTaxLedgerXlsx('staff')}
+                      title="세무사 제출용 급여대장 — 직원(근로소득)만. 공제·차인지급액은 뺀 지급 항목까지만.">
+                      📄 급여대장(직원)</button>
+                    <button className="tx-xlsx tax2" onClick={() => downloadTaxLedgerXlsx('alba')}
+                      title="세무사 제출용 사업소득지급대장 — 알바(3.3%)만. 세액·차인지급액은 뺀 지급액까지만.">
+                      📄 사업소득대장(알바)</button>
                   </span>
                 </div>
                 <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바 · 구복만두는 전원 15일 지급</div>
