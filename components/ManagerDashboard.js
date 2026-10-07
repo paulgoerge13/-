@@ -59,6 +59,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   const [txUnavailable, setTxUnavailable] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   const [editAcctKey, setEditAcctKey] = useState(null)  // 계좌 편집 중인 유닛 key
+  const [taxWithDeduct, setTaxWithDeduct] = useState(false)  // 세무사 제출용에 공제·차인지급액까지 넣을지
   const [acctDraft, setAcctDraft] = useState('')        // 편집 입력값
   const [acctSaving, setAcctSaving] = useState(false)
   // 퇴직금 계산
@@ -267,6 +268,25 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     return Math.round(taxable * 0.03) + Math.round(taxable * 0.003) + retro  // 3.3% + 소급
   }
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
+  // ── 공제 항목별 내역 ── 세무사 제출용 '공제 포함' 대장에서 칸마다 적는다 (합계는 위 함수들과 동일)
+  function recDedDetail(r) {
+    const zero = { pension: 0, health: 0, care: 0, employment: 0, incomeTax: 0, localTax: 0, bizTax: 0, bizLocal: 0, retro: 0, total: 0 }
+    if (isFixed(r)) return zero
+    const g = fixGrand(r)
+    const retro = Number(r.retro_income_tax) || 0
+    if (recDedType(r) === '4대') {
+      const pension    = Math.floor(g * 0.0475 / 10) * 10
+      const health     = Math.floor(g * 0.03595 / 10) * 10
+      const care       = Math.floor(health * 0.1314 / 10) * 10
+      const employment = Math.floor(g * 0.009 / 10) * 10
+      const incomeTax  = r.income_tax || 0
+      const localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
+      return { ...zero, pension, health, care, employment, incomeTax, localTax, retro,
+        total: pension + health + care + employment + incomeTax + localTax + retro }
+    }
+    const bizTax = Math.round(g * 0.03), bizLocal = Math.round(g * 0.003)
+    return { ...zero, bizTax, bizLocal, retro, total: bizTax + bizLocal + retro }
+  }
   // 식대 일할: 직원 중도 입·퇴사면 근무일 비례로 식대도 줄임 (개인 화면과 동일) — 만근/알바는 그대로
   function recProrationRatio(r) {
     if (r.emp_type !== '직원') return 1
@@ -771,28 +791,32 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   //   kind: 'staff' = 급여대장(직원)만 / 'alba' = 사업소득지급대장(알바)만 — 파일을 따로 받는다
   //   · 법인(사업자)이 다르면 대장을 섞을 수 없다 → 법인별로 파일을 따로 만든다.
   //     (더콤마 6개 지점 = 데이원 / 남양주점 = 우드앤)
-  function downloadTaxLedgerXlsx(kind = 'staff') {
+  //   onlyCorp 를 주면 그 법인만 (버튼이 법인마다 따로 있어 한 번에 한 파일씩 받는다)
+  //   withDeduct=true 면 공제(4대보험·소득세)와 차인지급액까지 넣는다
+  function downloadTaxLedgerXlsx(kind = 'staff', onlyCorp = null, withDeduct = false) {
     const all = records.filter(r => !isRecordOnly(r) && branchesFor(branch).includes(r.branch))
     if (all.length === 0) { alert('이 달에 내려받을 급여 자료가 없습니다.'); return }
     // 법인별로 묶는다 (지점이 목록에 없으면 '기타'로)
     const byCorp = new Map()
     for (const r of all) {
       const cid = CORP_OF_BRANCH[r.branch] || 'etc'
+      if (onlyCorp && cid !== onlyCorp) continue
       if (!byCorp.has(cid)) byCorp.set(cid, [])
       byCorp.get(cid).push(r)
     }
     let made = 0
     for (const [cid, rowsOfCorp] of byCorp) {
-      if (taxLedgerWrite(kind, rowsOfCorp, cid)) made++
+      if (taxLedgerWrite(kind, rowsOfCorp, cid, withDeduct)) made++
     }
     if (made === 0) {
-      alert(kind === 'alba' ? '이 달에 사업소득(알바) 지급 대상이 없습니다.'
-                            : '이 달에 급여대장(직원) 대상이 없습니다.')
+      const who = onlyCorp ? `${(CORPS[onlyCorp] || CORPS.etc).short || '이 사업자'} ` : ''
+      alert(kind === 'alba' ? `이 달에 ${who}사업소득(알바) 지급 대상이 없습니다.`
+                            : `이 달에 ${who}급여대장(직원) 대상이 없습니다.`)
     }
   }
 
   // 한 법인분 대장을 만들어 저장한다. 대상자가 없으면 false.
-  function taxLedgerWrite(kind, rows, corpId) {
+  function taxLedgerWrite(kind, rows, corpId, withDeduct = false) {
     const corp = CORPS[corpId] || CORPS.etc
     const corpName = corp.name || (branch === ALL ? '전 지점' : branch)
     const corpTag = corp.label ? `_${corp.label}` : ''
@@ -859,23 +883,34 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     // ───── 시트 1: 급여대장 (직원) ─────
     const P = {}, pMerges = []
-    const PH1 = ['사원번호', '성  명', '주민등록번호', '기본급', '식대', '주휴수당', '연장근로수당',
-                 '야간근로수당', '휴일근로수당', '근태공제', '지급합계', '영수인']
-    const PH2 = ['입사일', '직  급', '', '', '', '', '', '', '', '', '', '']
-    const PH3 = ['퇴사일', '부  서', '', '', '', '', '', '', '', '', '지급합계', '']
+    const PAY_H = ['사원번호', '성  명', '주민등록번호', '기본급', '식대', '주휴수당', '연장근로수당',
+                   '야간근로수당', '휴일근로수당', '근태공제', '지급합계']
+    const DED_H = withDeduct ? ['국민연금', '건강보험', '장기요양', '고용보험', '소득세', '지방소득세', '공제합계', '차인지급액'] : []
+    const PH1 = [...PAY_H, ...DED_H, '영수인']
+    const PH2 = PH1.map(() => '')
+    const PH3 = PH1.map(() => '')
+    PH2[0] = '입사일'; PH2[1] = '직  급'
+    PH3[0] = '퇴사일'; PH3[1] = '부  서'
+    const DED0 = PAY_H.length            // 공제 칸 시작 위치
+    const COL_SIGN = PH1.length - 1      // 영수인
+    const COL_PAY = PAY_H.length - 1     // 지급합계
+    PH3[COL_PAY] = '지급합계'
     mk(P, 0, 0, `${year}년${String(month).padStart(2, '0')}월분 급여대장`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
     pMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: PH1.length - 1 } })
     mk(P, 1, 0, corpName, { font: { sz: 9 } })
     mk(P, 1, 6, `[귀속:${year}년${String(month).padStart(2, '0')}월]`, { font: { sz: 9 }, alignment: { horizontal: 'center' } })
-    ;[[0, 2, '인 적 사 항'], [3, 10, '기 본 급 여 및 제 수 당'], [11, 11, '영수인']].forEach(([c1, c2, lb]) => {
+    ;[[0, 2, '인 적 사 항'], [3, COL_PAY, '기 본 급 여 및 제 수 당'],
+      ...(withDeduct ? [[DED0, DED0 + 7, '공 제 및 차 인 지 급 액']] : []),
+      [COL_SIGN, COL_SIGN, '영수인']].forEach(([c1, c2, lb]) => {
       pMerges.push({ s: { r: 3, c: c1 }, e: { r: 3, c: c2 } })
       mk(P, 3, c1, lb, hdrS)
       for (let c = c1 + 1; c <= c2; c++) mk(P, 3, c, '', hdrS)
     })
     PH1.forEach((h, i) => { mk(P, 4, i, h, hdrS); mk(P, 5, i, PH2[i], hdrS); mk(P, 6, i, PH3[i], hdrS) })
-    pMerges.push({ s: { r: 4, c: 11 }, e: { r: 6, c: 11 } })
+    pMerges.push({ s: { r: 4, c: COL_SIGN }, e: { r: 6, c: COL_SIGN } })
     let pr = 7
-    const pT = { basic: 0, meal: 0, wh: 0, ot: 0, night: 0, hol: 0, cut: 0, pay: 0 }
+    const pT = { basic: 0, meal: 0, wh: 0, ot: 0, night: 0, hol: 0, cut: 0, pay: 0,
+                 pension: 0, health: 0, care: 0, employment: 0, incomeTax: 0, localTax: 0, ded: 0, net: 0 }
     const notes = []
     const pBlocks = []   // [시작행, 끝행] — 다 쓴 뒤 사람 경계에 굵은 선을 긋는다
     staffRows.forEach((r, i) => {
@@ -906,11 +941,24 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         mk(P, pr, 3 + j, v, numS); mk(P, pr + 1, 3 + j, '', numS); mk(P, pr + 2, 3 + j, '', numS)
         pMerges.push({ s: { r: pr, c: 3 + j }, e: { r: pr + 2, c: 3 + j } })
       })
-      mk(P, pr, 10, pay, { ...numS, font: { sz: 10, bold: true } })
-      mk(P, pr + 1, 10, '', numS); mk(P, pr + 2, 10, '', numS)
-      pMerges.push({ s: { r: pr, c: 10 }, e: { r: pr + 2, c: 10 } })
-      pMerges.push({ s: { r: pr, c: 11 }, e: { r: pr + 2, c: 11 } })
-      mk(P, pr, 11, '', cellS('center')); mk(P, pr + 1, 11, '', cellS('center')); mk(P, pr + 2, 11, '', cellS('center'))
+      mk(P, pr, COL_PAY, pay, { ...numS, font: { sz: 10, bold: true } })
+      mk(P, pr + 1, COL_PAY, '', numS); mk(P, pr + 2, COL_PAY, '', numS)
+      pMerges.push({ s: { r: pr, c: COL_PAY }, e: { r: pr + 2, c: COL_PAY } })
+      if (withDeduct) {
+        const dt = recDedDetail(r)
+        const net = pay - dt.total
+        pT.pension += dt.pension; pT.health += dt.health; pT.care += dt.care
+        pT.employment += dt.employment; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
+        pT.ded += dt.total; pT.net += net
+        ;[dt.pension, dt.health, dt.care, dt.employment, dt.incomeTax + dt.retro, dt.localTax, dt.total, net]
+          .forEach((v, j) => {
+            const st = j >= 6 ? { ...numS, font: { sz: 9, bold: true } } : numS
+            mk(P, pr, DED0 + j, v, st); mk(P, pr + 1, DED0 + j, '', st); mk(P, pr + 2, DED0 + j, '', st)
+            pMerges.push({ s: { r: pr, c: DED0 + j }, e: { r: pr + 2, c: DED0 + j } })
+          })
+      }
+      pMerges.push({ s: { r: pr, c: COL_SIGN }, e: { r: pr + 2, c: COL_SIGN } })
+      for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', cellS('center'))
       if (mergedInto.get(r.id)) notes.push(`※ ${r.emp_name}: ${(mergedName.get(r.id) || []).join('·')} ${mergedInto.get(r.id).toLocaleString()}원을 연장근로수당에 합산`)
       else if (recRetroPay(r)) notes.push(`※ ${r.emp_name}: 추가지급 ${recRetroPay(r).toLocaleString()}원을 연장근로수당에 합산`)
       pT.basic += basic; pT.meal += meal; pT.wh += wh; pT.ot += ot; pT.night += night
@@ -931,27 +979,43 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       mk(P, pr, 3 + j, v, totS); mk(P, pr + 1, 3 + j, '', totS); mk(P, pr + 2, 3 + j, '', totS)
       pMerges.push({ s: { r: pr, c: 3 + j }, e: { r: pr + 2, c: 3 + j } })
     })
-    mk(P, pr, 10, pT.pay, { ...totS, font: { sz: 11, bold: true } })
-    mk(P, pr + 1, 10, '', totS); mk(P, pr + 2, 10, '', totS)
-    pMerges.push({ s: { r: pr, c: 10 }, e: { r: pr + 2, c: 10 } })
-    for (let k = 0; k < 3; k++) mk(P, pr + k, 11, '', totS)
+    mk(P, pr, COL_PAY, pT.pay, { ...totS, font: { sz: 11, bold: true } })
+    mk(P, pr + 1, COL_PAY, '', totS); mk(P, pr + 2, COL_PAY, '', totS)
+    pMerges.push({ s: { r: pr, c: COL_PAY }, e: { r: pr + 2, c: COL_PAY } })
+    if (withDeduct) {
+      ;[pT.pension, pT.health, pT.care, pT.employment, pT.incomeTax, pT.localTax, pT.ded, pT.net]
+        .forEach((v, j) => {
+          const st = j >= 6 ? { ...totS, font: { sz: 11, bold: true } } : totS
+          mk(P, pr, DED0 + j, v, st); mk(P, pr + 1, DED0 + j, '', st); mk(P, pr + 2, DED0 + j, '', st)
+          pMerges.push({ s: { r: pr, c: DED0 + j }, e: { r: pr + 2, c: DED0 + j } })
+        })
+    }
+    for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', totS)
     let pEnd = pr + 3
     notes.forEach(t => { mk(P, pEnd, 0, t, { font: { sz: 8, color: { rgb: '8A5A00' } } }); pEnd++ })
-    mk(P, pEnd + 1, 0, '※ 공제(4대보험·소득세)와 차인지급액은 넣지 않았습니다. 지급 항목까지만 표기.', { font: { sz: 8, color: { rgb: '777777' } } })
-    P['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 12 }, { wch: 8 }]
+    mk(P, pEnd + 1, 0, withDeduct
+      ? '※ 공제는 4대보험(국민·건강·장기요양·고용)과 소득세·지방소득세 기준입니다. 차인지급액 = 지급합계 − 공제합계.'
+      : '※ 공제(4대보험·소득세)와 차인지급액은 넣지 않았습니다. 지급 항목까지만 표기.',
+      { font: { sz: 8, color: { rgb: '777777' } } })
+    P['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 12 },
+      ...(withDeduct ? [{ wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 12 }] : []),
+      { wch: 8 }]
     P['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
     P['!merges'] = pMerges
     P['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: pEnd + 1, c: PH1.length - 1 } })
 
     // ───── 시트 2: 사업소득지급대장 (알바) ─────
     const B = {}, bMerges = []
-    const BH = ['NO', '코드', '성   명', '지  점', '귀속년월', '주민등록번호', '지급액', '영수인']
-    const BLAST = BH.length - 1
-    mk(B, 0, 0, `(${year}년${String(month).padStart(2, '0')}월) 사업소득지급대장(합계)`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
-    bMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: BLAST } })
+    const BH = ['NO', '코드', '성   명', '지  점', '귀속년월', '주민등록번호', '지급액',
+                ...(withDeduct ? ['소득세', '지방소득세', '차인지급액'] : []), '영수인']
+    const BDED0 = 7                         // 공제 칸 시작
+    const BSIGN = BH.length - 1             // 영수인
+        mk(B, 0, 0, `(${year}년${String(month).padStart(2, '0')}월) 사업소득지급대장(합계)`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
+    bMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: BSIGN } })
     mk(B, 2, 0, `회사명 : ${corpName}`, { font: { sz: 9 } })
     BH.forEach((h, i) => mk(B, 4, i, h, hdrS))
     let br_ = 5, bTot = 0
+    const bT = { tax: 0, local: 0, net: 0 }
     let bPrevBranch = null
     albaRows.forEach((r, i) => {
       const amt = fixGrand(r) + recMeal(r)
@@ -962,22 +1026,35 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       mk(B, br_, 4, `${year}.${String(month).padStart(2, '0')}`, cellS('center'))
       mk(B, br_, 5, rid(r), cellS('center'))
       mk(B, br_, 6, amt, numS)
-      mk(B, br_, BLAST, '', cellS('center'))          // 영수인: 서명 받을 빈칸
+      if (withDeduct) {
+        const dt = recDedDetail(r)
+        const net = amt - dt.total
+        bT.tax += dt.bizTax + dt.retro; bT.local += dt.bizLocal; bT.net += net
+        mk(B, br_, BDED0, dt.bizTax + dt.retro, numS)
+        mk(B, br_, BDED0 + 1, dt.bizLocal, numS)
+        mk(B, br_, BDED0 + 2, net, { ...numS, font: { sz: 9, bold: true } })
+      }
+      mk(B, br_, BSIGN, '', cellS('center'))          // 영수인: 서명 받을 빈칸
       // 한 사람 건너 하나씩 옅은 음영 — 줄이 밀려 읽히는 걸 막는다
-      if (i % 2 === 1) for (let c = 0; c <= BLAST; c++) paint(B, br_, c, { fill: ZEBRA })
+      if (i % 2 === 1) for (let c = 0; c <= BSIGN; c++) paint(B, br_, c, { fill: ZEBRA })
       // 지점이 바뀌는 자리에 굵은 선 — 누가 어느 지점인지 묶여 보이게
       if (bPrevBranch !== null && bPrevBranch !== r.branch) {
-        for (let c = 0; c <= BLAST; c++) paint(B, br_, c, { border: { top: thickBd } })
+        for (let c = 0; c <= BSIGN; c++) paint(B, br_, c, { border: { top: thickBd } })
       }
       bPrevBranch = r.branch
       bTot += amt; br_++
     })
-    for (let c = 0; c <= BLAST; c++) paint(B, br_ - 1, c, { border: { bottom: thickBd } })
+    for (let c = 0; c <= BSIGN; c++) paint(B, br_ - 1, c, { border: { bottom: thickBd } })
     bMerges.push({ s: { r: br_, c: 0 }, e: { r: br_, c: 5 } })
     mk(B, br_, 0, `총   계 (${albaRows.length}명)`, { ...hdrS, fill: TOT })
     for (let c = 1; c <= 5; c++) mk(B, br_, c, '', { ...hdrS, fill: TOT })
     mk(B, br_, 6, bTot, { ...totS, font: { sz: 11, bold: true } })
-    mk(B, br_, BLAST, '', { ...hdrS, fill: TOT })
+    if (withDeduct) {
+      mk(B, br_, BDED0, bT.tax, totS)
+      mk(B, br_, BDED0 + 1, bT.local, totS)
+      mk(B, br_, BDED0 + 2, bT.net, { ...totS, font: { sz: 11, bold: true } })
+    }
+    mk(B, br_, BSIGN, '', { ...hdrS, fill: TOT })
     // 지점별 소계 — 어느 지점이 얼마인지 세무사가 바로 대조할 수 있게
     let bEnd = br_ + 2
     const byBranch = {}
@@ -995,24 +1072,29 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       })
       bEnd++
     }
-    mk(B, bEnd, 0, '※ 소득세(3.3%)와 차인지급액은 넣지 않았습니다. 지급액까지만 표기.', { font: { sz: 8, color: { rgb: '777777' } } })
-    B['!cols'] = [{ wch: 5 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 13 }, { wch: 9 }]
+    mk(B, bEnd, 0, withDeduct
+      ? '※ 소득세 3% · 지방소득세 0.3% 원천징수 기준. 차인지급액 = 지급액 − 소득세 − 지방소득세.'
+      : '※ 소득세(3.3%)와 차인지급액은 넣지 않았습니다. 지급액까지만 표기.',
+      { font: { sz: 8, color: { rgb: '777777' } } })
+    B['!cols'] = [{ wch: 5 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 13 },
+      ...(withDeduct ? [{ wch: 11 }, { wch: 11 }, { wch: 13 }] : []), { wch: 9 }]
     // 여백을 좁혀 A4 세로 한 장 폭에 들어가게 한다 (칸 너비도 그에 맞춰 줄여둠).
     //   ※ xlsx-js-style 은 '!pageSetup'(가로 인쇄·배율)을 파일에 쓰지 않으므로 여백·너비로만 맞춘다.
     B['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
     B['!merges'] = bMerges
-    B['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: bEnd, c: BLAST } })
+    B['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: bEnd, c: BSIGN } })
 
     const wb = XLSX.utils.book_new()
     const ym = `${year}년 ${String(month).padStart(2, '0')}월`
+    const dTag = withDeduct ? '_공제포함' : ''
     if (kind === 'alba') {
       if (albaRows.length === 0) return false
       XLSX.utils.book_append_sheet(wb, B, '사업소득지급대장')
-      XLSX.writeFile(wb, `${ym} 사업소득지급대장_세무사제출${corpTag}.xlsx`)
+      XLSX.writeFile(wb, `${ym} 사업소득지급대장_세무사제출${corpTag}${dTag}.xlsx`)
     } else {
       if (staffRows.length === 0) return false
       XLSX.utils.book_append_sheet(wb, P, '급여대장')
-      XLSX.writeFile(wb, `${ym} 급여대장_세무사제출${corpTag}.xlsx`)
+      XLSX.writeFile(wb, `${ym} 급여대장_세무사제출${corpTag}${dTag}.xlsx`)
     }
     return true
   }
@@ -1021,11 +1103,13 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   // kind: 'all' = 화면에서 고른 지급일 그대로 / 'staff' = 직원(10일)만 / 'alba' = 알바(15일)만
   //   ※ 한 사람이 직원+알바로 나뉘어 있어도 계좌가 같으면 한 줄로 합쳐지고(예: 김현준 + 김현준P3),
   //     그 합친 줄은 '직원'으로 분류돼 직원 엑셀에 합계 금액으로 딱 한 번만 나온다. (이중 이체 방지)
-  function downloadTransferXlsx(kind = 'all') {
+  //   onlyCorp 를 주면 그 법인(사업자) 지점만 — 법인이 다르면 이체도 따로 돌리기 때문
+  function downloadTransferXlsx(kind = 'all', onlyCorp = null) {
     const pick = (u) => kind === 'staff' ? !isPay15(u)
                       : kind === 'alba'  ? isPay15(u)
                       : matchPayDay(u)
     const groups = branchesFor(branch)
+      .filter(b => !onlyCorp || (CORP_OF_BRANCH[b] || 'etc') === onlyCorp)
       .map(b => ({ branch: b, units: unitsForBranch(b).filter(pick) }))
       .filter(g => g.units.length > 0)
       .map(g => ({
@@ -1035,9 +1119,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         total: g.units.reduce((s, u) => s + unitAmt(u), 0),
       }))
     if (groups.length === 0) {
-      alert(kind === 'staff' ? '이 달에 10일 지급 대상이 없습니다.'
-          : kind === 'alba'  ? '이 달에 15일 지급 대상이 없습니다.'
-          : '이 달에 이체할 데이터가 없습니다.')
+      const who = onlyCorp ? `${(CORPS[onlyCorp] || CORPS.etc).short || '이 사업자'} ` : ''
+      alert(kind === 'staff' ? `이 달에 ${who}10일 지급 대상이 없습니다.`
+          : kind === 'alba'  ? `이 달에 ${who}15일 지급 대상이 없습니다.`
+          : `이 달에 ${who}이체할 데이터가 없습니다.`)
       return
     }
 
@@ -1061,7 +1146,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const kindLabel = kind === 'staff' ? ' · 10일 지급' : kind === 'alba' ? ' · 15일 지급' : ''
     const grandCount = groups.reduce((s, g) => s + g.count, 0)
     const grandTotal = groups.reduce((s, g) => s + g.total, 0)
-    put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)${kindLabel}`,
+    const corpLabel = onlyCorp ? ((CORPS[onlyCorp] || CORPS.etc).short || '기타 사업장') : '전 지점'
+    put(0, 0, `${year}년 ${month}월 인원 급여 (${corpLabel})${kindLabel}`,
         { font: { sz: 16, bold: true }, alignment: { vertical: 'center' } })
     for (let c = 1; c < COLS; c++) put(0, c, '', {})
     merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: COLS - 1 } })
@@ -1151,7 +1237,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const pdTag = kind === 'staff' ? '_10일지급'
                 : kind === 'alba'  ? '_15일지급'
                 : (payDay === 'staff' ? '_10일지급' : payDay === 'alba' ? '_15일지급' : '')
-    XLSX.writeFile(wb, `급여정리_전지점_${year}년${month}월${pdTag}.xlsx`)
+    const corpTag = onlyCorp ? ((CORPS[onlyCorp] || CORPS.etc).label || '기타') : '전지점'
+    XLSX.writeFile(wb, `급여정리_${corpTag}_${year}년${month}월${pdTag}.xlsx`)
   }
 
   const css = `
@@ -1462,6 +1549,16 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     .md-corp-row.net { margin-top: 5px; padding-top: 9px; border-top: 1px solid #ece8e0; font-weight: 700; }
     .md-corp-row.net b { font-size: 17px; color: #b8954a; }
     .md-corp-row.sub { padding-top: 7px; font-size: 11.5px; color: #a89f92; }
+    /* ── 세무사 제출용 다운로드 ── */
+    .tax-dl { margin: 10px 0 14px; padding: 12px 14px; background: #fff; border: 1px solid #e2ded5; border-radius: 11px; }
+    .tax-dl-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; padding-bottom: 9px; border-bottom: 1px solid #efebe3; }
+    .tax-dl-title { font-size: 13.5px; font-weight: 800; color: #3f3a33; }
+    .tax-dl-chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #5a5348; cursor: pointer; }
+    .tax-dl-hint { color: #a8a096; font-size: 11.5px; }
+    .tx-xlsx-hint { font-size: 12px; color: #a8a096; font-weight: 600; align-self: center; }
+    .tax-dl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 5px 0; }
+    .tax-dl-corp { min-width: 130px; font-size: 13px; font-weight: 800; color: #3f3a33; }
+    @media (max-width: 640px) { .tax-dl-corp { min-width: 100%; margin-bottom: 2px; } }
     .bd-corp { margin-bottom: 6px; }
     .bd-corp-head { display: flex; align-items: center; gap: 10px; margin: 0 0 9px; padding: 9px 14px;
       background: #f0ece3; border: 1px solid #ddd7ca; border-left: 5px solid #6b6357; border-radius: 9px; }
@@ -1987,19 +2084,50 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                     <span className="tx-progress-bar"><span className="tx-progress-fill" style={{ width: `${totalUnits ? Math.round(doneCount / totalUnits * 100) : 0}%` }} /></span>
                   </span>
                   <span className="tx-xlsx-group">
-                    <button className="tx-xlsx staff" onClick={() => downloadTransferXlsx('staff')}
-                      title="10일에 지급하는 사람(직원)만 엑셀로 내려받습니다">⬇ 10일 급여 엑셀</button>
-                    <button className="tx-xlsx alba" onClick={() => downloadTransferXlsx('alba')}
-                      title="15일에 지급하는 사람(알바 + 구복만두 전원)만 엑셀로 내려받습니다">⬇ 15일 급여 엑셀</button>
-                    <button className="tx-xlsx all" onClick={() => downloadTransferXlsx('all')}
-                      title="지금 화면에 보이는 그대로 내려받습니다">⬇ 전체</button>
-                    <button className="tx-xlsx tax" onClick={() => downloadTaxLedgerXlsx('staff')}
-                      title="세무사 제출용 급여대장 — 직원(근로소득)만. 공제·차인지급액은 뺀 지급 항목까지만.">
-                      📄 급여대장(직원)</button>
-                    <button className="tx-xlsx tax2" onClick={() => downloadTaxLedgerXlsx('alba')}
-                      title="세무사 제출용 사업소득지급대장 — 알바(3.3%)만. 세액·차인지급액은 뺀 지급액까지만.">
-                      📄 사업소득대장(알바)</button>
+                    <span className="tx-xlsx-hint">이체용 엑셀 ↓</span>
                   </span>
+                </div>
+
+                {/* ── 이체용 엑셀 ── 법인이 다르면 이체도 따로 돌리므로 사업자별로 파일을 나눈다 */}
+                <div className="tax-dl">
+                  <div className="tax-dl-head">
+                    <span className="tax-dl-title">💸 이체용 엑셀</span>
+                    <span className="tax-dl-hint">사업자별로 따로 받습니다 · 직원 10일 / 알바 15일 (구복만두는 전원 15일)</span>
+                  </div>
+                  {byCorpSummary.map(c => (
+                    <div key={c.cid} className="tax-dl-row">
+                      <span className="tax-dl-corp">{c.corp.short || '기타 사업장'}</span>
+                      <button className="tx-xlsx staff" onClick={() => downloadTransferXlsx('staff', c.cid)}
+                        title="10일에 지급하는 사람(직원)만">⬇ 10일 지급</button>
+                      <button className="tx-xlsx alba" onClick={() => downloadTransferXlsx('alba', c.cid)}
+                        title="15일에 지급하는 사람(알바 + 구복만두 전원)만">⬇ 15일 지급</button>
+                      <button className="tx-xlsx all" onClick={() => downloadTransferXlsx('all', c.cid)}
+                        title="지금 화면에 보이는 그대로">⬇ 전체</button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── 세무사 제출용 ── 법인마다, 대장마다, 공제 포함 여부마다 파일을 따로 받는다 */}
+                <div className="tax-dl">
+                  <div className="tax-dl-head">
+                    <span className="tax-dl-title">📄 세무사 제출용</span>
+                    <label className="tax-dl-chk">
+                      <input type="checkbox" checked={taxWithDeduct} onChange={e => setTaxWithDeduct(e.target.checked)} />
+                      공제·차인지급액 포함
+                      <span className="tax-dl-hint">{taxWithDeduct ? '(4대보험·소득세까지 적힌 대장)' : '(지급 항목까지만)'}</span>
+                    </label>
+                  </div>
+                  {byCorpSummary.map(c => (
+                    <div key={c.cid} className="tax-dl-row">
+                      <span className="tax-dl-corp">{c.corp.short || '기타 사업장'}</span>
+                      <button className="tx-xlsx tax" onClick={() => downloadTaxLedgerXlsx('staff', c.cid, taxWithDeduct)}
+                        title={`${c.corp.short || '기타'} 급여대장 — 직원(근로소득)만`}>
+                        급여대장 (직원 {c.staff}명)</button>
+                      <button className="tx-xlsx tax2" onClick={() => downloadTaxLedgerXlsx('alba', c.cid, taxWithDeduct)}
+                        title={`${c.corp.short || '기타'} 사업소득지급대장 — 알바(3.3%)만`}>
+                        사업소득대장 (알바 {c.alba}명)</button>
+                    </div>
+                  ))}
                 </div>
                 <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바 · 구복만두는 전원 15일 지급</div>
 
