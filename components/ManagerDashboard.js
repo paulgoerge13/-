@@ -792,6 +792,17 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     const bd = { style: 'thin', color: { rgb: '9A93A8' } }
     const allBd = { top: bd, bottom: bd, left: bd, right: bd }
+    // 사람과 사람 사이를 굵은 선으로 끊는다 — 한 사람이 여러 줄이라 어디까지가 누구인지 구분이 안 됐다
+    const thickBd = { style: 'medium', color: { rgb: '4A4453' } }
+    const ZEBRA = { fgColor: { rgb: 'F4F2EE' } }   // 한 사람 건너 하나씩 옅은 음영
+    // 이미 써둔 셀의 테두리/채우기만 덧칠한다 (값·정렬은 그대로)
+    const paint = (ws, r, c, extra) => {
+      const k = XLSX.utils.encode_cell({ r, c })
+      if (!ws[k]) ws[k] = { v: '', t: 's', s: { border: { ...allBd } } }
+      const st = ws[k].s || (ws[k].s = {})
+      if (extra.border) st.border = { ...(st.border || {}), ...extra.border }
+      if (extra.fill && !st.fill) st.fill = extra.fill
+    }
     const HDR = { fgColor: { rgb: 'DCE3F0' } }
     const TOT = { fgColor: { rgb: 'EDE9DC' } }
     const mk = (ws, r, c, v, s) => {
@@ -829,7 +840,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     let pr = 7
     const pT = { basic: 0, meal: 0, wh: 0, ot: 0, night: 0, hol: 0, cut: 0, pay: 0 }
     const notes = []
+    const pBlocks = []   // [시작행, 끝행] — 다 쓴 뒤 사람 경계에 굵은 선을 긋는다
     staffRows.forEach((r, i) => {
+      pBlocks.push([pr, pr + 2, i])
       const cut = recAttendanceCut(r)
       const extra = (mergedInto.get(r.id) || 0) + recRetroPay(r)
       const basic = (Number(r.basic_pay) || 0) + cut
@@ -859,6 +872,13 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       pT.hol += hol; pT.cut += cut; pT.pay += pay
       pr += 3
     })
+    // 사람 경계: 블록 맨 아랫줄에 굵은 선, 홀수 사람에는 옅은 음영 → 어디까지가 누구인지 한눈에
+    pBlocks.forEach(([r0, r1, idx]) => {
+      for (let c = 0; c < PH1.length; c++) {
+        paint(P, r1, c, { border: { bottom: thickBd } })
+        if (idx % 2 === 1) for (let rr = r0; rr <= r1; rr++) paint(P, rr, c, { fill: ZEBRA })
+      }
+    })
     pMerges.push({ s: { r: pr, c: 0 }, e: { r: pr + 2, c: 2 } })
     mk(P, pr, 0, `합계 (${staffRows.length}명)`, { ...hdrS, fill: TOT })
     for (let k = 0; k < 3; k++) for (let c = 0; c < 3; c++) if (!(k === 0 && c === 0)) mk(P, pr + k, c, '', { ...hdrS, fill: TOT })
@@ -870,36 +890,70 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     let pEnd = pr + 3
     notes.forEach(t => { mk(P, pEnd, 0, t, { font: { sz: 8, color: { rgb: '8A5A00' } } }); pEnd++ })
     mk(P, pEnd + 1, 0, '※ 공제(4대보험·소득세)와 차인지급액은 넣지 않았습니다. 지급 항목까지만 표기.', { font: { sz: 8, color: { rgb: '777777' } } })
-    P['!cols'] = [{ wch: 10 }, { wch: 11 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 13 }, { wch: 8 }]
+    P['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 12 }, { wch: 8 }]
+    P['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
     P['!merges'] = pMerges
     P['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: pEnd + 1, c: PH1.length - 1 } })
 
     // ───── 시트 2: 사업소득지급대장 (알바) ─────
     const B = {}, bMerges = []
+    const BH = ['NO', '코드', '성   명', '지  점', '귀속년월', '주민등록번호', '지급액', '영수인']
+    const BLAST = BH.length - 1
     mk(B, 0, 0, `(${year}년${String(month).padStart(2, '0')}월) 사업소득지급대장(합계)`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
-    bMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } })
+    bMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: BLAST } })
     mk(B, 2, 0, `회사명 : ${branch === ALL ? '전 지점' : branch}`, { font: { sz: 9 } })
-    const BH = ['NO', '코드', '성   명', '귀속년월', '주민등록번호', '지급액']
     BH.forEach((h, i) => mk(B, 4, i, h, hdrS))
     let br_ = 5, bTot = 0
+    let bPrevBranch = null
     albaRows.forEach((r, i) => {
       const amt = fixGrand(r) + recMeal(r)
       mk(B, br_, 0, i + 1, cellS('center'))
       mk(B, br_, 1, String(i + 1).padStart(6, '0'), cellS('center'))
       mk(B, br_, 2, r.emp_name, cellS('center'))
-      mk(B, br_, 3, `${year}.${String(month).padStart(2, '0')}`, cellS('center'))
-      mk(B, br_, 4, rid(r), cellS('center'))
-      mk(B, br_, 5, amt, numS)
+      mk(B, br_, 3, r.branch, cellS('center'))
+      mk(B, br_, 4, `${year}.${String(month).padStart(2, '0')}`, cellS('center'))
+      mk(B, br_, 5, rid(r), cellS('center'))
+      mk(B, br_, 6, amt, numS)
+      mk(B, br_, BLAST, '', cellS('center'))          // 영수인: 서명 받을 빈칸
+      // 한 사람 건너 하나씩 옅은 음영 — 줄이 밀려 읽히는 걸 막는다
+      if (i % 2 === 1) for (let c = 0; c <= BLAST; c++) paint(B, br_, c, { fill: ZEBRA })
+      // 지점이 바뀌는 자리에 굵은 선 — 누가 어느 지점인지 묶여 보이게
+      if (bPrevBranch !== null && bPrevBranch !== r.branch) {
+        for (let c = 0; c <= BLAST; c++) paint(B, br_, c, { border: { top: thickBd } })
+      }
+      bPrevBranch = r.branch
       bTot += amt; br_++
     })
-    bMerges.push({ s: { r: br_, c: 0 }, e: { r: br_, c: 4 } })
+    for (let c = 0; c <= BLAST; c++) paint(B, br_ - 1, c, { border: { bottom: thickBd } })
+    bMerges.push({ s: { r: br_, c: 0 }, e: { r: br_, c: 5 } })
     mk(B, br_, 0, `총   계 (${albaRows.length}명)`, { ...hdrS, fill: TOT })
-    for (let c = 1; c < 5; c++) mk(B, br_, c, '', { ...hdrS, fill: TOT })
-    mk(B, br_, 5, bTot, { ...totS, font: { sz: 11, bold: true } })
-    mk(B, br_ + 2, 0, '※ 소득세(3.3%)와 차인지급액은 넣지 않았습니다. 지급액까지만 표기.', { font: { sz: 8, color: { rgb: '777777' } } })
-    B['!cols'] = [{ wch: 6 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }]
+    for (let c = 1; c <= 5; c++) mk(B, br_, c, '', { ...hdrS, fill: TOT })
+    mk(B, br_, 6, bTot, { ...totS, font: { sz: 11, bold: true } })
+    mk(B, br_, BLAST, '', { ...hdrS, fill: TOT })
+    // 지점별 소계 — 어느 지점이 얼마인지 세무사가 바로 대조할 수 있게
+    let bEnd = br_ + 2
+    const byBranch = {}
+    albaRows.forEach(r => { byBranch[r.branch] = (byBranch[r.branch] || 0) + fixGrand(r) + recMeal(r) })
+    const bNames = Object.keys(byBranch)
+    if (bNames.length > 1) {
+      mk(B, bEnd, 4, '지점별 소계', { font: { sz: 9, bold: true } })
+      bEnd++
+      bNames.forEach(nm => {
+        const cnt = albaRows.filter(r => r.branch === nm).length
+        mk(B, bEnd, 4, nm, cellS('center'))
+        mk(B, bEnd, 5, `${cnt}명`, cellS('center'))
+        mk(B, bEnd, 6, byBranch[nm], numS)
+        bEnd++
+      })
+      bEnd++
+    }
+    mk(B, bEnd, 0, '※ 소득세(3.3%)와 차인지급액은 넣지 않았습니다. 지급액까지만 표기.', { font: { sz: 8, color: { rgb: '777777' } } })
+    B['!cols'] = [{ wch: 5 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 13 }, { wch: 9 }]
+    // 여백을 좁혀 A4 세로 한 장 폭에 들어가게 한다 (칸 너비도 그에 맞춰 줄여둠).
+    //   ※ xlsx-js-style 은 '!pageSetup'(가로 인쇄·배율)을 파일에 쓰지 않으므로 여백·너비로만 맞춘다.
+    B['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
     B['!merges'] = bMerges
-    B['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: br_ + 2, c: 5 } })
+    B['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: bEnd, c: BLAST } })
 
     const wb = XLSX.utils.book_new()
     const ym = `${year}년 ${String(month).padStart(2, '0')}월`
