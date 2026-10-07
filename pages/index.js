@@ -2318,6 +2318,106 @@ export default function Home() {
     win.document.close()
   }
 
+  // ── 근무 달력 인쇄/PDF ── 본인에게 보내 근무시간을 확인받는 용도
+  //   화면의 주차별 달력을 그대로 종이에 옮긴다. 파일명은 지점명_이름_N월
+  //   (브라우저 'PDF로 저장'의 기본 파일명이 문서 제목을 따른다)
+  function printWorkCalendar() {
+    if (!activeEmp) return
+    const t = calcTotal(activeEmp)
+    const wks = getWeeksInMonth(activeEmp.year, activeEmp.month)
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    const num = (n) => (Math.round((Number(n) || 0) * 100) / 100)
+
+    const weekBlocks = wks.map((week, wi) => {
+      let wDay = 0, wNight = 0, wHolD = 0, wHolN = 0
+      const cells = week.map(day => {
+        if (day === null) return '<td class="k off"></td>'
+        const ds = `${activeEmp.year}-${String(activeEmp.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        const d = activeEmp.workData?.[ds]
+        const type = d?.type || '평'
+        if (!d || type === '공' || type === '연' || type === '결') {
+          const lbl = type === '결' ? '결근' : type === '연' ? '연차' : '휴무'
+          return `<td class="k rest"><div class="dnum">${day}</div><div class="rlabel ${type === '결' ? 'absent' : ''}">${lbl}</div></td>`
+        }
+        const hol = type === '휴'
+        const dd = num(hol ? d.holidayDaytimeH : d.daytimeH)
+        const dn = num(hol ? d.holidayNightH : d.nightH)
+        const dr = num(hol ? d.holidayRestH : d.restH)
+        if (hol) { wHolD += dd; wHolN += dn } else { wDay += dd; wNight += dn }
+        const tot = num(dd + dn)
+        return `<td class="k ${hol ? 'hol' : ''}">
+          <div class="dnum">${day}${hol ? '<span class="htag">휴일</span>' : ''}</div>
+          <div class="time">${esc(d.timeStart || '')} ~ ${esc(d.timeEnd || '')}</div>
+          <div class="kv"><span>주간</span><b>${dd}</b></div>
+          <div class="kv"><span>야간</span><b>${dn}</b></div>
+          <div class="kv"><span>휴게</span><b>${dr}</b></div>
+          <div class="dtot">일 ${tot}시간</div>
+        </td>`
+      }).join('')
+      const workH = num(wDay + wNight + wHolD + wHolN)
+      const wh = (t.weeklyHolidayList || []).find(x => x.idx === wi)
+      const whTxt = activeEmp.empType === '직원' ? ''
+        : (workH >= 15 && wh?.pay > 0)
+          ? `<b>주휴수당 ${fmt(wh.pay)}원</b> <span class="muted">(총 ${workH}시간 기준)</span>`
+          : `<b class="muted">주휴수당 미적용</b> <span class="muted">(총 ${workH}시간 · 15시간 미만)</span>`
+      // 머리글이 '주차 + 7요일' 8칸이므로 데이터 줄도 맨 앞에 빈 칸을 둬야 요일이 안 밀린다
+      return `<table class="wk"><tr class="wh"><th class="wn">${wi + 1}주</th>${DAY_LABELS.map(l => `<th>${l}</th>`).join('')}</tr>
+        <tr><td class="wn"></td>${cells}</tr>
+        <tr><td class="sum" colspan="8">근무 총 ${workH}시간 · 주간 ${num(wDay + wHolD)}시간 · 야간 ${num(wNight + wHolN)}시간 ${whTxt}</td></tr></table>`
+    }).join('')
+
+    const title = `${selectedBranch?.name || ''}_${activeEmp.name || ''}_${activeEmp.month}월`
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body { font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#111; padding:22px 26px; background:#fff; font-size:11px; }
+  h1 { font-size:19px; font-weight:700; margin-bottom:4px; }
+  .sub { font-size:12px; color:#555; margin-bottom:14px; }
+  table.wk { width:100%; border-collapse:collapse; margin-bottom:9px; table-layout:fixed; page-break-inside:avoid; }
+  table.wk th, table.wk td { border:1px solid #c9c4ba; }
+  tr.wh th { background:#efece6; font-size:11px; font-weight:700; padding:4px 0; }
+  th.wn { width:7%; background:#e4e0d8; }
+  td.k { vertical-align:top; height:92px; padding:4px 5px; }
+  td.k.off { background:#f6f5f2; }
+  td.k.rest { background:#f2f1ee; text-align:center; }
+  td.k.hol { background:#fdf4f4; }
+  .dnum { font-weight:700; font-size:12px; margin-bottom:3px; }
+  .htag { font-size:9px; color:#c0504a; margin-left:3px; font-weight:600; }
+  .rlabel { margin-top:26px; color:#8a8378; font-size:11px; }
+  .rlabel.absent { color:#d04a4a; font-weight:700; }
+  .time { font-size:10px; color:#444; margin-bottom:3px; }
+  .kv { display:flex; justify-content:space-between; font-size:10px; border-top:1px dotted #ddd; padding:1px 0; }
+  .kv b { font-weight:700; }
+  .dtot { margin-top:3px; text-align:right; font-size:10px; font-weight:700; color:#8a6d2f; }
+  td.sum { background:#f7f6f3; padding:5px 8px; font-size:11px; }
+  .muted { color:#999; font-weight:400; }
+  .tot { margin-top:14px; border:1px solid #c9c4ba; padding:9px 12px; background:#faf9f6; font-size:12px; }
+  .tot b { font-size:14px; }
+  .sign { margin-top:22px; border:1px solid #c9c4ba; padding:12px 14px; font-size:11px; line-height:2.1; }
+  .sign .line { display:inline-block; border-bottom:1px solid #888; min-width:150px; }
+  @media print { body { padding:0; } @page { size:A4 landscape; margin:10mm; } }
+</style></head><body>
+  <h1>${esc(activeEmp.year)}년 ${esc(activeEmp.month)}월 근무기록 확인서</h1>
+  <div class="sub">${esc(corpOf(selectedBranch?.name).short)} ${esc(selectedBranch?.name || '')} · <b>${esc(activeEmp.name || '')}</b> (${esc(activeEmp.empType || '알바')})</div>
+  ${weekBlocks}
+  <div class="tot">
+    월 근무일 ${t.workDays}일 · 총 근무 <b>${num(t.hoursWork)}시간</b>
+    (주간 ${num(t.hoursDay + t.hoursHolidayDay)}시간 · 야간 ${num(t.hoursNight + t.hoursHolidayNight)}시간 · 휴게 ${num(t.hoursRest)}시간)
+    ${t.absentDays > 0 ? ` · 결근 ${t.absentDays}일` : ''}
+  </div>
+  <div class="sign">
+    위 근무기록이 실제 근무와 같음을 확인합니다.<br>
+    확인일 : ${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}.${String(new Date().getDate()).padStart(2, '0')}
+    &nbsp;&nbsp;&nbsp; 성명 : <span class="line"></span> (서명)
+  </div>
+<script>window.onload=function(){window.print()}</script>
+</body></html>`
+    const win = window.open('', '_blank')
+    if (!win) { alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.'); return }
+    win.document.write(html)
+    win.document.close()
+  }
+
   const totals = activeEmp ? calcTotal(activeEmp) : null
   const weeks = activeEmp ? getWeeksInMonth(activeEmp.year, activeEmp.month) : []
   const DAY_LABELS = ['월','화','수','목','금','토','일']
@@ -3065,6 +3165,22 @@ export default function Home() {
                       fontFamily: "'Pretendard', 'DM Sans', sans-serif",
                     }}
                   >급여명세서 🖨</button>
+                  {/* 근무 달력 — 본인에게 보내 근무시간을 확인받는 용도 */}
+                  <button
+                    onClick={printWorkCalendar}
+                    disabled={!activeEmp?.name}
+                    title="이 달 근무 달력을 인쇄·PDF로 — 파일명: 지점명_이름_N월"
+                    style={{
+                      padding: '8px 16px',
+                      background: !activeEmp?.name ? '#f0ede8' : '#fff',
+                      color: !activeEmp?.name ? '#ccc' : '#1a1a1a',
+                      border: '1px solid #d0ccc5', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600,
+                      cursor: !activeEmp?.name ? 'not-allowed' : 'pointer',
+                      letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                      fontFamily: "'Pretendard', 'DM Sans', sans-serif",
+                    }}
+                  >근무표 🗓</button>
                 </div>
               </div>
 
