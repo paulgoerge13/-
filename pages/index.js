@@ -2406,10 +2406,12 @@ export default function Home() {
     .login-branch { font-size: 11px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 6px; }
     /* ── 사업자(법인) 표시 ── 더콤마 6개 지점이 (주)데이원컴퍼니 소속임을 드러낸다 */
     .login-corp { font-size: 12px; font-weight: 700; color: #6b6357; margin-bottom: 2px; }
-    .corp-block { margin-bottom: 26px; }
-    .corp-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 10px; padding-bottom: 7px; border-bottom: 2px solid #e5e1d8; }
-    .corp-name { font-size: 15px; font-weight: 800; color: #4a4453; letter-spacing: -0.01em; }
-    .corp-count { font-size: 12px; color: #a8a096; }
+    .corp-block { margin-bottom: 34px; }
+    .corp-head { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 11px 16px;
+      background: #f0ece3; border: 1px solid #ddd7ca; border-left: 5px solid #6b6357; border-radius: 10px; }
+    .corp-name { font-size: 19px; font-weight: 800; color: #3f3a33; letter-spacing: -0.02em; }
+    .corp-count { font-size: 12px; font-weight: 600; color: #8a8273; padding: 3px 9px; border-radius: 999px; background: #fff; border: 1px solid #ddd7ca; }
+    @media (max-width: 640px) { .corp-name { font-size: 16px; } .corp-head { padding: 10px 13px; } }
     .corp-chip { display: inline-flex; align-items: center; margin-left: 10px; padding: 5px 11px; border-radius: 999px;
       background: #f0ece3; border: 1px solid #ddd7ca; font-size: 12px; font-weight: 600; color: #6b6357; white-space: nowrap; }
     @media (max-width: 640px) { .corp-chip { margin-left: 0; margin-top: 6px; } }
@@ -2863,7 +2865,7 @@ export default function Home() {
           {step === 'branch' && (
             <div>
               <h2 className="page-title">💰 급여 계산 · 지점 선택</h2>
-              <p className="page-sub">급여 계산할 지점을 선택해주세요</p>
+              <p className="page-sub">급여 계산할 지점을 선택해주세요 · 사업자(법인)별로 묶여 있습니다</p>
               {/* 사업자(법인)별로 묶어 보여준다 — 더콤마 6개 지점이 (주)데이원컴퍼니 소속임이 드러나게 */}
               {['dayone', 'woodand', 'etc'].map(cid => {
                 const list = BRANCHES.filter(b => (b.corp || 'etc') === cid)
