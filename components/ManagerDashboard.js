@@ -1019,14 +1019,31 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     }
     const row5 = (r, vals, base) => vals.forEach((v, c) => put(r, c, v, typeof base === 'function' ? base(c) : base))
 
-    // 제목
+    // 제목 — 전체 금액을 맨 위에도 띄운다 (지점이 많으면 맨 아래 총액까지 내려가야 해서)
     const kindLabel = kind === 'staff' ? ' · 10일 지급' : kind === 'alba' ? ' · 15일 지급' : ''
+    const grandCount = groups.reduce((s, g) => s + g.count, 0)
+    const grandTotal = groups.reduce((s, g) => s + g.total, 0)
     put(0, 0, `${year}년 ${month}월 인원 급여 (전 지점)${kindLabel}`,
         { font: { sz: 16, bold: true }, alignment: { vertical: 'center' } })
+    for (let c = 1; c < COLS; c++) put(0, c, '', {})
+    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: COLS - 1 } })
+    // 바로 아랫줄에 전체 금액 — 지점이 많으면 맨 아래 총액까지 내려가야 보여서 위에도 둔다
+    const sumFill = { fgColor: { rgb: 'EDE5D2' } }
+    put(1, 0, '', { fill: sumFill })
+    put(1, 1, `전체 ${grandCount}건`, {
+      fill: sumFill, font: { sz: 12, bold: true, color: { rgb: '5A5348' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+    })
+    put(1, 2, grandTotal, {
+      fill: sumFill, numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'center' },
+      font: { sz: 15, bold: true, color: { rgb: '3F3A33' } },
+    })
+    put(1, 3, '', { fill: sumFill })
+    put(1, 4, '', { fill: sumFill })
 
     const rowH = []                 // 한 줄씩 시원하게 — 화면·인쇄 양쪽에서 읽기 편하게
-    rowH[0] = 30; rowH[1] = 8
-    let r = 2
+    rowH[0] = 30; rowH[1] = 28; rowH[2] = 10
+    let r = 3
     groups.forEach((g, gi) => {
       if (gi > 0) { rowH[r] = 12; r++ }   // 지점 사이 간격
       // 지점 제목 줄 (5칸 가로 병합)
@@ -1068,9 +1085,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       rowH[r] = 26; r++
     })
 
-    // ── 맨 아래 전체 총 금액 (이 엑셀에 담긴 모든 지점 합계) ──
-    const grandCount = groups.reduce((s, g) => s + g.count, 0)
-    const grandTotal = groups.reduce((s, g) => s + g.total, 0)
+    // ── 맨 아래 전체 총 금액 (이 엑셀에 담긴 모든 지점 합계) — 제목 줄과 같은 값 ──
     rowH[r] = 10; r++                      // 지점 합계와 떨어뜨리는 빈 줄
     const gf = { fgColor: { rgb: '6B6357' } }
     const gFont = { sz: 14, bold: true, color: { rgb: 'FFFFFF' } }
