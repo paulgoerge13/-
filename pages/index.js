@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
-import { BRANCHES } from '../lib/branches'
+import { BRANCHES, CORPS, corpOf } from '../lib/branches'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
@@ -2270,7 +2270,7 @@ export default function Home() {
   @media print { body { padding:0; } @page { size:A4; margin:14mm; } }
 </style></head><body><div class="sheet">
   <h1>${activeEmp.year}년 ${activeEmp.month}월분 급여명세서</h1>
-  <div class="hdr"><span>회사명: ${selectedBranch?.name || '더콤마라운지'}</span><span>지급일: ${pay}</span></div>
+  <div class="hdr"><span>회사명: ${corpOf(selectedBranch?.name).short || '더콤마라운지'}${selectedBranch?.name ? ` (${selectedBranch.name})` : ''}</span><span>지급일: ${pay}</span></div>
 
   <table class="bordered">
     <colgroup><col style="width:14%"><col style="width:36%"><col style="width:18%"><col style="width:14%"><col style="width:18%"></colgroup>
@@ -2404,6 +2404,15 @@ export default function Home() {
       padding: 40px; width: 340px; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,0.06);
     }
     .login-branch { font-size: 11px; letter-spacing: 0.2em; color: #b8954a; margin-bottom: 6px; }
+    /* ── 사업자(법인) 표시 ── 더콤마 6개 지점이 (주)데이원컴퍼니 소속임을 드러낸다 */
+    .login-corp { font-size: 12px; font-weight: 700; color: #6b6357; margin-bottom: 2px; }
+    .corp-block { margin-bottom: 26px; }
+    .corp-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 10px; padding-bottom: 7px; border-bottom: 2px solid #e5e1d8; }
+    .corp-name { font-size: 15px; font-weight: 800; color: #4a4453; letter-spacing: -0.01em; }
+    .corp-count { font-size: 12px; color: #a8a096; }
+    .corp-chip { display: inline-flex; align-items: center; margin-left: 10px; padding: 5px 11px; border-radius: 999px;
+      background: #f0ece3; border: 1px solid #ddd7ca; font-size: 12px; font-weight: 600; color: #6b6357; white-space: nowrap; }
+    @media (max-width: 640px) { .corp-chip { margin-left: 0; margin-top: 6px; } }
     .login-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 21px; margin-bottom: 28px; }
     .field-label { font-size: 11px; letter-spacing: 0.12em; color: #999; margin-bottom: 6px; font-weight: 500; }
     .text-input {
@@ -2855,18 +2864,32 @@ export default function Home() {
             <div>
               <h2 className="page-title">💰 급여 계산 · 지점 선택</h2>
               <p className="page-sub">급여 계산할 지점을 선택해주세요</p>
-              <div className="branch-grid">
-                {BRANCHES.map((b, i) => (
-                  <div key={b.id} className={`branch-card${b.inactive ? ' inactive' : ''}`} onClick={() => {
-                    setSelectedBranch(b)
-                    setStep('login'); setPw(''); setPwError(false)
-                  }}>
-                    <div className="branch-num">{String(i + 1).padStart(2, '0')}</div>
-                    <div className="branch-name">{b.name}</div>
-                    {b.inactive && <div className="branch-closed">운영 종료 · 지난 기록만</div>}
+              {/* 사업자(법인)별로 묶어 보여준다 — 더콤마 6개 지점이 (주)데이원컴퍼니 소속임이 드러나게 */}
+              {['dayone', 'woodand', 'etc'].map(cid => {
+                const list = BRANCHES.filter(b => (b.corp || 'etc') === cid)
+                if (list.length === 0) return null
+                const corp = CORPS[cid]
+                return (
+                  <div key={cid} className="corp-block">
+                    <div className="corp-head">
+                      <span className="corp-name">{corp.short || '기타 사업장'}</span>
+                      <span className="corp-count">{list.length}개 지점</span>
+                    </div>
+                    <div className="branch-grid">
+                      {list.map(b => (
+                        <div key={b.id} className={`branch-card${b.inactive ? ' inactive' : ''}`} onClick={() => {
+                          setSelectedBranch(b)
+                          setStep('login'); setPw(''); setPwError(false)
+                        }}>
+                          <div className="branch-num">{String(BRANCHES.indexOf(b) + 1).padStart(2, '0')}</div>
+                          <div className="branch-name">{b.name}</div>
+                          {b.inactive && <div className="branch-closed">운영 종료 · 지난 기록만</div>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                )
+              })}
 
               {/* 전 지점 인건비 통합 관리자 진입 (마스터 비밀번호) */}
               {true && (
@@ -2911,6 +2934,7 @@ export default function Home() {
           {step === 'login' && (
             <div className="login-wrap">
               <div className="login-box">
+                <div className="login-corp">{corpOf(selectedBranch?.name).short}</div>
                 <div className="login-branch">{selectedBranch?.name}</div>
                 <h2 className="login-title">매니저 로그인</h2>
                 <p className="field-label">비밀번호</p>
@@ -2934,6 +2958,12 @@ export default function Home() {
               <div className="branch-view-tabs">
                 <div className="bvt-group">
                   <button className="bvt active">💰 급여 계산</button>
+                  {/* 어느 사업자(법인) 소속인지 — 법인이 다르면 급여대장도 따로 나간다 */}
+                  {corpOf(selectedBranch?.name).short && (
+                    <span className="corp-chip">
+                      {corpOf(selectedBranch?.name).short} · {selectedBranch?.name}
+                    </span>
+                  )}
                 </div>
                 {/* 관리자 이체표에서 이름을 눌러 들어온 경우 → 관리자로 되돌아가는 길 */}
                 {fromAdmin ? (
