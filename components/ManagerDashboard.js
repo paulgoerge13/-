@@ -1435,6 +1435,13 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
     /* 칸 너비를 카드 전체에 고정 → 모든 줄이 세로로 딱 맞게 정렬(엑셀 느낌) */
+    /* ── 사업자(법인) 묶음 머리말 ── 어느 법인 급여인지 보드에서 바로 보이게 */
+    .bd-corp { margin-bottom: 6px; }
+    .bd-corp-head { display: flex; align-items: center; gap: 10px; margin: 0 0 9px; padding: 9px 14px;
+      background: #f0ece3; border: 1px solid #ddd7ca; border-left: 5px solid #6b6357; border-radius: 9px; }
+    .bd-corp-name { font-size: 15px; font-weight: 800; color: #3f3a33; letter-spacing: -0.02em; }
+    .bd-corp-sub { font-size: 11.5px; font-weight: 600; color: #8a8273; padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid #ddd7ca; }
+    .bd-corp-amt { margin-left: auto; font-size: 14px; font-weight: 800; color: #3f3a33; }
     .bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 10px; align-items: start; margin-bottom: 20px; }
     .bd-card { background: #fff; border: 1px solid #d8d3c8; border-radius: 9px; overflow: hidden; }
     .bd-head { display: flex; align-items: center; gap: 7px; padding: 5px 10px; background: #f3efe6; border-bottom: 1px solid #d8d3c8; }
@@ -1793,7 +1800,16 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
           <select className="md-select" value={branch} onChange={e => setBranch(e.target.value)}>
             <option value={ALL}>{ALL}</option>
             <option value={THECOMMA}>☕ {THECOMMA} (한잎·시흥 제외)</option>
-            {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+            {/* 사업자(법인)별로 묶어 어느 지점이 어느 법인인지 드러나게 */}
+            {['dayone', 'woodand', 'etc'].map(cid => {
+              const list = BRANCHES.filter(b => (CORP_OF_BRANCH[b] || 'etc') === cid)
+              if (list.length === 0) return null
+              return (
+                <optgroup key={cid} label={CORPS[cid].short || '기타 사업장'}>
+                  {list.map(b => <option key={b} value={b}>{b}</option>)}
+                </optgroup>
+              )
+            })}
           </select>
           <select className="md-select" value={year} onChange={e => setYear(Number(e.target.value))}>
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}년</option>)}
@@ -1976,9 +1992,26 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                   if (boardGroups.length === 0) {
                     return <p className="md-empty">해당 월의 데이터가 없습니다.</p>
                   }
+                  // 사업자(법인)별로 묶어서 — 법인이 다르면 급여대장·신고가 따로 나간다
+                  const corpOrder = ['dayone', 'woodand', 'etc']
+                  const byCorp = corpOrder
+                    .map(cid => ({ cid, gs: boardGroups.filter(g => (CORP_OF_BRANCH[g.branch] || 'etc') === cid) }))
+                    .filter(x => x.gs.length > 0)
                   return (
+                  <div>
+                  {byCorp.map(({ cid, gs }) => {
+                    const corpTotal = gs.reduce((s, g) => s + g.units.reduce((t, u) => t + unitAmt(u), 0), 0)
+                    const corpCount = gs.reduce((s, g) => s + g.units.length, 0)
+                    return (
+                    <div key={cid} className="bd-corp">
+                      {/* 법인이 하나뿐이어도 띄운다 — 어느 사업자 급여인지 늘 보이게 */}
+                      <div className="bd-corp-head">
+                        <span className="bd-corp-name">{CORPS[cid].short || '기타 사업장'}</span>
+                        <span className="bd-corp-sub">{gs.length}개 지점 · {corpCount}건</span>
+                        <span className="bd-corp-amt">{corpTotal.toLocaleString()}원</span>
+                      </div>
                   <div className="bd-grid">
-                    {boardGroups.map(g => {
+                    {gs.map(g => {
                         const sorted = [...g.units].sort((a, b) => unitRank(a) - unitRank(b) || unitNames(a).localeCompare(unitNames(b), 'ko'))
                         const gTotal = g.units.reduce((s, u) => s + unitAmt(u), 0)
                         const gDone = g.units.filter(u => unitStatus(u) === '이체완료').length
@@ -2049,6 +2082,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                           </div>
                         )
                       })}
+                  </div>
+                    </div>
+                    )
+                  })}
                   </div>
                   )
                 })()}
