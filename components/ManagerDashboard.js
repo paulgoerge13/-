@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_OF_BRANCH } from '../lib/branches'
@@ -691,6 +691,19 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       finalCount: rs.filter(r => r.status === 'final').length,
     }
   })
+  // ── 사업자(법인)별 집계 ── 법인이 다르면 급여대장·원천세 신고가 따로 나간다
+  const byCorpSummary = ['dayone', 'woodand', 'etc'].map(cid => {
+    const bs = byBranch.filter(x => (CORP_OF_BRANCH[x.branch] || 'etc') === cid && x.count > 0)
+    const sum = k => bs.reduce((t, x) => t + x[k], 0)
+    return {
+      cid, corp: CORPS[cid], branches: bs,
+      count: sum('count'), staff: sum('staff'), alba: sum('alba'),
+      total: sum('total'), major: sum('major'), withhold: sum('withhold'),
+      net: sum('staffNet') + sum('albaNet'),
+      company: bs.reduce((t, x) => t + x.major, 0),   // 회사부담분은 아래에서 다시 계산
+    }
+  }).filter(x => x.branches.length > 0)
+
   const grandAll = byBranch.reduce((s, x) => s + x.total, 0)
   const staffAll = byBranch.reduce((s, x) => s + x.staffTotal, 0)
   const albaAll = byBranch.reduce((s, x) => s + x.albaTotal, 0)
@@ -1436,6 +1449,19 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     /* ── 한눈에 보기 보드(스프레드시트 스타일): 전 지점을 압축한 다단 그리드 ── */
     /* 칸 너비를 카드 전체에 고정 → 모든 줄이 세로로 딱 맞게 정렬(엑셀 느낌) */
     /* ── 사업자(법인) 묶음 머리말 ── 어느 법인 급여인지 보드에서 바로 보이게 */
+    /* ── 요약: 사업자(법인)별 카드 ── */
+    .md-corp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .md-corp-card { background: #fff; border: 1px solid #e2ded5; border-top: 4px solid #6b6357; border-radius: 12px; padding: 14px 16px; }
+    .md-corp-card-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 3px; }
+    .md-corp-card-name { font-size: 16px; font-weight: 800; color: #3f3a33; letter-spacing: -0.02em; }
+    .md-corp-card-sub { font-size: 11.5px; color: #a89f92; font-weight: 600; }
+    .md-corp-card-br { font-size: 11.5px; color: #a89f92; margin-bottom: 11px; line-height: 1.5; }
+    .md-corp-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 5px 0; font-size: 13px; color: #5a5348; }
+    .md-corp-row b { font-variant-numeric: tabular-nums; font-weight: 700; color: #1a1a1a; }
+    .md-corp-row.minus { color: #c0504a; } .md-corp-row.minus b { color: #c0504a; font-weight: 600; }
+    .md-corp-row.net { margin-top: 5px; padding-top: 9px; border-top: 1px solid #ece8e0; font-weight: 700; }
+    .md-corp-row.net b { font-size: 17px; color: #b8954a; }
+    .md-corp-row.sub { padding-top: 7px; font-size: 11.5px; color: #a89f92; }
     .bd-corp { margin-bottom: 6px; }
     .bd-corp-head { display: flex; align-items: center; gap: 10px; margin: 0 0 9px; padding: 9px 14px;
       background: #f0ece3; border: 1px solid #ddd7ca; border-left: 5px solid #6b6357; border-radius: 9px; }
@@ -2218,6 +2244,31 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
               </div>
             </div>
 
+            {/* 사업자(법인)별 요약 — 법인이 둘 이상 섞여 있을 때만 */}
+            {byCorpSummary.length > 1 && (
+              <>
+                <div className="md-sec-head">
+                  <div className="md-sec-title">사업자(법인)별 현황</div>
+                </div>
+                <div className="md-corp-cards">
+                  {byCorpSummary.map(c => (
+                    <div key={c.cid} className="md-corp-card">
+                      <div className="md-corp-card-head">
+                        <span className="md-corp-card-name">{c.corp.short || '기타 사업장'}</span>
+                        <span className="md-corp-card-sub">{c.branches.length}개 지점 · {c.count}명</span>
+                      </div>
+                      <div className="md-corp-card-br">{c.branches.map(b => b.branch).join(' · ')}</div>
+                      <div className="md-corp-row"><span>세전 인건비</span><b>{fmt(c.total)}원</b></div>
+                      <div className="md-corp-row minus"><span>− 4대보험</span><b>{fmt(c.major)}원</b></div>
+                      <div className="md-corp-row minus"><span>− 원천세</span><b>{fmt(c.withhold)}원</b></div>
+                      <div className="md-corp-row net"><span>실지급액</span><b>{fmt(c.net)}원</b></div>
+                      <div className="md-corp-row sub"><span>직원 {c.staff}명 · 알바 {c.alba}명</span></div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
             <div className="md-sec-head">
               <div className="md-sec-title">지점별 현황 (지점을 누르면 상세)</div>
               <button className="md-export" onClick={downloadSummary}>요약 엑셀 ↓</button>
@@ -2242,14 +2293,36 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map(x => (
-                        <tr key={x.branch} style={{ cursor: 'pointer' }} onClick={() => setBranch(x.branch)}>
-                          <td style={nS}>{x.branch} <span style={{ fontWeight: 400, color: '#aaa', fontSize: 11 }}>({x.count})</span></td>
-                          <td style={cS}>{fmt(x.total)}</td>
-                          <td style={{ ...cS, color: '#c0504a' }}>{x.major ? fmt(x.major) : '·'}</td>
-                          <td style={{ ...cS, color: '#c0504a' }}>{x.withhold ? fmt(x.withhold) : '·'}</td>
-                          <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(x.staffNet + x.albaNet)}</td>
-                        </tr>
+                      {/* 법인별로 묶고, 묶음마다 소계를 붙인다 */}
+                      {byCorpSummary.map(c => (
+                        <Fragment key={c.cid}>
+                          {byCorpSummary.length > 1 && (
+                            <tr>
+                              <td colSpan={5} style={{ padding: '7px 12px', background: '#f0ece3', borderBottom: '1px solid #d8d3c8',
+                                borderLeft: '4px solid #6b6357', fontWeight: 800, color: '#3f3a33', fontSize: 12.5 }}>
+                                {c.corp.short || '기타 사업장'}
+                              </td>
+                            </tr>
+                          )}
+                          {c.branches.map(x => (
+                            <tr key={x.branch} style={{ cursor: 'pointer' }} onClick={() => setBranch(x.branch)}>
+                              <td style={nS}>{x.branch} <span style={{ fontWeight: 400, color: '#aaa', fontSize: 11 }}>({x.count})</span></td>
+                              <td style={cS}>{fmt(x.total)}</td>
+                              <td style={{ ...cS, color: '#c0504a' }}>{x.major ? fmt(x.major) : '·'}</td>
+                              <td style={{ ...cS, color: '#c0504a' }}>{x.withhold ? fmt(x.withhold) : '·'}</td>
+                              <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(x.staffNet + x.albaNet)}</td>
+                            </tr>
+                          ))}
+                          {byCorpSummary.length > 1 && (
+                            <tr>
+                              <td style={{ ...nS, background: '#f7f5f1', fontSize: 12 }}>{c.corp.short || '기타'} 소계</td>
+                              <td style={{ ...cS, background: '#f7f5f1', fontWeight: 800 }}>{fmt(c.total)}</td>
+                              <td style={{ ...cS, background: '#f7f5f1', fontWeight: 800, color: '#c0504a' }}>{c.major ? fmt(c.major) : '·'}</td>
+                              <td style={{ ...cS, background: '#f7f5f1', fontWeight: 800, color: '#c0504a' }}>{c.withhold ? fmt(c.withhold) : '·'}</td>
+                              <td style={{ ...cS, background: '#f0ece3', fontWeight: 800 }}>{fmt(c.net)}</td>
+                            </tr>
+                          )}
+                        </Fragment>
                       ))}
                       <tr>
                         <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }}>합계</td>
