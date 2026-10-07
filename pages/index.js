@@ -17,6 +17,26 @@ function calcWeeklyHoliday(weekH, w) {
   return Math.round((weekH / 40) * 8 * w)
 }
 
+// ── 화면 표시용 주 묶기: 일요일 시작(일~토) ──
+//   ※ 주휴수당 계산은 아래 getWeeksInMonth(월~일) 를 그대로 쓴다. 주의 정의를 바꾸면
+//     주마다 묶이는 날이 달라져 주휴수당 금액이 바뀌기 때문. (표시만 바꾸는 것)
+function getDisplayWeeks(year, month) {
+  const lastDay = new Date(year, month, 0)
+  const weeks = []
+  let current = new Date(year, month - 1, 1)
+  current = new Date(current.getTime() - current.getDay() * 86400000)   // 그 주 일요일로
+  while (current <= lastDay) {
+    const week = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(current.getTime() + i * 86400000)
+      week.push(d.getMonth() + 1 === month ? d.getDate() : null)
+    }
+    if (week.some(d => d !== null)) weeks.push(week)
+    current = new Date(current.getTime() + 7 * 86400000)
+  }
+  return weeks
+}
+
 function getWeeksInMonth(year, month) {
   const lastDay = new Date(year, month, 0)
   const weeks = []
@@ -2324,7 +2344,7 @@ export default function Home() {
   function printWorkCalendar() {
     if (!activeEmp) return
     const t = calcTotal(activeEmp)
-    const wks = getWeeksInMonth(activeEmp.year, activeEmp.month)
+    const wks = getDisplayWeeks(activeEmp.year, activeEmp.month)   // 화면 달력과 같은 일~토 묶음
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
     const num = (n) => (Math.round((Number(n) || 0) * 100) / 100)
 
@@ -2355,11 +2375,8 @@ export default function Home() {
         </td>`
       }).join('')
       const workH = num(wDay + wNight + wHolD + wHolN)
-      const wh = (t.weeklyHolidayList || []).find(x => x.idx === wi)
-      const whTxt = activeEmp.empType === '직원' ? ''
-        : (workH >= 15 && wh?.pay > 0)
-          ? `<b>주휴수당 ${fmt(wh.pay)}원</b> <span class="muted">(총 ${workH}시간 기준)</span>`
-          : `<b class="muted">주휴수당 미적용</b> <span class="muted">(총 ${workH}시간 · 15시간 미만)</span>`
+      // 주휴수당은 월~일 기준이라 이 칸(일~토)과 묶음이 달라 여기엔 금액을 적지 않는다 → 아래 별도 표
+      const whTxt = ''
       // 머리글이 '주차 + 7요일' 8칸이므로 데이터 줄도 맨 앞에 빈 칸을 둬야 요일이 안 밀린다
       return `<table class="wk"><tr class="wh"><th class="wn">${wi + 1}주</th>${DAY_LABELS.map(l => `<th>${l}</th>`).join('')}</tr>
         <tr><td class="wn"></td>${cells}</tr>
@@ -2405,6 +2422,11 @@ export default function Home() {
     (주간 ${num(t.hoursDay + t.hoursHolidayDay)}시간 · 야간 ${num(t.hoursNight + t.hoursHolidayNight)}시간 · 휴게 ${num(t.hoursRest)}시간)
     ${t.absentDays > 0 ? ` · 결근 ${t.absentDays}일` : ''}
   </div>
+  ${activeEmp.empType !== '직원' && (t.weeklyHolidayList || []).some(x => x.pay > 0) ? `<div class="tot">
+    주휴수당 <b>${fmt(t.totalWeeklyHoliday)}원</b>
+    <span style="color:#777"> — 주 단위는 월요일~일요일 기준입니다.</span><br>
+    ${(t.weeklyHolidayList || []).map(x => `${x.from}일~${x.to}일 ${x.pay > 0 ? fmt(x.pay) + '원' : '미적용'}`).join(' &nbsp;·&nbsp; ')}
+  </div>` : ''}
   <div class="sign">
     위 근무기록이 실제 근무와 같음을 확인합니다.<br>
     확인일 : ${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}.${String(new Date().getDate()).padStart(2, '0')}
@@ -2419,8 +2441,8 @@ export default function Home() {
   }
 
   const totals = activeEmp ? calcTotal(activeEmp) : null
-  const weeks = activeEmp ? getWeeksInMonth(activeEmp.year, activeEmp.month) : []
-  const DAY_LABELS = ['월','화','수','목','금','토','일']
+  const weeks = activeEmp ? getDisplayWeeks(activeEmp.year, activeEmp.month) : []
+  const DAY_LABELS = ['일','월','화','수','목','금','토']
 
   const css = `
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
@@ -2599,6 +2621,12 @@ export default function Home() {
     .modal-title { font-family: 'Pretendard', sans-serif; font-weight: 700; font-size: 19px; margin-bottom: 10px; color: #1a1a1a; }
     .modal-desc { font-size: 13px; color: #888; line-height: 1.6; margin-bottom: 28px; }
     /* 이번 달 기록이 없어 지난달을 띄운 상태 안내 */
+    .wh-breakdown { margin: 10px 2px 0; padding: 11px 14px; background: #faf8f3; border: 1px solid #e5e1d8; border-radius: 9px; font-size: 13px; }
+    .wh-breakdown > b { color: #b8954a; font-size: 14px; }
+    .wh-note { margin-left: 8px; font-size: 11.5px; color: #a8a096; }
+    .wh-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .wh-chip { padding: 3px 9px; border-radius: 999px; border: 1px solid #e0dbd0; background: #fff; font-size: 11.5px; color: #a8a096; }
+    .wh-chip.on { color: #6b6357; font-weight: 600; border-color: #d6cdb8; background: #fdfbf5; }
     .prev-month-banner {
       display: flex; align-items: center; justify-content: space-between; gap: 14px;
       margin: 0 0 18px; padding: 14px 18px; border-radius: 12px;
@@ -3662,17 +3690,32 @@ export default function Home() {
                             </span>
                           )}
                         </span>
+                        {/* 달력은 일~토로 보여주지만 주휴수당은 월~일 기준으로 계산한다.
+                            이 줄에 '이 칸 기준' 주휴 금액을 띄우면 실제 지급액과 달라 보이므로
+                            금액은 아래 '주휴수당' 항목에서 월~일 주차별로 확인하게 한다. */}
                         {activeEmp.empType !== '직원' && (
-                          <span className="week-summary-val">
-                            {weekWorkH >= 15
-                              ? <>주휴수당 {fmt(weeklyHolidayPay)}<span className="won">원</span> <span style={{ color: '#aaa', fontWeight: 400 }}>(총 {weekWorkH}시간 기준)</span></>
-                              : <>주휴수당 미적용 <span style={{ color: '#aaa', fontWeight: 400 }}>(총 {weekWorkH}시간 · 15시간 미만)</span></>}
+                          <span className="week-summary-val" style={{ color: '#a8a096', fontWeight: 500 }}>
+                            주휴수당은 월~일 기준 계산 ↓
                           </span>
                         )}
                       </div>
                     </div>
                   )
                 })}
+                {/* 달력은 일~토, 주휴수당은 월~일 — 금액은 여기서 주차별로 확인한다 */}
+                {activeEmp.empType !== '직원' && totals && (totals.weeklyHolidayList || []).length > 0 && (
+                  <div className="wh-breakdown">
+                    <b>주휴수당 {fmt(totals.totalWeeklyHoliday)}원</b>
+                    <span className="wh-note">주 단위는 월요일~일요일 기준입니다 (달력은 일~토로 보여드립니다)</span>
+                    <div className="wh-list">
+                      {(totals.weeklyHolidayList || []).map(w => (
+                        <span key={w.idx} className={`wh-chip${w.pay > 0 ? ' on' : ''}`}>
+                          {w.from}일~{w.to}일 {w.pay > 0 ? `${fmt(w.pay)}원` : '미적용'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
 
