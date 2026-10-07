@@ -858,12 +858,20 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       mk(P, pr, 1, r.emp_name, cellS('center'))
       mk(P, pr + 1, 1, '', cellS('center'))
       mk(P, pr + 2, 1, r.branch, cellS('center'))
+      pMerges.push({ s: { r: pr, c: 1 }, e: { r: pr + 1, c: 1 } })   // 직급은 안 쓰므로 성명이 두 줄 차지
+      // 한 사람이 3줄이라(사원번호/입사일/퇴사일) 금액 아래 두 줄이 비어 보였다.
+      //   → 주민번호·수당·지급합계는 사람 단위로 세로 병합해 한 칸으로 만든다.
+      //     사람마다 칸이 하나씩이라 어디까지가 누구인지 바로 구분된다.
       mk(P, pr, 2, rid(r), cellS('center'))
       mk(P, pr + 1, 2, '', cellS('center')); mk(P, pr + 2, 2, '', cellS('center'))
+      pMerges.push({ s: { r: pr, c: 2 }, e: { r: pr + 2, c: 2 } })
       ;[basic, meal, wh, ot, night, hol, cut ? -cut : 0].forEach((v, j) => {
         mk(P, pr, 3 + j, v, numS); mk(P, pr + 1, 3 + j, '', numS); mk(P, pr + 2, 3 + j, '', numS)
+        pMerges.push({ s: { r: pr, c: 3 + j }, e: { r: pr + 2, c: 3 + j } })
       })
-      mk(P, pr, 10, '', numS); mk(P, pr + 1, 10, '', numS); mk(P, pr + 2, 10, pay, { ...numS, font: { sz: 10, bold: true } })
+      mk(P, pr, 10, pay, { ...numS, font: { sz: 10, bold: true } })
+      mk(P, pr + 1, 10, '', numS); mk(P, pr + 2, 10, '', numS)
+      pMerges.push({ s: { r: pr, c: 10 }, e: { r: pr + 2, c: 10 } })
       pMerges.push({ s: { r: pr, c: 11 }, e: { r: pr + 2, c: 11 } })
       mk(P, pr, 11, '', cellS('center')); mk(P, pr + 1, 11, '', cellS('center')); mk(P, pr + 2, 11, '', cellS('center'))
       if (mergedInto.get(r.id)) notes.push(`※ ${r.emp_name}: ${(mergedName.get(r.id) || []).join('·')} ${mergedInto.get(r.id).toLocaleString()}원을 연장근로수당에 합산`)
@@ -884,8 +892,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     for (let k = 0; k < 3; k++) for (let c = 0; c < 3; c++) if (!(k === 0 && c === 0)) mk(P, pr + k, c, '', { ...hdrS, fill: TOT })
     ;[pT.basic, pT.meal, pT.wh, pT.ot, pT.night, pT.hol, pT.cut ? -pT.cut : 0].forEach((v, j) => {
       mk(P, pr, 3 + j, v, totS); mk(P, pr + 1, 3 + j, '', totS); mk(P, pr + 2, 3 + j, '', totS)
+      pMerges.push({ s: { r: pr, c: 3 + j }, e: { r: pr + 2, c: 3 + j } })
     })
-    mk(P, pr, 10, '', totS); mk(P, pr + 1, 10, '', totS); mk(P, pr + 2, 10, pT.pay, { ...totS, font: { sz: 11, bold: true } })
+    mk(P, pr, 10, pT.pay, { ...totS, font: { sz: 11, bold: true } })
+    mk(P, pr + 1, 10, '', totS); mk(P, pr + 2, 10, '', totS)
+    pMerges.push({ s: { r: pr, c: 10 }, e: { r: pr + 2, c: 10 } })
     for (let k = 0; k < 3; k++) mk(P, pr + k, 11, '', totS)
     let pEnd = pr + 3
     notes.forEach(t => { mk(P, pEnd, 0, t, { font: { sz: 8, color: { rgb: '8A5A00' } } }); pEnd++ })
