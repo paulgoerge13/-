@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
-import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES } from '../lib/branches'
+import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_OF_BRANCH } from '../lib/branches'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
@@ -756,9 +756,33 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   //   · 알바 기록이 같은 지점·같은 계좌의 직원과 묶이면(예: 김현준P3) 그 직원 '연장근로수당'에 합산하고
   //     사업소득지급대장에서는 뺀다. 앱에서 이미 '추가 지급'으로 합쳐둔 달(_retroPay)도 같은 자리에 넣는다.
   //   kind: 'staff' = 급여대장(직원)만 / 'alba' = 사업소득지급대장(알바)만 — 파일을 따로 받는다
+  //   · 법인(사업자)이 다르면 대장을 섞을 수 없다 → 법인별로 파일을 따로 만든다.
+  //     (더콤마 6개 지점 = 데이원 / 남양주점 = 우드앤)
   function downloadTaxLedgerXlsx(kind = 'staff') {
-    const rows = records.filter(r => !isRecordOnly(r) && branchesFor(branch).includes(r.branch))
-    if (rows.length === 0) { alert('이 달에 내려받을 급여 자료가 없습니다.'); return }
+    const all = records.filter(r => !isRecordOnly(r) && branchesFor(branch).includes(r.branch))
+    if (all.length === 0) { alert('이 달에 내려받을 급여 자료가 없습니다.'); return }
+    // 법인별로 묶는다 (지점이 목록에 없으면 '기타'로)
+    const byCorp = new Map()
+    for (const r of all) {
+      const cid = CORP_OF_BRANCH[r.branch] || 'etc'
+      if (!byCorp.has(cid)) byCorp.set(cid, [])
+      byCorp.get(cid).push(r)
+    }
+    let made = 0
+    for (const [cid, rowsOfCorp] of byCorp) {
+      if (taxLedgerWrite(kind, rowsOfCorp, cid)) made++
+    }
+    if (made === 0) {
+      alert(kind === 'alba' ? '이 달에 사업소득(알바) 지급 대상이 없습니다.'
+                            : '이 달에 급여대장(직원) 대상이 없습니다.')
+    }
+  }
+
+  // 한 법인분 대장을 만들어 저장한다. 대상자가 없으면 false.
+  function taxLedgerWrite(kind, rows, corpId) {
+    const corp = CORPS[corpId] || CORPS.etc
+    const corpName = corp.name || (branch === ALL ? '전 지점' : branch)
+    const corpTag = corp.label ? `_${corp.label}` : ''
 
     // 같은 지점·같은 계좌에 직원이 있으면 그 알바 기록은 직원 쪽으로 합친다
     const staffByAcct = {}
@@ -828,7 +852,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const PH3 = ['퇴사일', '부  서', '', '', '', '', '', '', '', '', '지급합계', '']
     mk(P, 0, 0, `${year}년${String(month).padStart(2, '0')}월분 급여대장`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
     pMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: PH1.length - 1 } })
-    mk(P, 1, 0, branch === ALL ? '전 지점' : branch, { font: { sz: 9 } })
+    mk(P, 1, 0, corpName, { font: { sz: 9 } })
     mk(P, 1, 6, `[귀속:${year}년${String(month).padStart(2, '0')}월]`, { font: { sz: 9 }, alignment: { horizontal: 'center' } })
     ;[[0, 2, '인 적 사 항'], [3, 10, '기 본 급 여 및 제 수 당'], [11, 11, '영수인']].forEach(([c1, c2, lb]) => {
       pMerges.push({ s: { r: 3, c: c1 }, e: { r: 3, c: c2 } })
@@ -912,7 +936,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const BLAST = BH.length - 1
     mk(B, 0, 0, `(${year}년${String(month).padStart(2, '0')}월) 사업소득지급대장(합계)`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
     bMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: BLAST } })
-    mk(B, 2, 0, `회사명 : ${branch === ALL ? '전 지점' : branch}`, { font: { sz: 9 } })
+    mk(B, 2, 0, `회사명 : ${corpName}`, { font: { sz: 9 } })
     BH.forEach((h, i) => mk(B, 4, i, h, hdrS))
     let br_ = 5, bTot = 0
     let bPrevBranch = null
@@ -969,14 +993,15 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const wb = XLSX.utils.book_new()
     const ym = `${year}년 ${String(month).padStart(2, '0')}월`
     if (kind === 'alba') {
-      if (albaRows.length === 0) { alert('이 달에 사업소득(알바) 지급 대상이 없습니다.'); return }
+      if (albaRows.length === 0) return false
       XLSX.utils.book_append_sheet(wb, B, '사업소득지급대장')
-      XLSX.writeFile(wb, `${ym} 사업소득지급대장_세무사제출.xlsx`)
+      XLSX.writeFile(wb, `${ym} 사업소득지급대장_세무사제출${corpTag}.xlsx`)
     } else {
-      if (staffRows.length === 0) { alert('이 달에 급여대장(직원) 대상이 없습니다.'); return }
+      if (staffRows.length === 0) return false
       XLSX.utils.book_append_sheet(wb, P, '급여대장')
-      XLSX.writeFile(wb, `${ym} 급여대장_세무사제출.xlsx`)
+      XLSX.writeFile(wb, `${ym} 급여대장_세무사제출${corpTag}.xlsx`)
     }
+    return true
   }
 
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
