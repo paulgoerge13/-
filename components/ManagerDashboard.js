@@ -701,6 +701,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       count: rs.length,
       staff: rs.filter(r => r.emp_type === '직원').length,
       alba: rs.filter(r => r.emp_type !== '직원').length,
+      // 대장이 갈리는 기준은 신분이 아니라 공제 방식이다 (3.3%로 뗀 직원은 사업소득대장으로)
+      ledgerStaff: rs.filter(r => recDedType(r) === '4대').length,
+      ledgerAlba: rs.filter(r => recDedType(r) !== '4대').length,
       total: rs.reduce((s, r) => s + fixGrand(r), 0),
       staffTotal: rs.filter(r => r.emp_type === '직원').reduce((s, r) => s + fixGrand(r), 0),
       albaTotal: rs.filter(r => r.emp_type !== '직원').reduce((s, r) => s + fixGrand(r), 0),
@@ -722,6 +725,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       cid, corp: CORPS[cid], branches: bs,
       count: sum('count'), staff: sum('staff'), alba: sum('alba'),
       total: sum('total'), major: sum('major'), withhold: sum('withhold'),
+      ledgerStaff: sum('ledgerStaff'), ledgerAlba: sum('ledgerAlba'),
       net: sum('staffNet') + sum('albaNet'),
       company: bs.reduce((t, x) => t + x.major, 0),   // 회사부담분은 아래에서 다시 계산
     }
@@ -2251,10 +2255,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                       <span className="tax-dl-corp">{c.corp.short || '기타 사업장'}</span>
                       <button className="tx-xlsx tax" onClick={() => downloadTaxLedgerXlsx('staff', c.cid, taxWithDeduct)}
                         title={`${c.corp.short || '기타'} 급여대장 — 직원(근로소득)만`}>
-                        급여대장 (직원 {c.staff}명)</button>
+                        급여대장 (직원 {c.ledgerStaff}명)</button>
                       <button className="tx-xlsx tax2" onClick={() => downloadTaxLedgerXlsx('alba', c.cid, taxWithDeduct)}
                         title={`${c.corp.short || '기타'} 사업소득지급대장 — 알바(3.3%)만`}>
-                        사업소득대장 (알바 {c.alba}명)</button>
+                        사업소득대장 ({c.ledgerAlba}명)</button>
                     </div>
                   ))}
                 </div>
