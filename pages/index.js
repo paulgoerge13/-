@@ -2216,6 +2216,7 @@ export default function Home() {
     if (!activeEmp?.name) { alert('직원 이름을 먼저 입력해주세요.'); return }
     const t = calcTotalForDoc(activeEmp)
     const w = (n) => Number(n || 0).toLocaleString()
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
     const wage = activeEmp.hourlyWage || 0
 
     // 생년월일: 입력값 우선, 없으면 주민번호 앞자리에서 추정
@@ -2290,12 +2291,24 @@ export default function Home() {
   @media print { body { padding:0; } @page { size:A4; margin:14mm; } }
 </style></head><body><div class="sheet">
   <h1>${activeEmp.year}년 ${activeEmp.month}월분 급여명세서</h1>
-  <div class="hdr"><span>회사명: ${corpOf(selectedBranch?.name).short || '더콤마라운지'}${selectedBranch?.name ? ` (${selectedBranch.name})` : ''}</span><span>지급일: ${pay}</span></div>
+  <div class="hdr"><span>회사명: ${corpOf(selectedBranch?.name).name || corpOf(selectedBranch?.name).short || '더콤마라운지'}</span><span>지급일: ${pay}</span></div>
 
   <table class="bordered">
-    <colgroup><col style="width:14%"><col style="width:36%"><col style="width:18%"><col style="width:14%"><col style="width:18%"></colgroup>
-    <tr><td class="lbl-cell">성명</td><td>${activeEmp.name}</td><td class="lbl-cell">생년월일</td><td colspan="2">${birth}</td></tr>
-    <tr><td class="lbl-cell">부서</td><td></td><td class="lbl-cell">직급</td><td colspan="2"></td></tr>
+    <colgroup><col style="width:13%"><col style="width:12%"><col style="width:13%"><col style="width:17%"><col style="width:13%"><col style="width:32%"></colgroup>
+    <tr><td class="lbl-cell">사원코드</td><td class="ctr">${esc(activeEmp.empCode || '')}</td>
+        <td class="lbl-cell">사원명</td><td class="ctr">${esc(activeEmp.name || '')}</td>
+        <td class="lbl-cell">생년월일</td><td class="ctr">${birth}</td></tr>
+    <tr><td class="lbl-cell">부 서</td><td class="ctr">${esc(selectedBranch?.name || '')}</td>
+        <td class="lbl-cell">직 급</td><td class="ctr">${esc(activeEmp.empType || '')}</td>
+        <td class="lbl-cell">호 봉</td><td class="ctr"></td></tr>
+  </table>
+  <div style="height:8px"></div>
+
+  <table class="bordered">
+    <colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
+    <tr><td class="lbl-cell">연장근로시간</td><td class="lbl-cell">야간근로시간</td><td class="lbl-cell">휴일근로시간</td><td class="lbl-cell">통상시급(원)</td></tr>
+    <tr><td class="ctr">${t.hoursOvertimePay || 0}</td><td class="ctr">${(t.hoursNightPay || 0) + (t.hoursHolidayNight || 0)}</td>
+        <td class="ctr">${t.hoursHolidayWork || 0}</td><td class="ctr">${w(t.baseWage)}</td></tr>
   </table>
   <div style="height:8px"></div>
   <table class="bordered">

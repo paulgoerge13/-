@@ -883,9 +883,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     // ───── 시트 1: 급여대장 (직원) ─────
     const P = {}, pMerges = []
+    // 세무사 양식: 한 사람이 3줄. 공제 칸은 1줄=보험료·세금 / 2줄=정산·공제합계 / 3줄=차인지급액
     const PAY_H = ['사원번호', '성  명', '주민등록번호', '기본급', '식대', '주휴수당', '연장근로수당',
                    '야간근로수당', '휴일근로수당', '근태공제', '지급합계']
-    const DED_H = withDeduct ? ['국민연금', '건강보험', '장기요양', '고용보험', '소득세', '지방소득세', '공제합계', '차인지급액'] : []
+    const DED_H  = withDeduct ? ['국민연금', '건강보험', '고용보험', '장기요양보험료', '소득세', '지방소득세'] : []
+    const DED_H2 = withDeduct ? ['국민연금정산', '건강보험정산', '장기요양보험정산', '고용보험정산', '기타공제', '공제합계'] : []
     const PH1 = [...PAY_H, ...DED_H, '영수인']
     const PH2 = PH1.map(() => '')
     const PH3 = PH1.map(() => '')
@@ -895,12 +897,17 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const COL_SIGN = PH1.length - 1      // 영수인
     const COL_PAY = PAY_H.length - 1     // 지급합계
     PH3[COL_PAY] = '지급합계'
+    if (withDeduct) {
+      DED_H2.forEach((h, j) => { PH2[DED0 + j] = h })
+      PH3[DED0 + DED_H2.length - 1] = '차인지급액'
+    }
     mk(P, 0, 0, `${year}년${String(month).padStart(2, '0')}월분 급여대장`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
     pMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: PH1.length - 1 } })
     mk(P, 1, 0, corpName, { font: { sz: 9 } })
+    mk(P, 1, 3, '정렬: 지점·이름순', { font: { sz: 9, color: { rgb: '777777' } } })
     mk(P, 1, 6, `[귀속:${year}년${String(month).padStart(2, '0')}월]`, { font: { sz: 9 }, alignment: { horizontal: 'center' } })
     ;[[0, 2, '인 적 사 항'], [3, COL_PAY, '기 본 급 여 및 제 수 당'],
-      ...(withDeduct ? [[DED0, DED0 + 7, '공 제 및 차 인 지 급 액']] : []),
+      ...(withDeduct ? [[DED0, DED0 + 5, '공 제 및 차 인 지 급 액']] : []),
       [COL_SIGN, COL_SIGN, '영수인']].forEach(([c1, c2, lb]) => {
       pMerges.push({ s: { r: 3, c: c1 }, e: { r: 3, c: c2 } })
       mk(P, 3, c1, lb, hdrS)
@@ -947,15 +954,18 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       if (withDeduct) {
         const dt = recDedDetail(r)
         const net = pay - dt.total
-        pT.pension += dt.pension; pT.health += dt.health; pT.care += dt.care
-        pT.employment += dt.employment; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
+        pT.pension += dt.pension; pT.health += dt.health; pT.employment += dt.employment
+        pT.care += dt.care; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
         pT.ded += dt.total; pT.net += net
-        ;[dt.pension, dt.health, dt.care, dt.employment, dt.incomeTax + dt.retro, dt.localTax, dt.total, net]
-          .forEach((v, j) => {
-            const st = j >= 6 ? { ...numS, font: { sz: 9, bold: true } } : numS
-            mk(P, pr, DED0 + j, v, st); mk(P, pr + 1, DED0 + j, '', st); mk(P, pr + 2, DED0 + j, '', st)
-            pMerges.push({ s: { r: pr, c: DED0 + j }, e: { r: pr + 2, c: DED0 + j } })
-          })
+        // 1줄: 국민연금 · 건강보험 · 고용보험 · 장기요양 · 소득세 · 지방소득세
+        ;[dt.pension, dt.health, dt.employment, dt.care, dt.incomeTax + dt.retro, dt.localTax]
+          .forEach((v, j) => mk(P, pr, DED0 + j, v, numS))
+        // 2줄: 정산 항목(쓰지 않으면 빈칸) · 맨 끝은 공제합계
+        for (let j = 0; j < 5; j++) mk(P, pr + 1, DED0 + j, '', numS)
+        mk(P, pr + 1, DED0 + 5, dt.total, { ...numS, font: { sz: 9, bold: true } })
+        // 3줄: 차인지급액 (맨 끝 칸)
+        for (let j = 0; j < 5; j++) mk(P, pr + 2, DED0 + j, '', numS)
+        mk(P, pr + 2, DED0 + 5, net, { ...numS, font: { sz: 10, bold: true } })
       }
       pMerges.push({ s: { r: pr, c: COL_SIGN }, e: { r: pr + 2, c: COL_SIGN } })
       for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', cellS('center'))
@@ -983,12 +993,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     mk(P, pr + 1, COL_PAY, '', totS); mk(P, pr + 2, COL_PAY, '', totS)
     pMerges.push({ s: { r: pr, c: COL_PAY }, e: { r: pr + 2, c: COL_PAY } })
     if (withDeduct) {
-      ;[pT.pension, pT.health, pT.care, pT.employment, pT.incomeTax, pT.localTax, pT.ded, pT.net]
-        .forEach((v, j) => {
-          const st = j >= 6 ? { ...totS, font: { sz: 11, bold: true } } : totS
-          mk(P, pr, DED0 + j, v, st); mk(P, pr + 1, DED0 + j, '', st); mk(P, pr + 2, DED0 + j, '', st)
-          pMerges.push({ s: { r: pr, c: DED0 + j }, e: { r: pr + 2, c: DED0 + j } })
-        })
+      ;[pT.pension, pT.health, pT.employment, pT.care, pT.incomeTax, pT.localTax]
+        .forEach((v, j) => mk(P, pr, DED0 + j, v, totS))
+      for (let j = 0; j < 5; j++) { mk(P, pr + 1, DED0 + j, '', totS); mk(P, pr + 2, DED0 + j, '', totS) }
+      mk(P, pr + 1, DED0 + 5, pT.ded, { ...totS, font: { sz: 11, bold: true } })
+      mk(P, pr + 2, DED0 + 5, pT.net, { ...totS, font: { sz: 11, bold: true } })
     }
     for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', totS)
     let pEnd = pr + 3
@@ -998,7 +1007,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       : '※ 공제(4대보험·소득세)와 차인지급액은 넣지 않았습니다. 지급 항목까지만 표기.',
       { font: { sz: 8, color: { rgb: '777777' } } })
     P['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 12 },
-      ...(withDeduct ? [{ wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 12 }] : []),
+      ...(withDeduct ? [{ wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 12 }] : []),
       { wch: 8 }]
     P['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
     P['!merges'] = pMerges
@@ -1006,68 +1015,93 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     // ───── 시트 2: 사업소득지급대장 (알바) ─────
     const B = {}, bMerges = []
-    const BH = ['NO', '코드', '성   명', '지  점', '귀속년월', '주민등록번호', '지급액',
-                ...(withDeduct ? ['소득세', '지방소득세', '차인지급액'] : []), '영수인']
-    const BDED0 = 7                         // 공제 칸 시작
-    const BSIGN = BH.length - 1             // 영수인
-        mk(B, 0, 0, `(${year}년${String(month).padStart(2, '0')}월) 사업소득지급대장(합계)`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
+    // 세무사 양식: 한 사람이 2줄. 1줄=귀속년월/소득세, 2줄=지급년월/지방소득세·차인지급액
+    //   칸: NO · 코드 · 성명 · 지점 · 주민등록번호 · 귀속(지급)년월 · 지급액 · 소득세(지방소득세)
+    //       · 예술/특고인경비(고용보험료) · 학자금상환액(산재보험료) · 차인지급액 · 영수인
+    const C_NO = 0, C_CODE = 1, C_NAME = 2, C_BR = 3, C_RID = 4, C_YM = 5, C_AMT = 6
+    const C_TAX = 7, C_ART = 8, C_LOAN = 9, C_NET = 10, BSIGN = 11
+    mk(B, 0, 0, `(${year}년${String(month).padStart(2, '0')}월) 사업소득지급대장(합계)`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
     bMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: BSIGN } })
     mk(B, 2, 0, `회사명 : ${corpName}`, { font: { sz: 9 } })
-    BH.forEach((h, i) => mk(B, 4, i, h, hdrS))
-    let br_ = 5, bTot = 0
+    // 머리글 2줄
+    const BH1 = ['NO', '코드', '성   명', '지  점', '주민등록번호', '귀속년월', '지급액', '소득세', '예술/특고인경비', '학자금상환액', '', '영수인']
+    const BH2 = ['', '', '', '', '', '지급년월', '', '지방소득세', '고용보험료', '산재보험료', '차인지급액', '']
+    BH1.forEach((h, i) => mk(B, 4, i, h, hdrS))
+    BH2.forEach((h, i) => mk(B, 5, i, h, hdrS))
+    ;[C_NO, C_CODE, C_NAME, C_BR, C_RID, C_AMT, BSIGN].forEach(c => bMerges.push({ s: { r: 4, c }, e: { r: 5, c } }))
+    bMerges.push({ s: { r: 4, c: C_NET }, e: { r: 4, c: C_NET } })
+    let br_ = 6, bTot = 0
     const bT = { tax: 0, local: 0, net: 0 }
     let bPrevBranch = null
+    const ymTxt = `${year}.${String(month).padStart(2, '0')}`
     albaRows.forEach((r, i) => {
       const amt = fixGrand(r) + recMeal(r)
-      mk(B, br_, 0, i + 1, cellS('center'))
-      mk(B, br_, 1, String(i + 1).padStart(6, '0'), cellS('center'))
-      mk(B, br_, 2, r.emp_name, cellS('center'))
-      mk(B, br_, 3, r.branch, cellS('center'))
-      mk(B, br_, 4, `${year}.${String(month).padStart(2, '0')}`, cellS('center'))
-      mk(B, br_, 5, rid(r), cellS('center'))
-      mk(B, br_, 6, amt, numS)
+      const dt = recDedDetail(r)
+      const tax = dt.bizTax + dt.retro, local = dt.bizLocal, net = amt - dt.total
+      bT.tax += tax; bT.local += local; bT.net += net
+      const r0 = br_, r1 = br_ + 1
+      // 두 줄에 걸치는 칸
+      ;[[C_NO, i + 1], [C_CODE, String(i + 1).padStart(6, '0')], [C_NAME, r.emp_name],
+        [C_BR, r.branch], [C_RID, rid(r)]].forEach(([c, v]) => {
+        mk(B, r0, c, v, cellS('center')); mk(B, r1, c, '', cellS('center'))
+        bMerges.push({ s: { r: r0, c }, e: { r: r1, c } })
+      })
+      mk(B, r0, C_AMT, amt, numS); mk(B, r1, C_AMT, '', numS)
+      bMerges.push({ s: { r: r0, c: C_AMT }, e: { r: r1, c: C_AMT } })
+      mk(B, r0, BSIGN, '', cellS('center')); mk(B, r1, BSIGN, '', cellS('center'))
+      bMerges.push({ s: { r: r0, c: BSIGN }, e: { r: r1, c: BSIGN } })
+      // 줄마다 다른 칸
+      mk(B, r0, C_YM, ymTxt, cellS('center')); mk(B, r1, C_YM, ymTxt, cellS('center'))
       if (withDeduct) {
-        const dt = recDedDetail(r)
-        const net = amt - dt.total
-        bT.tax += dt.bizTax + dt.retro; bT.local += dt.bizLocal; bT.net += net
-        mk(B, br_, BDED0, dt.bizTax + dt.retro, numS)
-        mk(B, br_, BDED0 + 1, dt.bizLocal, numS)
-        mk(B, br_, BDED0 + 2, net, { ...numS, font: { sz: 9, bold: true } })
+        mk(B, r0, C_TAX, tax, numS); mk(B, r1, C_TAX, local, numS)
+        mk(B, r1, C_NET, net, { ...numS, font: { sz: 9, bold: true } })
+      } else {
+        mk(B, r0, C_TAX, '', numS); mk(B, r1, C_TAX, '', numS); mk(B, r1, C_NET, '', numS)
       }
-      mk(B, br_, BSIGN, '', cellS('center'))          // 영수인: 서명 받을 빈칸
-      // 한 사람 건너 하나씩 옅은 음영 — 줄이 밀려 읽히는 걸 막는다
-      if (i % 2 === 1) for (let c = 0; c <= BSIGN; c++) paint(B, br_, c, { fill: ZEBRA })
-      // 지점이 바뀌는 자리에 굵은 선 — 누가 어느 지점인지 묶여 보이게
+      mk(B, r0, C_ART, '', numS); mk(B, r1, C_ART, '', numS)
+      mk(B, r0, C_LOAN, '', numS); mk(B, r1, C_LOAN, '', numS)
+      mk(B, r0, C_NET, '', numS)
+      // 한 사람 건너 하나씩 옅은 음영 · 지점이 바뀌면 굵은 선
+      if (i % 2 === 1) for (let c = 0; c <= BSIGN; c++) { paint(B, r0, c, { fill: ZEBRA }); paint(B, r1, c, { fill: ZEBRA }) }
       if (bPrevBranch !== null && bPrevBranch !== r.branch) {
-        for (let c = 0; c <= BSIGN; c++) paint(B, br_, c, { border: { top: thickBd } })
+        for (let c = 0; c <= BSIGN; c++) paint(B, r0, c, { border: { top: thickBd } })
       }
       bPrevBranch = r.branch
-      bTot += amt; br_++
+      bTot += amt; br_ += 2
     })
     for (let c = 0; c <= BSIGN; c++) paint(B, br_ - 1, c, { border: { bottom: thickBd } })
-    bMerges.push({ s: { r: br_, c: 0 }, e: { r: br_, c: 5 } })
-    mk(B, br_, 0, `총   계 (${albaRows.length}명)`, { ...hdrS, fill: TOT })
-    for (let c = 1; c <= 5; c++) mk(B, br_, c, '', { ...hdrS, fill: TOT })
-    mk(B, br_, 6, bTot, { ...totS, font: { sz: 11, bold: true } })
+    // 총계 2줄
+    const t0 = br_, t1 = br_ + 1
+    bMerges.push({ s: { r: t0, c: 0 }, e: { r: t1, c: C_RID } })
+    mk(B, t0, 0, `총   계 (${albaRows.length}명)`, { ...hdrS, fill: TOT })
+    for (let c = 1; c <= C_RID; c++) { mk(B, t0, c, '', { ...hdrS, fill: TOT }); mk(B, t1, c, '', { ...hdrS, fill: TOT }) }
+    mk(B, t1, 0, '', { ...hdrS, fill: TOT })
+    mk(B, t0, C_YM, '', { ...hdrS, fill: TOT }); mk(B, t1, C_YM, '', { ...hdrS, fill: TOT })
+    mk(B, t0, C_AMT, bTot, { ...totS, font: { sz: 11, bold: true } }); mk(B, t1, C_AMT, '', totS)
+    bMerges.push({ s: { r: t0, c: C_AMT }, e: { r: t1, c: C_AMT } })
     if (withDeduct) {
-      mk(B, br_, BDED0, bT.tax, totS)
-      mk(B, br_, BDED0 + 1, bT.local, totS)
-      mk(B, br_, BDED0 + 2, bT.net, { ...totS, font: { sz: 11, bold: true } })
+      mk(B, t0, C_TAX, bT.tax, totS); mk(B, t1, C_TAX, bT.local, totS)
+      mk(B, t1, C_NET, bT.net, { ...totS, font: { sz: 11, bold: true } })
+    } else {
+      mk(B, t0, C_TAX, '', totS); mk(B, t1, C_TAX, '', totS); mk(B, t1, C_NET, '', totS)
     }
-    mk(B, br_, BSIGN, '', { ...hdrS, fill: TOT })
+    ;[C_ART, C_LOAN].forEach(c => { mk(B, t0, c, '', totS); mk(B, t1, c, '', totS) })
+    mk(B, t0, C_NET, '', totS)
+    mk(B, t0, BSIGN, '', { ...hdrS, fill: TOT }); mk(B, t1, BSIGN, '', { ...hdrS, fill: TOT })
+    br_ = t1
     // 지점별 소계 — 어느 지점이 얼마인지 세무사가 바로 대조할 수 있게
     let bEnd = br_ + 2
     const byBranch = {}
     albaRows.forEach(r => { byBranch[r.branch] = (byBranch[r.branch] || 0) + fixGrand(r) + recMeal(r) })
     const bNames = Object.keys(byBranch)
     if (bNames.length > 1) {
-      mk(B, bEnd, 4, '지점별 소계', { font: { sz: 9, bold: true } })
+      mk(B, bEnd, C_BR, '지점별 소계', { font: { sz: 9, bold: true } })
       bEnd++
       bNames.forEach(nm => {
         const cnt = albaRows.filter(r => r.branch === nm).length
-        mk(B, bEnd, 4, nm, cellS('center'))
-        mk(B, bEnd, 5, `${cnt}명`, cellS('center'))
-        mk(B, bEnd, 6, byBranch[nm], numS)
+        mk(B, bEnd, C_BR, nm, cellS('center'))
+        mk(B, bEnd, C_YM, `${cnt}명`, cellS('center'))
+        mk(B, bEnd, C_AMT, byBranch[nm], numS)
         bEnd++
       })
       bEnd++
@@ -1076,8 +1110,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       ? '※ 소득세 3% · 지방소득세 0.3% 원천징수 기준. 차인지급액 = 지급액 − 소득세 − 지방소득세.'
       : '※ 소득세(3.3%)와 차인지급액은 넣지 않았습니다. 지급액까지만 표기.',
       { font: { sz: 8, color: { rgb: '777777' } } })
-    B['!cols'] = [{ wch: 5 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 13 },
-      ...(withDeduct ? [{ wch: 11 }, { wch: 11 }, { wch: 13 }] : []), { wch: 9 }]
+    // NO·코드·성명·지점·주민번호·귀속년월·지급액·소득세·예술경비·학자금·차인지급액·영수인
+    //   세무사 원본에는 지점·주민번호 칸이 없어 A4 세로 한 장에 들어가지만, 두 칸을 더 넣었으므로
+    //   인쇄할 때는 가로로 두는 편이 낫다. (엑셀로 보는 데는 지장 없음)
+    B['!cols'] = [{ wch: 4 }, { wch: 8 }, { wch: 10 }, { wch: 11 }, { wch: 14 }, { wch: 9 }, { wch: 12 },
+                  { wch: 10 }, { wch: 11 }, { wch: 10 }, { wch: 12 }, { wch: 7 }]
     // 여백을 좁혀 A4 세로 한 장 폭에 들어가게 한다 (칸 너비도 그에 맞춰 줄여둠).
     //   ※ xlsx-js-style 은 '!pageSetup'(가로 인쇄·배율)을 파일에 쓰지 않으므로 여백·너비로만 맞춘다.
     B['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
