@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_OF_BRANCH } from '../lib/branches'
+import { buildWorkCalendarHtml } from '../lib/workCalendar'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
@@ -60,6 +61,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   const [copiedId, setCopiedId] = useState(null)
   const [editAcctKey, setEditAcctKey] = useState(null)  // 계좌 편집 중인 유닛 key
   const [taxWithDeduct, setTaxWithDeduct] = useState(false)  // 세무사 제출용에 공제·차인지급액까지 넣을지
+  const [wcPicked, setWcPicked] = useState({})               // 근무표로 뽑을 사람 (레코드 id → true)
+  const [wcOpen, setWcOpen] = useState(false)                // 근무표 인원 고르기 펼침
   const [acctDraft, setAcctDraft] = useState('')        // 편집 입력값
   const [acctSaving, setAcctSaving] = useState(false)
   // 퇴직금 계산
@@ -886,8 +889,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     // 세무사 양식: 한 사람이 3줄. 공제 칸은 1줄=보험료·세금 / 2줄=정산·공제합계 / 3줄=차인지급액
     const PAY_H = ['사원번호', '성  명', '주민등록번호', '기본급', '식대', '주휴수당', '연장근로수당',
                    '야간근로수당', '휴일근로수당', '근태공제', '지급합계']
-    const DED_H  = withDeduct ? ['국민연금', '건강보험', '고용보험', '장기요양보험료', '소득세', '지방소득세'] : []
-    const DED_H2 = withDeduct ? ['국민연금정산', '건강보험정산', '장기요양보험정산', '고용보험정산', '기타공제', '공제합계'] : []
+    //   공제 칸은 숫자를 안 채우더라도 '틀'은 항상 있어야 한다 (세무사 양식 그대로)
+    const DED_H  = ['국민연금', '건강보험', '고용보험', '장기요양보험료', '소득세', '지방소득세']
+    const DED_H2 = ['국민연금정산', '건강보험정산', '장기요양보험정산', '고용보험정산', '기타공제', '공제합계']
     const PH1 = [...PAY_H, ...DED_H, '영수인']
     const PH2 = PH1.map(() => '')
     const PH3 = PH1.map(() => '')
@@ -897,17 +901,15 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const COL_SIGN = PH1.length - 1      // 영수인
     const COL_PAY = PAY_H.length - 1     // 지급합계
     PH3[COL_PAY] = '지급합계'
-    if (withDeduct) {
-      DED_H2.forEach((h, j) => { PH2[DED0 + j] = h })
-      PH3[DED0 + DED_H2.length - 1] = '차인지급액'
-    }
+    DED_H2.forEach((h, j) => { PH2[DED0 + j] = h })
+    PH3[DED0 + DED_H2.length - 1] = '차인지급액'
     mk(P, 0, 0, `${year}년${String(month).padStart(2, '0')}월분 급여대장`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
     pMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: PH1.length - 1 } })
     mk(P, 1, 0, corpName, { font: { sz: 9 } })
     mk(P, 1, 3, '정렬: 지점·이름순', { font: { sz: 9, color: { rgb: '777777' } } })
     mk(P, 1, 6, `[귀속:${year}년${String(month).padStart(2, '0')}월]`, { font: { sz: 9 }, alignment: { horizontal: 'center' } })
     ;[[0, 2, '인 적 사 항'], [3, COL_PAY, '기 본 급 여 및 제 수 당'],
-      ...(withDeduct ? [[DED0, DED0 + 5, '공 제 및 차 인 지 급 액']] : []),
+      [DED0, DED0 + 5, '공 제 및 차 인 지 급 액'],
       [COL_SIGN, COL_SIGN, '영수인']].forEach(([c1, c2, lb]) => {
       pMerges.push({ s: { r: 3, c: c1 }, e: { r: 3, c: c2 } })
       mk(P, 3, c1, lb, hdrS)
@@ -951,21 +953,24 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       mk(P, pr, COL_PAY, pay, { ...numS, font: { sz: 10, bold: true } })
       mk(P, pr + 1, COL_PAY, '', numS); mk(P, pr + 2, COL_PAY, '', numS)
       pMerges.push({ s: { r: pr, c: COL_PAY }, e: { r: pr + 2, c: COL_PAY } })
-      if (withDeduct) {
+      {
         const dt = recDedDetail(r)
         const net = pay - dt.total
-        pT.pension += dt.pension; pT.health += dt.health; pT.employment += dt.employment
-        pT.care += dt.care; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
-        pT.ded += dt.total; pT.net += net
+        if (withDeduct) {
+          pT.pension += dt.pension; pT.health += dt.health; pT.employment += dt.employment
+          pT.care += dt.care; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
+          pT.ded += dt.total; pT.net += net
+        }
+        const V = (v) => (withDeduct ? v : '')   // 체크 안 하면 칸만 두고 숫자는 비운다
         // 1줄: 국민연금 · 건강보험 · 고용보험 · 장기요양 · 소득세 · 지방소득세
         ;[dt.pension, dt.health, dt.employment, dt.care, dt.incomeTax + dt.retro, dt.localTax]
-          .forEach((v, j) => mk(P, pr, DED0 + j, v, numS))
+          .forEach((v, j) => mk(P, pr, DED0 + j, V(v), numS))
         // 2줄: 정산 항목(쓰지 않으면 빈칸) · 맨 끝은 공제합계
         for (let j = 0; j < 5; j++) mk(P, pr + 1, DED0 + j, '', numS)
-        mk(P, pr + 1, DED0 + 5, dt.total, { ...numS, font: { sz: 9, bold: true } })
+        mk(P, pr + 1, DED0 + 5, V(dt.total), { ...numS, font: { sz: 9, bold: true } })
         // 3줄: 차인지급액 (맨 끝 칸)
         for (let j = 0; j < 5; j++) mk(P, pr + 2, DED0 + j, '', numS)
-        mk(P, pr + 2, DED0 + 5, net, { ...numS, font: { sz: 10, bold: true } })
+        mk(P, pr + 2, DED0 + 5, V(net), { ...numS, font: { sz: 10, bold: true } })
       }
       pMerges.push({ s: { r: pr, c: COL_SIGN }, e: { r: pr + 2, c: COL_SIGN } })
       for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', cellS('center'))
@@ -992,22 +997,23 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     mk(P, pr, COL_PAY, pT.pay, { ...totS, font: { sz: 11, bold: true } })
     mk(P, pr + 1, COL_PAY, '', totS); mk(P, pr + 2, COL_PAY, '', totS)
     pMerges.push({ s: { r: pr, c: COL_PAY }, e: { r: pr + 2, c: COL_PAY } })
-    if (withDeduct) {
+    {
+      const V = (v) => (withDeduct ? v : '')
       ;[pT.pension, pT.health, pT.employment, pT.care, pT.incomeTax, pT.localTax]
-        .forEach((v, j) => mk(P, pr, DED0 + j, v, totS))
+        .forEach((v, j) => mk(P, pr, DED0 + j, V(v), totS))
       for (let j = 0; j < 5; j++) { mk(P, pr + 1, DED0 + j, '', totS); mk(P, pr + 2, DED0 + j, '', totS) }
-      mk(P, pr + 1, DED0 + 5, pT.ded, { ...totS, font: { sz: 11, bold: true } })
-      mk(P, pr + 2, DED0 + 5, pT.net, { ...totS, font: { sz: 11, bold: true } })
+      mk(P, pr + 1, DED0 + 5, V(pT.ded), { ...totS, font: { sz: 11, bold: true } })
+      mk(P, pr + 2, DED0 + 5, V(pT.net), { ...totS, font: { sz: 11, bold: true } })
     }
     for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', totS)
     let pEnd = pr + 3
     notes.forEach(t => { mk(P, pEnd, 0, t, { font: { sz: 8, color: { rgb: '8A5A00' } } }); pEnd++ })
     mk(P, pEnd + 1, 0, withDeduct
       ? '※ 공제는 4대보험(국민·건강·장기요양·고용)과 소득세·지방소득세 기준입니다. 차인지급액 = 지급합계 − 공제합계.'
-      : '※ 공제(4대보험·소득세)와 차인지급액은 넣지 않았습니다. 지급 항목까지만 표기.',
+      : '※ 공제·차인지급액 칸은 비워 두었습니다 (세무사가 직접 기입). 지급 항목까지만 채웠습니다.',
       { font: { sz: 8, color: { rgb: '777777' } } })
     P['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 12 },
-      ...(withDeduct ? [{ wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 12 }] : []),
+      { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 12 },
       { wch: 8 }]
     P['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
     P['!merges'] = pMerges
@@ -1052,12 +1058,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       bMerges.push({ s: { r: r0, c: BSIGN }, e: { r: r1, c: BSIGN } })
       // 줄마다 다른 칸
       mk(B, r0, C_YM, ymTxt, cellS('center')); mk(B, r1, C_YM, ymTxt, cellS('center'))
-      if (withDeduct) {
-        mk(B, r0, C_TAX, tax, numS); mk(B, r1, C_TAX, local, numS)
-        mk(B, r1, C_NET, net, { ...numS, font: { sz: 9, bold: true } })
-      } else {
-        mk(B, r0, C_TAX, '', numS); mk(B, r1, C_TAX, '', numS); mk(B, r1, C_NET, '', numS)
-      }
+      // 칸은 항상 두고, 숫자는 '공제 포함'을 켰을 때만 채운다
+      mk(B, r0, C_TAX, withDeduct ? tax : '', numS)
+      mk(B, r1, C_TAX, withDeduct ? local : '', numS)
+      mk(B, r1, C_NET, withDeduct ? net : '', { ...numS, font: { sz: 9, bold: true } })
       mk(B, r0, C_ART, '', numS); mk(B, r1, C_ART, '', numS)
       mk(B, r0, C_LOAN, '', numS); mk(B, r1, C_LOAN, '', numS)
       mk(B, r0, C_NET, '', numS)
@@ -1079,12 +1083,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     mk(B, t0, C_YM, '', { ...hdrS, fill: TOT }); mk(B, t1, C_YM, '', { ...hdrS, fill: TOT })
     mk(B, t0, C_AMT, bTot, { ...totS, font: { sz: 11, bold: true } }); mk(B, t1, C_AMT, '', totS)
     bMerges.push({ s: { r: t0, c: C_AMT }, e: { r: t1, c: C_AMT } })
-    if (withDeduct) {
-      mk(B, t0, C_TAX, bT.tax, totS); mk(B, t1, C_TAX, bT.local, totS)
-      mk(B, t1, C_NET, bT.net, { ...totS, font: { sz: 11, bold: true } })
-    } else {
-      mk(B, t0, C_TAX, '', totS); mk(B, t1, C_TAX, '', totS); mk(B, t1, C_NET, '', totS)
-    }
+    mk(B, t0, C_TAX, withDeduct ? bT.tax : '', totS)
+    mk(B, t1, C_TAX, withDeduct ? bT.local : '', totS)
+    mk(B, t1, C_NET, withDeduct ? bT.net : '', { ...totS, font: { sz: 11, bold: true } })
     ;[C_ART, C_LOAN].forEach(c => { mk(B, t0, c, '', totS); mk(B, t1, c, '', totS) })
     mk(B, t0, C_NET, '', totS)
     mk(B, t0, BSIGN, '', { ...hdrS, fill: TOT }); mk(B, t1, BSIGN, '', { ...hdrS, fill: TOT })
@@ -1108,7 +1109,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     }
     mk(B, bEnd, 0, withDeduct
       ? '※ 소득세 3% · 지방소득세 0.3% 원천징수 기준. 차인지급액 = 지급액 − 소득세 − 지방소득세.'
-      : '※ 소득세(3.3%)와 차인지급액은 넣지 않았습니다. 지급액까지만 표기.',
+      : '※ 소득세·차인지급액 칸은 비워 두었습니다 (세무사가 직접 기입). 지급액까지만 채웠습니다.',
       { font: { sz: 8, color: { rgb: '777777' } } })
     // NO·코드·성명·지점·주민번호·귀속년월·지급액·소득세·예술경비·학자금·차인지급액·영수인
     //   세무사 원본에는 지점·주민번호 칸이 없어 A4 세로 한 장에 들어가지만, 두 칸을 더 넣었으므로
@@ -1134,6 +1135,30 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       XLSX.writeFile(wb, `${ym} 급여대장_세무사제출${corpTag}${dTag}.xlsx`)
     }
     return true
+  }
+
+  // ── 근무표(근무기록 확인서) 여러 명을 한 파일로 ── 한 사람이 한 페이지
+  //   체크한 사람만 뽑는다. 아무도 안 골랐으면 그 법인 전원.
+  function printWorkCalendars(corpId) {
+    const list = records
+      .filter(r => !isRecordOnly(r) && (CORP_OF_BRANCH[r.branch] || 'etc') === corpId)
+      .filter(r => (wcPicked[r.id] !== undefined ? wcPicked[r.id] : !anyPicked(corpId)))
+      .sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || a.emp_name.localeCompare(b.emp_name, 'ko'))
+    if (list.length === 0) { alert('근무표로 뽑을 사람을 골라주세요.'); return }
+    const corp = CORPS[corpId] || CORPS.etc
+    const html = buildWorkCalendarHtml(list.map(r => ({
+      year: Number(r.year), month: Number(r.month),
+      name: r.emp_name, empType: r.emp_type,
+      corpName: corp.short, branch: r.branch,
+      workData: r.work_data || {},
+    })), `${corp.label || '기타'}_${month}월_근무표`)
+    const win = window.open('', '_blank')
+    if (!win) { alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.'); return }
+    win.document.write(html); win.document.close()
+  }
+  // 그 법인에서 한 명이라도 체크했는지
+  function anyPicked(corpId) {
+    return records.some(r => (CORP_OF_BRANCH[r.branch] || 'etc') === corpId && wcPicked[r.id])
   }
 
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
@@ -1593,6 +1618,17 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     .tax-dl-chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #5a5348; cursor: pointer; }
     .tax-dl-hint { color: #a8a096; font-size: 11.5px; }
     .tx-xlsx-hint { font-size: 12px; color: #a8a096; font-weight: 600; align-self: center; }
+    .tx-xlsx.wc { background: #4a7c59; box-shadow: 0 2px 6px rgba(74,124,89,0.3); }
+    .tx-xlsx.wc:hover { background: #3c6648; }
+    .wc-toggle { padding: 4px 11px; border-radius: 7px; border: 1px solid #ddd7ca; background: #faf8f3; font-size: 12px; font-weight: 600; color: #6b6357; cursor: pointer; }
+    .wc-toggle:hover { background: #f0ece3; }
+    .wc-pick { margin: 2px 0 8px; }
+    .wc-branch { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 5px 0; border-bottom: 1px dashed #efebe3; }
+    .wc-all { min-width: 120px; text-align: left; padding: 3px 7px; border: none; background: none; font-size: 12px; font-weight: 700; color: #5a5348; cursor: pointer; }
+    .wc-all:hover { color: #b8954a; }
+    .wc-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; border: 1px solid #e0dbd0; background: #fff; font-size: 12px; color: #6b6357; cursor: pointer; }
+    .wc-chip.on { background: #eef5f0; border-color: #a9c9b5; color: #35624a; font-weight: 600; }
+    .wc-chip input { margin: 0; }
     .tax-dl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 5px 0; }
     .tax-dl-corp { min-width: 130px; font-size: 13px; font-weight: 800; color: #3f3a33; }
     @media (max-width: 640px) { .tax-dl-corp { min-width: 100%; margin-bottom: 2px; } }
@@ -2144,6 +2180,62 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                   ))}
                 </div>
 
+                {/* ── 근무표 ── 고른 사람만, 한 사람 한 페이지로 한 파일에 */}
+                <div className="tax-dl">
+                  <div className="tax-dl-head">
+                    <span className="tax-dl-title">🗓 근무표 (근무기록 확인서)</span>
+                    <span className="tax-dl-hint">한 사람이 한 페이지 · 고르지 않으면 그 사업자 전원</span>
+                    <button className="wc-toggle" onClick={() => setWcOpen(v => !v)}>
+                      {wcOpen ? '인원 접기 ▲' : '인원 고르기 ▼'}
+                    </button>
+                    {Object.values(wcPicked).some(Boolean) && (
+                      <button className="wc-toggle" onClick={() => setWcPicked({})}>선택 해제</button>
+                    )}
+                  </div>
+                  {wcOpen && byCorpSummary.map(c => (
+                    <div key={c.cid} className="wc-pick">
+                      {c.branches.map(b => {
+                        const people = records
+                          .filter(r => !isRecordOnly(r) && r.branch === b.branch)
+                          .sort((x, y) => x.emp_name.localeCompare(y.emp_name, 'ko'))
+                        if (people.length === 0) return null
+                        const allOn = people.every(r => wcPicked[r.id])
+                        return (
+                          <div key={b.branch} className="wc-branch">
+                            <button className="wc-all" onClick={() => setWcPicked(prev => {
+                              const nx = { ...prev }
+                              people.forEach(r => { if (allOn) delete nx[r.id]; else nx[r.id] = true })
+                              return nx
+                            })}>{allOn ? '☑' : '☐'} {b.branch}</button>
+                            {people.map(r => (
+                              <label key={r.id} className={`wc-chip${wcPicked[r.id] ? ' on' : ''}`}>
+                                <input type="checkbox" checked={!!wcPicked[r.id]}
+                                  onChange={e => setWcPicked(prev => {
+                                    const nx = { ...prev }
+                                    if (e.target.checked) nx[r.id] = true; else delete nx[r.id]
+                                    return nx
+                                  })} />
+                                {r.emp_name}
+                              </label>
+                            ))}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
+                  {byCorpSummary.map(c => {
+                    const picked = records.filter(r => !isRecordOnly(r) && (CORP_OF_BRANCH[r.branch] || 'etc') === c.cid && wcPicked[r.id]).length
+                    return (
+                      <div key={c.cid} className="tax-dl-row">
+                        <span className="tax-dl-corp">{c.corp.short || '기타 사업장'}</span>
+                        <button className="tx-xlsx wc" onClick={() => printWorkCalendars(c.cid)}>
+                          🗓 {c.corp.label || '기타'}_{month}월_근무표 ({picked > 0 ? `고른 ${picked}명` : `전원 ${c.count}명`})
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+
                 {/* ── 세무사 제출용 ── 법인마다, 대장마다, 공제 포함 여부마다 파일을 따로 받는다 */}
                 <div className="tax-dl">
                   <div className="tax-dl-head">
@@ -2151,7 +2243,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                     <label className="tax-dl-chk">
                       <input type="checkbox" checked={taxWithDeduct} onChange={e => setTaxWithDeduct(e.target.checked)} />
                       공제·차인지급액 포함
-                      <span className="tax-dl-hint">{taxWithDeduct ? '(4대보험·소득세까지 적힌 대장)' : '(지급 항목까지만)'}</span>
+                      <span className="tax-dl-hint">{taxWithDeduct ? '(공제 칸에 숫자까지 채움)' : '(공제 칸은 틀만 두고 비움)'}</span>
                     </label>
                   </div>
                   {byCorpSummary.map(c => (
