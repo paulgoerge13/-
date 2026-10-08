@@ -496,10 +496,14 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     return types
   }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
-  // ── 지급일: 직원 10일 / 알바 15일. 단 구복만두는 직원·알바 모두 15일에 지급한다 ──
+  // 사업소득(3.3%)으로만 이뤄진 유닛 — 신분이 직원이어도 3.3%로 뗀 달은 여기에 든다
+  function unitIsBiz(u) { return u.recs.every(r => recDedType(r) !== '4대') }
+  // ── 지급일: 근로소득(4대보험) 10일 / 사업소득(3.3%) 15일 ──
+  //   신분(직원/알바)이 아니라 공제 방식으로 가른다. 그래야 지급일과 대장(급여대장/
+  //   사업소득지급대장)이 늘 같은 쪽을 가리킨다. 단 구복만두는 전원 15일.
   function isPay15(u) {
     if (u.recs.some(r => PAY15_BRANCHES.includes(r.branch))) return true
-    return unitIsAlba(u)
+    return unitIsBiz(u)
   }
   // 지급일 필터: 직원(매니저 포함)=10일 / 알바=15일
   function matchPayDay(u) {
@@ -2169,7 +2173,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                 <div className="tax-dl">
                   <div className="tax-dl-head">
                     <span className="tax-dl-title">💸 이체용 엑셀</span>
-                    <span className="tax-dl-hint">사업자별로 따로 받습니다 · 직원 10일 / 알바 15일 (구복만두는 전원 15일)</span>
+                    <span className="tax-dl-hint">사업자별로 따로 받습니다 · 근로소득 10일 / 사업소득 3.3% 15일 (구복만두는 전원 15일)</span>
                   </div>
                   {byCorpSummary.map(c => (
                     <div key={c.cid} className="tax-dl-row">
@@ -2262,7 +2266,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                     </div>
                   ))}
                 </div>
-                <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바 · 구복만두는 전원 15일 지급</div>
+                <div className="tx-board-note">칸을 누르면 확정 ↔ 이체완료가 바뀝니다 · 지점 제목 옆 버튼으로 지점 전체를 한 번에 이체완료 · 계좌를 누르면 복사 · pt = 알바 · 지급일은 공제 방식 기준(4대보험 10일 / 3.3% 15일) · 구복만두는 전원 15일</div>
 
                 {txUnavailable && (
                   <div className="tx-warn">⚠ 이체 상태가 저장되지 않습니다. Supabase 에 <b>transfer_status</b> 컬럼을 추가해 주세요.</div>
