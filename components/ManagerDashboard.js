@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_ORDER, CORP_OF_BRANCH, corpIdOfRecord } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
+import { isFirstMonthInsuranceFree } from '../lib/insurance'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
@@ -253,9 +254,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (isFixed(r)) return 0   // 과거 확정 금액은 이미 net → 공제 없음
     if (recDedType(r) !== '4대') return 0
     const taxable = fixGrand(r)
-    const pension    = Math.floor(taxable * 0.0475 / 10) * 10
-    const health     = Math.floor(taxable * 0.03595 / 10) * 10
-    const care       = Math.floor(health * 0.1314 / 10) * 10
+    // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양 미부과 — 고용보험만
+    const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
+    const pension    = free ? 0 : Math.floor(taxable * 0.0475 / 10) * 10
+    const health     = free ? 0 : Math.floor(taxable * 0.03595 / 10) * 10
+    const care       = free ? 0 : Math.floor(health * 0.1314 / 10) * 10
     const employment = Math.floor(taxable * 0.009 / 10) * 10
     return pension + health + care + employment
   }
@@ -278,9 +281,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const g = fixGrand(r)
     const retro = Number(r.retro_income_tax) || 0
     if (recDedType(r) === '4대') {
-      const pension    = Math.floor(g * 0.0475 / 10) * 10
-      const health     = Math.floor(g * 0.03595 / 10) * 10
-      const care       = Math.floor(health * 0.1314 / 10) * 10
+      const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
+      const pension    = free ? 0 : Math.floor(g * 0.0475 / 10) * 10
+      const health     = free ? 0 : Math.floor(g * 0.03595 / 10) * 10
+      const care       = free ? 0 : Math.floor(health * 0.1314 / 10) * 10
       const employment = Math.floor(g * 0.009 / 10) * 10
       const incomeTax  = r.income_tax || 0
       const localTax   = Math.floor((incomeTax * 0.1) / 10) * 10

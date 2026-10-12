@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 import { BRANCHES, CORPS, corpOf } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
+import { isFirstMonthInsuranceFree } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
@@ -412,9 +413,11 @@ function calcDeductions(gross, emp) {
   // 소급 소득세: 지난달 미징수분을 이번 달에 추가 공제 (공제 대상자에게만)
   const retroTax = (dt !== 'none') ? (Number(emp.retroIncomeTax) || 0) : 0
   if (dt === '4대') {
-    pension    = Math.floor(gross * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
-    health     = Math.floor(gross * RATE_HEALTH / 10) * 10
-    care       = Math.floor(health * RATE_CARE / 10) * 10
+    // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양을 떼지 않는다
+    const freeMonth = isFirstMonthInsuranceFree(emp.year, emp.month, emp.hireDate)
+    pension    = freeMonth ? 0 : Math.floor(gross * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
+    health     = freeMonth ? 0 : Math.floor(gross * RATE_HEALTH / 10) * 10
+    care       = freeMonth ? 0 : Math.floor(health * RATE_CARE / 10) * 10
     employment = Math.floor(gross * RATE_EMPLOYMENT / 10) * 10
     // 소득세: 간이세액표 자동조회(기본) / 비율(%) 자동 / 금액 직접입력
     const taxMode = emp.incomeTaxMode || 'table'   // 미지정이면 간이세액표 기본
