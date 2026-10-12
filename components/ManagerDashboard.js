@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
-import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_OF_BRANCH } from '../lib/branches'
+import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_ORDER, CORP_OF_BRANCH, corpIdOfRecord } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
@@ -722,8 +722,21 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     }
   })
   // ── 사업자(법인)별 집계 ── 법인이 다르면 급여대장·원천세 신고가 따로 나간다
-  const byCorpSummary = ['dayone', 'woodand', 'etc'].map(cid => {
-    const bs = byBranch.filter(x => (CORP_OF_BRANCH[x.branch] || 'etc') === cid && x.count > 0)
+  const byCorpSummary = CORP_ORDER.map(cid => {
+    const rs = records.filter(r => !isRecordOnly(r) && branchesFor(branch).includes(r.branch) && corpIdOfRecord(r) === cid)
+    const bNames = [...new Set(rs.map(r => r.branch))]
+    const bs = bNames.map(bn => {
+      const rr = rs.filter(r => r.branch === bn)
+      const sum = f => rr.reduce((t, r) => t + f(r), 0)
+      return { branch: bn, count: rr.length,
+        staff: rr.filter(r => r.emp_type === '직원').length,
+        alba: rr.filter(r => r.emp_type !== '직원').length,
+        ledgerStaff: rr.filter(r => recDedType(r) === '4대').length,
+        ledgerAlba: rr.filter(r => recDedType(r) !== '4대').length,
+        total: sum(fixGrand), major: sum(recMajorIns), withhold: sum(recWithholding),
+        staffNet: rr.filter(r => r.emp_type === '직원').reduce((t, r) => t + transferAmt(r), 0),
+        albaNet: rr.filter(r => r.emp_type !== '직원').reduce((t, r) => t + transferAmt(r), 0) }
+    }).filter(x => x.count > 0)
     const sum = k => bs.reduce((t, x) => t + x[k], 0)
     return {
       cid, corp: CORPS[cid], branches: bs,
@@ -810,7 +823,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     // 법인별로 묶는다 (지점이 목록에 없으면 '기타'로)
     const byCorp = new Map()
     for (const r of all) {
-      const cid = CORP_OF_BRANCH[r.branch] || 'etc'
+      const cid = corpIdOfRecord(r)
       if (onlyCorp && cid !== onlyCorp) continue
       if (!byCorp.has(cid)) byCorp.set(cid, [])
       byCorp.get(cid).push(r)
@@ -1149,7 +1162,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   //   체크한 사람만 뽑는다. 아무도 안 골랐으면 그 법인 전원.
   function printWorkCalendars(corpId) {
     const list = records
-      .filter(r => !isRecordOnly(r) && (CORP_OF_BRANCH[r.branch] || 'etc') === corpId)
+      .filter(r => !isRecordOnly(r) && corpIdOfRecord(r) === corpId)
       .filter(r => (wcPicked[r.id] !== undefined ? wcPicked[r.id] : !anyPicked(corpId)))
       .sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || a.emp_name.localeCompare(b.emp_name, 'ko'))
     if (list.length === 0) { alert('근무표로 뽑을 사람을 골라주세요.'); return }
@@ -1166,7 +1179,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   }
   // 그 법인에서 한 명이라도 체크했는지
   function anyPicked(corpId) {
-    return records.some(r => (CORP_OF_BRANCH[r.branch] || 'etc') === corpId && wcPicked[r.id])
+    return records.some(r => corpIdOfRecord(r) === corpId && wcPicked[r.id])
   }
 
   // ── 이체 보드를 그대로 엑셀로 (전 지점을 옆으로 나열한 블록 + 상태별 색상) ──
@@ -1179,8 +1192,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                       : kind === 'alba'  ? isPay15(u)
                       : matchPayDay(u)
     const groups = branchesFor(branch)
-      .filter(b => !onlyCorp || (CORP_OF_BRANCH[b] || 'etc') === onlyCorp)
-      .map(b => ({ branch: b, units: unitsForBranch(b).filter(pick) }))
+      .map(b => ({ branch: b,
+        units: unitsForBranch(b).filter(pick)
+          .filter(u => !onlyCorp || u.recs.every(r => corpIdOfRecord(r) === onlyCorp)) }))
       .filter(g => g.units.length > 0)
       .map(g => ({
         branch: g.branch,
@@ -2005,7 +2019,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
             <option value={ALL}>{ALL}</option>
             <option value={THECOMMA}>☕ {THECOMMA} (한잎·시흥 제외)</option>
             {/* 사업자(법인)별로 묶어 어느 지점이 어느 법인인지 드러나게 */}
-            {['dayone', 'woodand', 'etc'].map(cid => {
+            {CORP_ORDER.map(cid => {
               const list = BRANCHES.filter(b => (CORP_OF_BRANCH[b] || 'etc') === cid)
               if (list.length === 0) return null
               return (
@@ -2232,7 +2246,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                     </div>
                   ))}
                   {byCorpSummary.map(c => {
-                    const picked = records.filter(r => !isRecordOnly(r) && (CORP_OF_BRANCH[r.branch] || 'etc') === c.cid && wcPicked[r.id]).length
+                    const picked = records.filter(r => !isRecordOnly(r) && corpIdOfRecord(r) === c.cid && wcPicked[r.id]).length
                     return (
                       <div key={c.cid} className="tax-dl-row">
                         <span className="tax-dl-corp">{c.corp.short || '기타 사업장'}</span>
@@ -2284,8 +2298,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                     return <p className="md-empty">해당 월의 데이터가 없습니다.</p>
                   }
                   // 사업자(법인)별로 묶어서 — 법인이 다르면 급여대장·신고가 따로 나간다
-                  const corpOrder = ['dayone', 'woodand', 'etc']
-                  const byCorp = corpOrder
+                  const byCorp = CORP_ORDER
                     .map(cid => ({ cid, gs: boardGroups.filter(g => (CORP_OF_BRANCH[g.branch] || 'etc') === cid) }))
                     .filter(x => x.gs.length > 0)
                   return (
