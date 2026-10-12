@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 import { BRANCHES, CORPS, corpOf } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
-import { isFirstMonthInsuranceFree } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insBaseOf } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
@@ -415,8 +415,10 @@ function calcDeductions(gross, emp) {
   if (dt === '4대') {
     // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양을 떼지 않는다
     const freeMonth = isFirstMonthInsuranceFree(emp.year, emp.month, emp.hireDate)
-    pension    = freeMonth ? 0 : Math.floor(gross * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
-    health     = freeMonth ? 0 : Math.floor(gross * RATE_HEALTH / 10) * 10
+    // 국민연금·건강보험은 신고된 보수월액이 있으면 그 금액으로 (없으면 그 달 과세급여)
+    const ib = insBaseOf(emp.workData, gross)
+    pension    = freeMonth ? 0 : Math.floor(ib.pension * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
+    health     = freeMonth ? 0 : Math.floor(ib.health * RATE_HEALTH / 10) * 10
     care       = freeMonth ? 0 : Math.floor(health * RATE_CARE / 10) * 10
     employment = Math.floor(gross * RATE_EMPLOYMENT / 10) * 10
     // 소득세: 간이세액표 자동조회(기본) / 비율(%) 자동 / 금액 직접입력
@@ -1062,6 +1064,23 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 4대보험 기준 보수월액: workData._insBasePension / _insBaseHealth ──
+  //   국민연금·건강보험은 그 달 급여가 아니라 공단에 '신고된 보수월액'으로 부과된다.
+  //   세무사 급여대장과 금액을 맞추려면 그 값을 여기 적어둔다. (비우면 그 달 과세급여 기준)
+  function setInsBase(which, val) {
+    const v = Math.max(0, Math.round(Number(val) || 0))
+    const key = which === 'health' ? '_insBaseHealth' : '_insBasePension'
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (v > 0) wd[key] = v
+      else delete wd[key]
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   // ── 1일 소정근로시간: workData._dayHours (결근 공제 기준, 비우면 8시간) ──
   //   주 40시간(209h)이면 하루 8시간이지만, 주 37시간(193h) 계약이면 하루 7.4시간이다.
   //   결근 1일당 8시간을 빼면 그만큼 과다공제가 되므로 계약에 맞춰 지정한다.
@@ -1701,7 +1720,7 @@ export default function Home() {
     //   버림  : 날짜별 근무기록 · 조퇴차감(_deduct) · 주휴차감(_whCut) · 추가지급(_retroPay) · 기록용(_recordOnly)
     //   ※ 수습 감액(_probationPct)은 일부러 안 들고 간다 — 3개월이 지나도 계속 깎이면 임금체불이 되므로
     //     매달 다시 확인해서 넣도록 한다.
-    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_dayHours', '_mealFlat']
+    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_dayHours', '_mealFlat', '_insBasePension', '_insBaseHealth']
     const carrySettings = (wd) => {
       const out = {}
       for (const k of KEEP_SETTINGS) if (wd && wd[k] !== undefined && wd[k] !== null) out[k] = wd[k]
@@ -3939,6 +3958,35 @@ export default function Home() {
                           → 이 달 실제 야간 {totals.nightPoolH}시간 {totals.excessNightH > 0
                             ? `— 고정 ${totals.fixedNightLimit.toFixed(1)}시간을 ${totals.excessNightH.toFixed(1)}시간 초과 → 추가 ${Number(totals.excessNightPay).toLocaleString()}원`
                             : `— 고정 ${totals.fixedNightLimit.toFixed(1)}시간 안쪽이라 추가 지급 없음`}
+                        </b>
+                      )}
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#888', flexWrap: 'wrap', marginTop: 10 }}>
+                      4대보험 기준 보수월액
+                      <span style={{ color: '#bbb', width: '100%', fontSize: 11.5, marginTop: -2 }}>
+                        공단에 신고된 금액. 넣으면 그 달 급여가 아니라 이 금액으로 국민연금·건강보험을 계산합니다 (세무사 급여대장과 맞춤). 비우면 그 달 과세급여 기준.
+                      </span>
+                      국민연금
+                      <input type="number" min="0" step="1000"
+                        value={activeEmp.workData?._insBasePension ?? ''}
+                        placeholder="비움 = 급여 기준"
+                        onChange={e => setInsBase('pension', e.target.value)}
+                        style={{ width: 130, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                      />
+                      건강보험
+                      <input type="number" min="0" step="1000"
+                        value={activeEmp.workData?._insBaseHealth ?? ''}
+                        placeholder="비우면 국민연금과 동일"
+                        onChange={e => setInsBase('health', e.target.value)}
+                        style={{ width: 150, border: '1px solid #d0ccc5', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: "'Pretendard', 'DM Sans', sans-serif" }}
+                      />
+                      {(activeEmp.workData?._insBasePension > 0 || activeEmp.workData?._insBaseHealth > 0) && totals && (
+                        <b style={{ color: '#2f6bbf', width: '100%', lineHeight: 1.7 }}>
+                          → 국민연금 {Number(totals.deductions?.pension || 0).toLocaleString()}원 ·
+                          건강보험 {Number(totals.deductions?.health || 0).toLocaleString()}원 ·
+                          장기요양 {Number(totals.deductions?.care || 0).toLocaleString()}원
+                          <span style={{ fontWeight: 400, color: '#a08a5e' }}> (고용보험은 그 달 과세급여 기준이라 영향 없음)</span>
                         </b>
                       )}
                     </label>

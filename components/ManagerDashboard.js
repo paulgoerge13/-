@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_ORDER, CORP_OF_BRANCH, corpIdOfRecord } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
-import { isFirstMonthInsuranceFree } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insBaseOf } from '../lib/insurance'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
@@ -256,8 +256,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const taxable = fixGrand(r)
     // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양 미부과 — 고용보험만
     const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
-    const pension    = free ? 0 : Math.floor(taxable * 0.0475 / 10) * 10
-    const health     = free ? 0 : Math.floor(taxable * 0.03595 / 10) * 10
+    const ib = insBaseOf(r.work_data, taxable)      // 신고된 보수월액이 있으면 그 금액으로
+    const pension    = free ? 0 : Math.floor(ib.pension * 0.0475 / 10) * 10
+    const health     = free ? 0 : Math.floor(ib.health * 0.03595 / 10) * 10
     const care       = free ? 0 : Math.floor(health * 0.1314 / 10) * 10
     const employment = Math.floor(taxable * 0.009 / 10) * 10
     return pension + health + care + employment
@@ -282,8 +283,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const retro = Number(r.retro_income_tax) || 0
     if (recDedType(r) === '4대') {
       const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
-      const pension    = free ? 0 : Math.floor(g * 0.0475 / 10) * 10
-      const health     = free ? 0 : Math.floor(g * 0.03595 / 10) * 10
+      const ib = insBaseOf(r.work_data, g)
+      const pension    = free ? 0 : Math.floor(ib.pension * 0.0475 / 10) * 10
+      const health     = free ? 0 : Math.floor(ib.health * 0.03595 / 10) * 10
       const care       = free ? 0 : Math.floor(health * 0.1314 / 10) * 10
       const employment = Math.floor(g * 0.009 / 10) * 10
       const incomeTax  = r.income_tax || 0
