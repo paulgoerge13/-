@@ -75,7 +75,13 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   const [sevResult, setSevResult] = useState(null)
   const [sevLoading, setSevLoading] = useState(false)
 
+  // ── 늦게 도착한 옛 응답이 최신 화면을 덮어쓰지 않게 ──
+  //   페이지를 열면 '오늘 기준 이번 달'로 한 번 읽고, 곧바로 복원된 연·월로 또 읽는다.
+  //   이때 먼저 보낸(이번 달) 응답이 나중에 도착하면 화면 제목은 9월인데 내용은 10월이
+  //   되어버렸다. 10월 자료가 있는 지점만 보여서 "지점이 몇 개 사라졌다"로 보이던 원인.
+  const loadSeq = useRef(0)
   async function load() {
+    const seq = ++loadSeq.current
     setLoading(true)
     try {
       let q = supabase.from('payroll').select('*').eq('year', year).eq('month', month)
@@ -85,12 +91,13 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         .order('branch', { ascending: true })
         .order('emp_name', { ascending: true })
       if (error) throw error
+      if (seq !== loadSeq.current) return   // 그 사이 더 최근 요청이 떠났다 → 이 응답은 버린다
       // 휴지통 제외 + 합산 지점의 비기준월(시흥집 7월 등) 숨김 → 합산은 기준월(6월)에만 표시
       setRecords((data || []).filter(r => !r.deleted_at && !isHiddenMergeRecord(r)))
     } catch (e) {
       console.error('데이터 로드 오류:', e.message)
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }
 
@@ -2303,9 +2310,17 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                   if (boardGroups.length === 0) {
                     return <p className="md-empty">해당 월의 데이터가 없습니다.</p>
                   }
-                  // 사업자(법인)별로 묶어서 — 법인이 다르면 급여대장·신고가 따로 나간다
+                  // 사업자(법인)별로 묶어서 — 법인이 다르면 급여대장·신고가 따로 나간다.
+                  //   지점이 아니라 '사람' 기준으로 가른다. 같은 지점에서 일해도 소속 법인이
+                  //   다른 사람이 있어서(안양일번가점 도주완 → 마흐트) 지점으로 가르면
+                  //   보드 합계와 세무사 대장·이체 엑셀의 법인 구분이 어긋난다.
                   const byCorp = CORP_ORDER
-                    .map(cid => ({ cid, gs: boardGroups.filter(g => (CORP_OF_BRANCH[g.branch] || 'etc') === cid) }))
+                    .map(cid => ({
+                      cid,
+                      gs: boardGroups
+                        .map(g => ({ branch: g.branch, units: g.units.filter(u => corpIdOfRecord(u.recs[0]) === cid) }))
+                        .filter(g => g.units.length > 0),
+                    }))
                     .filter(x => x.gs.length > 0)
                   return (
                   <div>
