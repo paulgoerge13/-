@@ -509,6 +509,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     return types
   }
   function unitIsAlba(u) { return u.recs.every(r => r.emp_type !== '직원') }
+  // 지점 화면 명단에서 뺀 사람 (급여대장·이체에는 그대로 들어간다)
+  function unitAdminOnly(u) { return u.recs.every(r => !!((r.work_data || {})._adminOnly)) }
   // 사업소득(3.3%)으로만 이뤄진 유닛 — 신분이 직원이어도 3.3%로 뗀 달은 여기에 든다
   function unitIsBiz(u) { return u.recs.every(r => recDedType(r) !== '4대') }
   // ── 지급일: 근로소득(4대보험) 10일 / 사업소득(3.3%) 15일 ──
@@ -1698,6 +1700,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     .bd-pt.staff { color: #6b7785; background: #e7ecf2; }
     .bd-name { font-size: 11.5px; font-weight: 500; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* 이름 클릭 = 그 사람 근무 달력 열기 */
+    .bd-ao { margin-left: 4px; font-size: 9px; font-weight: 600; color: #8a6d24; background: #f3ead3; border-radius: 3px; padding: 1px 3px; vertical-align: 1px; }
     .bd-name-link { cursor: pointer; text-decoration: underline; text-decoration-color: #d8cfb4; text-underline-offset: 2px; }
     .bd-name-link:hover { color: #8a6d24; text-decoration-color: #b8954a; }
     .bd-amt { font-size: 11.5px; font-weight: 500; color: #111; text-align: right; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -2386,9 +2389,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                                         className="bd-name bd-name-link"
                                         onClick={e => { e.stopPropagation(); const r0 = u.recs[0]; onOpenEmployee(r0.branch, r0.emp_name, r0.year, r0.month) }}
                                         title={`${unitNames(u)} 근무 달력 열기`}
-                                      >{unitNames(u)}</span>
+                                      >{unitNames(u)}{unitAdminOnly(u) && <span className="bd-ao" title="지점 화면 명단에는 안 뜨고 여기에만 나옵니다">관리자만</span>}</span>
                                     ) : (
-                                      <span className="bd-name">{unitNames(u)}</span>
+                                      <span className="bd-name">{unitNames(u)}{unitAdminOnly(u) && <span className="bd-ao">관리자만</span>}</span>
                                     )}
                                     <span className="bd-amt">{fmt(unitAmt(u))}</span>
                                     <span className="bd-bank">{a.bank}</span>

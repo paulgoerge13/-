@@ -354,6 +354,15 @@ function parseYMD(s) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
 }
 
+// ── 관리자 전용 인원 숨기기 ──
+// work_data._adminOnly 인 사람은 지점 화면 명단에 띄우지 않는다. 급여대장·이체에는
+// 그대로 들어가지만 지점에서 근무표를 짜지 않는 사람(예: 익산점 이태서)용.
+// 브라우저에 남아 있는 옛 명단에도 섞여 있을 수 있어 복원할 때마다 걸러낸다.
+function dropAdminOnly(list) {
+  if (!Array.isArray(list)) return []
+  return list.filter(e => !(e && e.workData && e.workData._adminOnly))
+}
+
 // ── 입사일 이전 / 퇴사일 이후 근무표 칸 제거 (퇴사자 정리) ──
 // 입사일·퇴사일을 입력하면 그 범위 밖의 날짜 데이터를 깔끔하게 비운다.
 function pruneWorkDataToEmployment(workData, hireDate, resignDate) {
@@ -552,7 +561,7 @@ export default function Home() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
-        setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData) })))
+        setEmployees(dropAdminOnly(parsed).map(e => ({ ...e, workData: migrateWorkData(e.workData) })))
       } catch (e) {}
     }
   }, [])
@@ -660,7 +669,7 @@ export default function Home() {
       const saved = localStorage.getItem(storageKey)
       if (saved) {
         try {
-          const parsed = JSON.parse(saved)
+          const parsed = dropAdminOnly(JSON.parse(saved))
           setEmployees(parsed.map(e => ({ ...e, workData: migrateWorkData(e.workData) })))
           if (parsed.length > 0) setActiveEmpId(parsed[0].id)
         } catch (e) {}
@@ -1652,7 +1661,10 @@ export default function Home() {
 
 
   // ── DB 레코드 → 화면용 직원 객체 변환 (초기 로드·기간 변경 공용) ──
-  function parseEmployeesFromDB(data, branchName, fallbackYr, fallbackMo) {
+  //   work_data._adminOnly 인 사람은 지점 화면 명단에서 빼고 관리자 페이지에만 보인다.
+  //   (예: 익산점 이태서 — 급여대장·이체에는 들어가지만 지점에서 근무표를 짜지는 않는다)
+  //   지점에서 저장·삭제는 사람 단위로만 일어나므로, 명단에서 빠져도 DB 기록은 그대로 남는다.
+  function parseEmployeesFromDB(data, branchName, fallbackYr, fallbackMo, opts = {}) {
     const settingsMap = loadAllEmpSettings(branchName)
     // DB 값 우선, 비어있으면 브라우저 저장값(보조)으로 채움
     const pick = (dbVal, lsVal, dflt) => {
@@ -1660,7 +1672,9 @@ export default function Home() {
       if (lsVal !== undefined && lsVal !== null && lsVal !== '') return lsVal
       return dflt
     }
-    return data.map(r => {
+    const rows = opts.includeAdminOnly ? (data || [])
+      : (data || []).filter(r => !((r.work_data || {})._adminOnly))
+    return rows.map(r => {
       const s = settingsMap[r.emp_name] || {}
       const emp = {
         ...EMPTY_EMP,
@@ -1720,7 +1734,7 @@ export default function Home() {
     //   버림  : 날짜별 근무기록 · 조퇴차감(_deduct) · 주휴차감(_whCut) · 추가지급(_retroPay) · 기록용(_recordOnly)
     //   ※ 수습 감액(_probationPct)은 일부러 안 들고 간다 — 3개월이 지나도 계속 깎이면 임금체불이 되므로
     //     매달 다시 확인해서 넣도록 한다.
-    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_dayHours', '_mealFlat', '_insBasePension', '_insBaseHealth']
+    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_dayHours', '_mealFlat', '_insBasePension', '_insBaseHealth', '_adminOnly']
     const carrySettings = (wd) => {
       const out = {}
       for (const k of KEEP_SETTINGS) if (wd && wd[k] !== undefined && wd[k] !== null) out[k] = wd[k]
@@ -1772,14 +1786,20 @@ export default function Home() {
       const result = await res.json()
       const rows = (result && result.success && result.data) ? result.data : []
       if (!rows.length) { alert(`${branchName} ${yr}년 ${mo}월 기록이 없어요.`); return }
-      const loaded = parseEmployeesFromDB(rows, branchName, yr, mo)
+      // 관리자가 직접 이름을 눌러 연 것이므로 '관리자 전용'인 사람도 함께 띄운다
+      const loaded = parseEmployeesFromDB(rows, branchName, yr, mo, { includeAdminOnly: true })
       // 이름 그대로 → 정규화(존칭·마커 제거) 순으로 찾는다
       const hit = loaded.find(e => e.name === empName)
         || loaded.find(e => normName(e.name) === normName(empName))
         || loaded[0]
       setEmployees(loaded)
       setActiveEmpId(hit.id)
-      try { localStorage.setItem(`payroll_backup_${branchName}`, JSON.stringify(loaded)) } catch (e) {}
+      // 관리자 전용이 섞인 명단은 브라우저에 저장하지 않는다.
+      //   저장하면 다음에 그 지점으로 그냥 로그인했을 때 명단이 되살아난다.
+      const hasAdminOnly = rows.some(r => (r.work_data || {})._adminOnly)
+      if (!hasAdminOnly) {
+        try { localStorage.setItem(`payroll_backup_${branchName}`, JSON.stringify(loaded)) } catch (e) {}
+      }
       setSelectedBranch(br)
       setAuthed(true)
       setFromAdmin(true)
