@@ -437,7 +437,7 @@ function calcDeductions(gross, emp) {
       const t = lookupSimpleTax(gross, emp.dependents || 1)   // 과세급여 + 부양가족수 → 간이세액표
       incomeTax = (t === null) ? (emp.manualIncomeTax || 0) : t // 표 범위 초과(월 1,000만원↑)면 직접입력값 사용
     } else if (taxMode === 'rate') {
-      incomeTax = Math.floor(gross * (Number(emp.incomeTaxRate) || 0) / 100 / 10) * 10
+      incomeTax = floor10(gross * (Number(emp.incomeTaxRate) || 0) / 100)
     } else {
       incomeTax = (emp.manualIncomeTax || 0)
     }

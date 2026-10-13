@@ -267,7 +267,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475)
     const health     = free ? 0 : floor10(ib.health * 0.03595)
     const care       = free ? 0 : floor10(health * 0.1314)
-    const employment = Math.floor(taxable * 0.009 / 10) * 10
+    const employment = floor10(taxable * 0.009)
     return pension + health + care + employment
   }
   function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%) + 소급 소득세
