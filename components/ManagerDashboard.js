@@ -920,140 +920,186 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const numS = { font: { sz: 9 }, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0', border: allBd }
     const totS = { font: { sz: 9, bold: true }, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0', fill: TOT, border: allBd }
 
-    // ───── 시트 1: 급여대장 (직원) ─────
+    // ───── 시트 1: 급여대장 (직원) — 세무사 원본 양식 그대로 ─────
     const P = {}, pMerges = []
-    // 세무사 양식: 한 사람이 3줄. 공제 칸은 1줄=보험료·세금 / 2줄=정산·공제합계 / 3줄=차인지급액
-    const PAY_H = ['사원번호', '성  명', '주민등록번호', '기본급', '식대', '주휴수당', '연장근로수당',
-                   '야간근로수당', '휴일근로수당', '근태공제', '지급합계']
-    //   공제 칸은 숫자를 안 채우더라도 '틀'은 항상 있어야 한다 (세무사 양식 그대로)
-    const DED_H  = ['국민연금', '건강보험', '고용보험', '장기요양보험료', '소득세', '지방소득세']
-    const DED_H2 = ['국민연금정산', '건강보험정산', '장기요양보험정산', '고용보험정산', '기타공제', '공제합계']
-    const PH1 = [...PAY_H, ...DED_H, '영수인']
-    const PH2 = PH1.map(() => '')
-    const PH3 = PH1.map(() => '')
-    PH2[0] = '입사일'; PH2[1] = '직  급'
-    PH3[0] = '퇴사일'; PH3[1] = '부  서'
-    const DED0 = PAY_H.length            // 공제 칸 시작 위치
-    const COL_SIGN = PH1.length - 1      // 영수인
-    const COL_PAY = PAY_H.length - 1     // 지급합계
-    PH3[COL_PAY] = '지급합계'
-    DED_H2.forEach((h, j) => { PH2[DED0 + j] = h })
-    PH3[DED0 + DED_H2.length - 1] = '차인지급액'
-    mk(P, 0, 0, `${year}년${String(month).padStart(2, '0')}월분 급여대장`, { font: { sz: 16, bold: true, underline: true }, alignment: { horizontal: 'center', vertical: 'center' } })
-    pMerges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: PH1.length - 1 } })
-    mk(P, 1, 0, corpName, { font: { sz: 9 } })
-    mk(P, 1, 3, '정렬: 지점·이름순', { font: { sz: 9, color: { rgb: '777777' } } })
-    mk(P, 1, 6, `[귀속:${year}년${String(month).padStart(2, '0')}월]`, { font: { sz: 9 }, alignment: { horizontal: 'center' } })
-    ;[[0, 2, '인 적 사 항'], [3, COL_PAY, '기 본 급 여 및 제 수 당'],
-      [DED0, DED0 + 5, '공 제 및 차 인 지 급 액'],
-      [COL_SIGN, COL_SIGN, '영수인']].forEach(([c1, c2, lb]) => {
-      pMerges.push({ s: { r: 3, c: c1 }, e: { r: 3, c: c2 } })
-      mk(P, 3, c1, lb, hdrS)
-      for (let c = c1 + 1; c <= c2; c++) mk(P, 3, c, '', hdrS)
-    })
-    PH1.forEach((h, i) => { mk(P, 4, i, h, hdrS); mk(P, 5, i, PH2[i], hdrS); mk(P, 6, i, PH3[i], hdrS) })
-    pMerges.push({ s: { r: 4, c: COL_SIGN }, e: { r: 6, c: COL_SIGN } })
-    let pr = 7
-    const pT = { basic: 0, meal: 0, wh: 0, ot: 0, night: 0, hol: 0, cut: 0, pay: 0,
-                 pension: 0, health: 0, care: 0, employment: 0, incomeTax: 0, localTax: 0, ded: 0, net: 0 }
+    //   세무사가 쓰는 프로그램 출력물(2026년 09월 급여대장_(주)데이원 익산.xls)을 그대로 본떴다.
+    //   칸 구성·칸 너비·줄 높이·머리글 문구·회색 머리글(C0C0C0)·숫자서식(##,### → 0은 빈칸)까지 같다.
+    //   한 사람이 3줄:
+    //     1줄  사원번호 · 성명 · 지급항목 · 공제항목
+    //     2줄  입사일  ·  (직급) ·  정산항목 · 공제합계
+    //     3줄  퇴사일  ·  부서   ·  지급합계 · 차인지급액
+    //   11명마다 머리글을 다시 찍는다(원본과 같은 쪽 나눔). 정렬은 입사일순(=원본의 '코드순').
+    const PAGE_N = 11                    // 한 쪽에 들어가는 사람 수
+    const C_CUT = 8                      // 근태공제 / (3줄째) 지급합계
+    const C_D0 = 9                       // 국민연금부터
+    const C_DT = 14                      // 지방소득세 / 공제합계 / 차인지급액
+    const C_RCP = 15                     // 영수인
+    const NCOL = 16
+
+    const FN = { name: 'Arial', sz: 9 }
+    const thinB = { style: 'thin', color: { rgb: '000000' } }
+    const medB = { style: 'medium', color: { rgb: '000000' } }
+    const boxB = { top: thinB, bottom: thinB, left: thinB, right: thinB }
+    const GRAY = { patternType: 'solid', fgColor: { rgb: 'C0C0C0' } }
+    const WHITE = { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } }
+    const sHead = { font: { ...FN, bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, fill: GRAY, border: boxB }
+    const sTxt = { font: FN, alignment: { horizontal: 'center', vertical: 'center' }, fill: WHITE, border: boxB }
+    const sNum = { font: FN, alignment: { horizontal: 'right', vertical: 'center' }, fill: WHITE, border: boxB, numFmt: '##,###' }
+    const sNumB = { ...sNum, font: { ...FN, bold: true } }
+
+    // 0 과 빈값은 칸을 비운다 (원본 서식 ##,### 과 같은 모양)
+    const put = (r, c, v, s) => {
+      const num = typeof v === 'number' && v !== 0
+      P[XLSX.utils.encode_cell({ r, c })] = { v: num ? v : (num || v === 0 || v == null ? '' : v), t: num ? 'n' : 's', s: s || {} }
+    }
+    // 이미 쓴 셀의 테두리만 덧칠 (사람 경계선)
+    const edge = (r, c, border) => {
+      const k = XLSX.utils.encode_cell({ r, c })
+      if (!P[k]) P[k] = { v: '', t: 's', s: { fill: WHITE, border: { ...boxB } } }
+      const st = P[k].s || (P[k].s = {})
+      st.border = { ...(st.border || boxB), ...border }
+    }
+
+    const HD1 = ['사원번호', '성  명', '기본급', '식대', '연장근로수당', '야간근로수당', '기타', '휴일근로수당', '근태공제', '국민연금', '건강보험', '고용보험', '장기요양보험료', '소득세', '지방소득세', '']
+    const HD2 = ['입 사 일', '직  급', '', '', '', '', '', '', '', '국민연금정산', '건강보험정산', '장기요양보험정산', '고용보험정산', '기타공제', '공제합계', '']
+    const HD3 = ['퇴 사 일', '부  서', '', '', '', '', '', '', '지급합계', '', '', '', '', '', '차인지급액', '']
+
+    const mm = String(month).padStart(2, '0')
+    const lastDay = new Date(year, month, 0).getDate()
+    const pRows = []                      // 줄 높이 (원본과 같은 값)
+    const setH = (r, hpt) => { pRows[r] = { hpt } }
+
+    // 쪽 머리글 8줄 (제목 · 빈줄 · 회사/귀속/페이지 · 얇은 빈줄 · 묶음머리 · 머리글 3줄)
+    const pageHead = (r0, pageNo, pageTot) => {
+      setH(r0, 23.95); setH(r0 + 1, 15.9); setH(r0 + 2, 14.95); setH(r0 + 3, 2.1)
+      for (let k = 4; k <= 7; k++) setH(r0 + k, 12.75)
+      // 제목은 원본처럼 H열에 넣는다 (병합 없이 가운데로 흘러넘치게)
+      put(r0, 7, `${year}년 ${mm}월분  급여대장`, { font: { name: 'Arial', sz: 16, bold: true }, alignment: { horizontal: 'center', vertical: 'center' } })
+      put(r0 + 2, 0, corpName, { font: FN })
+      put(r0 + 2, 3, '정렬 :코드순', { font: FN })
+      put(r0 + 2, 7, `[귀속:${year}년 ${mm}월] [지급:${year}년 ${mm}월 ${lastDay}일]`, { font: FN, alignment: { horizontal: 'center' } })
+      put(r0 + 2, 14, 'page :', { font: FN, alignment: { horizontal: 'right' } })
+      put(r0 + 2, 15, `${pageNo} / ${pageTot}`, { font: FN })
+      ;[[0, 1, '인 적 사 항'], [2, 8, '기  본  급  여  및  제  수  당'], [9, 14, '공  제   및   차  인  지  급  액 ']]
+        .forEach(([c1, c2, label]) => {
+          pMerges.push({ s: { r: r0 + 4, c: c1 }, e: { r: r0 + 4, c: c2 } })
+          for (let c = c1; c <= c2; c++) put(r0 + 4, c, c === c1 ? label : '', sHead)
+        })
+      put(r0 + 4, C_RCP, '영수인', sHead)
+      for (let k = 5; k <= 7; k++) put(r0 + k, C_RCP, '', sHead)
+      pMerges.push({ s: { r: r0 + 4, c: C_RCP }, e: { r: r0 + 7, c: C_RCP } })
+      HD1.forEach((t, c) => { if (c !== C_RCP) put(r0 + 5, c, t, sHead) })
+      HD2.forEach((t, c) => { if (c !== C_RCP) put(r0 + 6, c, t, sHead) })
+      HD3.forEach((t, c) => { if (c !== C_RCP) put(r0 + 7, c, t, sHead) })
+    }
+
+    // 원본은 '코드순' = 입사일 빠른 사람부터
+    const ordered = [...staffRows].sort((a, b) =>
+      String(a.hire_date || '9999').localeCompare(String(b.hire_date || '9999')) ||
+      a.emp_name.localeCompare(b.emp_name, 'ko'))
+
+    const pageTot = Math.max(1, Math.ceil(ordered.length / PAGE_N))
+    const pT = { basic: 0, meal: 0, ot: 0, night: 0, etc: 0, hol: 0, cut: 0, pay: 0,
+                 pension: 0, health: 0, employment: 0, care: 0, incomeTax: 0, localTax: 0, ded: 0, net: 0 }
     const notes = []
-    const pBlocks = []   // [시작행, 끝행] — 다 쓴 뒤 사람 경계에 굵은 선을 긋는다
-    staffRows.forEach((r, i) => {
-      pBlocks.push([pr, pr + 2, i])
+    let pr = 0
+    ordered.forEach((r, i) => {
+      if (i % PAGE_N === 0) {                    // 새 쪽: 머리글 다시
+        if (i > 0) { setH(pr, 12.75); setH(pr + 1, 12.75); pr += 2 }   // 쪽 사이 빈 두 줄
+        pageHead(pr, Math.floor(i / PAGE_N) + 1, pageTot)
+        pr += 8
+      }
+      const a = pr
+      setH(a, 12.75); setH(a + 1, 12.75); setH(a + 2, 12.75)
       const cut = recAttendanceCut(r)
-      const extra = (mergedInto.get(r.id) || 0) + recRetroPay(r)
-      const basic = (Number(r.basic_pay) || 0) + cut
+      // 같은 계좌로 묶인 알바분(예: 김현준P3)은 세무사 원본처럼 '연장근로수당'에,
+      // 앱에서 따로 얹은 추가지급(_retroPay)은 '기타'에 넣는다.
+      //   추가지급이 '연장수당 성격'인 사람(예: 주안 김현준P3)은 work_data._retroAs='ot' 로 표시해
+      //   세무사 원본처럼 연장근로수당 칸에 넣는다. 표시가 없으면 '기타' 칸.
+      const retroAsOt = (r.work_data || {})._retroAs === 'ot'
+      const merged = (mergedInto.get(r.id) || 0) + (retroAsOt ? recRetroPay(r) : 0)
+      const etc = retroAsOt ? 0 : recRetroPay(r)
+      const basic = (Number(r.basic_pay) || 0) + cut + (Number(r.weekly_holiday_pay) || 0)  // 주휴수당 칸이 없어 기본급에 포함
       const meal = recMeal(r)
-      const wh = Number(r.weekly_holiday_pay) || 0
-      const ot = (Number(r.overtime_pay) || 0) + extra
+      const ot = (Number(r.overtime_pay) || 0) + merged
       const night = Number(r.night_pay) || 0
       const hol = (Number(r.holiday_pay) || 0) + (Number(r.holiday_overtime_pay) || 0) + (Number(r.holiday_night_pay) || 0)
-      const pay = basic + meal + wh + ot + night + hol - cut
-      mk(P, pr, 0, String(i + 1).padStart(3, '0'), cellS('center'))
-      mk(P, pr + 1, 0, r.hire_date || '', cellS('center'))
-      mk(P, pr + 2, 0, r.resign_date || '', cellS('center'))
-      mk(P, pr, 1, r.emp_name, cellS('center'))
-      mk(P, pr + 1, 1, '', cellS('center'))
-      mk(P, pr + 2, 1, r.branch, cellS('center'))
-      pMerges.push({ s: { r: pr, c: 1 }, e: { r: pr + 1, c: 1 } })   // 직급은 안 쓰므로 성명이 두 줄 차지
-      // 한 사람이 3줄이라(사원번호/입사일/퇴사일) 금액 아래 두 줄이 비어 보였다.
-      //   → 주민번호·수당·지급합계는 사람 단위로 세로 병합해 한 칸으로 만든다.
-      //     사람마다 칸이 하나씩이라 어디까지가 누구인지 바로 구분된다.
-      mk(P, pr, 2, rid(r), cellS('center'))
-      mk(P, pr + 1, 2, '', cellS('center')); mk(P, pr + 2, 2, '', cellS('center'))
-      pMerges.push({ s: { r: pr, c: 2 }, e: { r: pr + 2, c: 2 } })
-      ;[basic, meal, wh, ot, night, hol, cut ? -cut : 0].forEach((v, j) => {
-        mk(P, pr, 3 + j, v, numS); mk(P, pr + 1, 3 + j, '', numS); mk(P, pr + 2, 3 + j, '', numS)
-        pMerges.push({ s: { r: pr, c: 3 + j }, e: { r: pr + 2, c: 3 + j } })
+      const pay = basic + meal + ot + night + etc + hol - cut
+      const dt = recDedDetail(r)
+      const net = pay - dt.total
+      const V = (v) => (withDeduct ? v : '')     // 체크 안 하면 칸만 두고 숫자는 비운다
+
+      put(a, 0, String(i + 1).padStart(3, '0'), sTxt)
+      put(a + 1, 0, r.hire_date || '', sTxt)
+      put(a + 2, 0, r.resign_date || '', sTxt)
+      put(a, 1, r.emp_name, sTxt)
+      put(a + 1, 1, '', sTxt)
+      put(a + 2, 1, r.branch, sTxt)            // '부 서' 칸 = 지점
+      ;[basic, meal, ot, night, etc, hol].forEach((v, j) => {
+        put(a, 2 + j, v, sNum); put(a + 1, 2 + j, '', sNum); put(a + 2, 2 + j, '', sNum)
       })
-      mk(P, pr, COL_PAY, pay, { ...numS, font: { sz: 10, bold: true } })
-      mk(P, pr + 1, COL_PAY, '', numS); mk(P, pr + 2, COL_PAY, '', numS)
-      pMerges.push({ s: { r: pr, c: COL_PAY }, e: { r: pr + 2, c: COL_PAY } })
-      {
-        const dt = recDedDetail(r)
-        const net = pay - dt.total
-        if (withDeduct) {
-          pT.pension += dt.pension; pT.health += dt.health; pT.employment += dt.employment
-          pT.care += dt.care; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
-          pT.ded += dt.total; pT.net += net
-        }
-        const V = (v) => (withDeduct ? v : '')   // 체크 안 하면 칸만 두고 숫자는 비운다
-        // 1줄: 국민연금 · 건강보험 · 고용보험 · 장기요양 · 소득세 · 지방소득세
-        ;[dt.pension, dt.health, dt.employment, dt.care, dt.incomeTax + dt.retro, dt.localTax]
-          .forEach((v, j) => mk(P, pr, DED0 + j, V(v), numS))
-        // 2줄: 정산 항목(쓰지 않으면 빈칸) · 맨 끝은 공제합계
-        for (let j = 0; j < 5; j++) mk(P, pr + 1, DED0 + j, '', numS)
-        mk(P, pr + 1, DED0 + 5, V(dt.total), { ...numS, font: { sz: 9, bold: true } })
-        // 3줄: 차인지급액 (맨 끝 칸)
-        for (let j = 0; j < 5; j++) mk(P, pr + 2, DED0 + j, '', numS)
-        mk(P, pr + 2, DED0 + 5, V(net), { ...numS, font: { sz: 10, bold: true } })
-      }
-      pMerges.push({ s: { r: pr, c: COL_SIGN }, e: { r: pr + 2, c: COL_SIGN } })
-      for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', cellS('center'))
-      if (mergedInto.get(r.id)) notes.push(`※ ${r.emp_name}: ${(mergedName.get(r.id) || []).join('·')} ${mergedInto.get(r.id).toLocaleString()}원을 연장근로수당에 합산`)
-      else if (recRetroPay(r)) notes.push(`※ ${r.emp_name}: 추가지급 ${recRetroPay(r).toLocaleString()}원을 연장근로수당에 합산`)
-      pT.basic += basic; pT.meal += meal; pT.wh += wh; pT.ot += ot; pT.night += night
+      put(a, C_CUT, cut ? -cut : 0, sNum)
+      put(a + 1, C_CUT, '', sNum)
+      put(a + 2, C_CUT, pay, sNumB)
+      ;[dt.pension, dt.health, dt.employment, dt.care, dt.incomeTax + dt.retro, dt.localTax]
+        .forEach((v, j) => put(a, C_D0 + j, V(v), sNum))
+      for (let j = 0; j < 5; j++) put(a + 1, C_D0 + j, '', sNum)      // 정산·기타공제 칸 (우리는 모르는 값)
+      put(a + 1, C_DT, V(dt.total), sNumB)
+      for (let j = 0; j < 5; j++) put(a + 2, C_D0 + j, '', sNum)
+      put(a + 2, C_DT, V(net), sNumB)
+      for (let k = 0; k < 3; k++) put(a + k, C_RCP, '', sTxt)
+      for (let c = 0; c < NCOL; c++) edge(a + 2, c, { bottom: medB })   // 사람 경계
+
+      if (merged) notes.push(`※ ${r.emp_name}: ${[...(mergedName.get(r.id) || []), ...(retroAsOt ? ['추가지급'] : [])].join('·')} ${merged.toLocaleString()}원을 '연장근로수당'에 합산`)
+      if (etc) notes.push(`※ ${r.emp_name}: 추가지급 ${etc.toLocaleString()}원을 '기타'에 합산`)
+      pT.basic += basic; pT.meal += meal; pT.ot += ot; pT.night += night; pT.etc += etc
       pT.hol += hol; pT.cut += cut; pT.pay += pay
+      if (withDeduct) {
+        pT.pension += dt.pension; pT.health += dt.health; pT.employment += dt.employment
+        pT.care += dt.care; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
+        pT.ded += dt.total; pT.net += net
+      }
       pr += 3
     })
-    // 사람 경계: 블록 맨 아랫줄에 굵은 선, 홀수 사람에는 옅은 음영 → 어디까지가 누구인지 한눈에
-    pBlocks.forEach(([r0, r1, idx]) => {
-      for (let c = 0; c < PH1.length; c++) {
-        paint(P, r1, c, { border: { bottom: thickBd } })
-        if (idx % 2 === 1) for (let rr = r0; rr <= r1; rr++) paint(P, rr, c, { fill: ZEBRA })
-      }
-    })
-    pMerges.push({ s: { r: pr, c: 0 }, e: { r: pr + 2, c: 2 } })
-    mk(P, pr, 0, `합계 (${staffRows.length}명)`, { ...hdrS, fill: TOT })
-    for (let k = 0; k < 3; k++) for (let c = 0; c < 3; c++) if (!(k === 0 && c === 0)) mk(P, pr + k, c, '', { ...hdrS, fill: TOT })
-    ;[pT.basic, pT.meal, pT.wh, pT.ot, pT.night, pT.hol, pT.cut ? -pT.cut : 0].forEach((v, j) => {
-      mk(P, pr, 3 + j, v, totS); mk(P, pr + 1, 3 + j, '', totS); mk(P, pr + 2, 3 + j, '', totS)
-      pMerges.push({ s: { r: pr, c: 3 + j }, e: { r: pr + 2, c: 3 + j } })
-    })
-    mk(P, pr, COL_PAY, pT.pay, { ...totS, font: { sz: 11, bold: true } })
-    mk(P, pr + 1, COL_PAY, '', totS); mk(P, pr + 2, COL_PAY, '', totS)
-    pMerges.push({ s: { r: pr, c: COL_PAY }, e: { r: pr + 2, c: COL_PAY } })
+
+    // 합계 (원본과 같은 3줄 구조)
     {
       const V = (v) => (withDeduct ? v : '')
+      setH(pr, 12.75); setH(pr + 1, 12.75); setH(pr + 2, 12.75)
+      pMerges.push({ s: { r: pr, c: 0 }, e: { r: pr + 2, c: 1 } })
+      put(pr, 0, `합계 (${ordered.length}명)`, { ...sHead, alignment: { horizontal: 'center', vertical: 'center' } })
+      for (let k = 0; k < 3; k++) for (let c = 0; c < 2; c++) if (!(k === 0 && c === 0)) put(pr + k, c, '', sHead)
+      ;[pT.basic, pT.meal, pT.ot, pT.night, pT.etc, pT.hol].forEach((v, j) => {
+        put(pr, 2 + j, v, sNumB); put(pr + 1, 2 + j, '', sNum); put(pr + 2, 2 + j, '', sNum)
+      })
+      put(pr, C_CUT, pT.cut ? -pT.cut : 0, sNumB)
+      put(pr + 1, C_CUT, '', sNum)
+      put(pr + 2, C_CUT, pT.pay, sNumB)
       ;[pT.pension, pT.health, pT.employment, pT.care, pT.incomeTax, pT.localTax]
-        .forEach((v, j) => mk(P, pr, DED0 + j, V(v), totS))
-      for (let j = 0; j < 5; j++) { mk(P, pr + 1, DED0 + j, '', totS); mk(P, pr + 2, DED0 + j, '', totS) }
-      mk(P, pr + 1, DED0 + 5, V(pT.ded), { ...totS, font: { sz: 11, bold: true } })
-      mk(P, pr + 2, DED0 + 5, V(pT.net), { ...totS, font: { sz: 11, bold: true } })
+        .forEach((v, j) => put(pr, C_D0 + j, V(v), sNumB))
+      for (let j = 0; j < 5; j++) { put(pr + 1, C_D0 + j, '', sNum); put(pr + 2, C_D0 + j, '', sNum) }
+      put(pr + 1, C_DT, V(pT.ded), sNumB)
+      put(pr + 2, C_DT, V(pT.net), sNumB)
+      for (let k = 0; k < 3; k++) put(pr + k, C_RCP, '', sTxt)
+      for (let c = 0; c < NCOL; c++) edge(pr + 2, c, { bottom: medB })
+      pr += 3
     }
-    for (let k = 0; k < 3; k++) mk(P, pr + k, COL_SIGN, '', totS)
-    let pEnd = pr + 3
-    notes.forEach(t => { mk(P, pEnd, 0, t, { font: { sz: 8, color: { rgb: '8A5A00' } } }); pEnd++ })
-    mk(P, pEnd + 1, 0, withDeduct
-      ? '※ 공제는 4대보험(국민·건강·장기요양·고용)과 소득세·지방소득세 기준입니다. 차인지급액 = 지급합계 − 공제합계.'
-      : '※ 공제·차인지급액 칸은 비워 두었습니다 (세무사가 직접 기입). 지급 항목까지만 채웠습니다.',
-      { font: { sz: 8, color: { rgb: '777777' } } })
-    P['!cols'] = [{ wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 12 },
-      { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 12 },
-      { wch: 8 }]
-    P['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
+
+    // 주석(합산·추가지급 내역)은 표 아래에 작게
+    let pEnd = pr
+    notes.forEach(t => { put(pEnd, 0, t, { font: { name: 'Arial', sz: 8, color: { rgb: '555555' } } }); pEnd++ })
+    if (!withDeduct) {
+      put(pEnd + 1, 0, '※ 공제·차인지급액 칸은 비워 두었습니다. 지급 항목까지만 채웠습니다.', { font: { name: 'Arial', sz: 8, color: { rgb: '777777' } } })
+      pEnd += 1
+    }
+
+    // 칸 너비·여백·줄 높이 모두 원본 값
+    P['!cols'] = [{ wch: 6.17 }, { wch: 6.17 },
+      ...Array.from({ length: 13 }, () => ({ wch: 8.17 })), { wch: 3.17 }]
+    P['!rows'] = pRows
+    P['!margins'] = { left: 0, right: 0, top: 0.198, bottom: 0, header: 0.5, footer: 0.5 }
     P['!merges'] = pMerges
-    P['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: pEnd + 1, c: PH1.length - 1 } })
+    P['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: pEnd + 1, c: NCOL - 1 } })
 
     // ───── 시트 2: 사업소득지급대장 (알바) ─────
     const B = {}, bMerges = []
