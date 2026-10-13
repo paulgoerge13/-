@@ -1213,11 +1213,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (kind === 'alba') {
       if (albaRows.length === 0) return false
       XLSX.utils.book_append_sheet(wb, B, '사업소득지급대장')
-      XLSX.writeFile(wb, `${ym} 사업소득지급대장_세무사제출${corpTag}${dTag}.xlsx`)
+      XLSX.writeFile(wb, `${ym} 사업소득지급대장_제출용${corpTag}${dTag}.xlsx`)
     } else {
       if (staffRows.length === 0) return false
       XLSX.utils.book_append_sheet(wb, P, '급여대장')
-      XLSX.writeFile(wb, `${ym} 급여대장_세무사제출${corpTag}${dTag}.xlsx`)
+      XLSX.writeFile(wb, `${ym} 급여대장_제출용${corpTag}${dTag}.xlsx`)
     }
     return true
   }
@@ -2326,7 +2326,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                 {/* ── 세무사 제출용 ── 법인마다, 대장마다, 공제 포함 여부마다 파일을 따로 받는다 */}
                 <div className="tax-dl">
                   <div className="tax-dl-head">
-                    <span className="tax-dl-title">📄 세무사 제출용</span>
+                    <span className="tax-dl-title">📄 제출용</span>
                     <label className="tax-dl-chk">
                       <input type="checkbox" checked={taxWithDeduct} onChange={e => setTaxWithDeduct(e.target.checked)} />
                       공제·차인지급액 포함
