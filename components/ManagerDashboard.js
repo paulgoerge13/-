@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_ORDER, CORP_OF_BRANCH, corpIdOfRecord } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
-import { isFirstMonthInsuranceFree, insBaseOf } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10 } from '../lib/insurance'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
@@ -243,10 +243,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (isFixed(r)) return 0
     if (r.emp_type !== '직원') return 0
     const taxable = fixGrand(r)
-    const pension    = Math.floor(taxable * 0.0475 / 10) * 10
-    const health     = Math.floor(taxable * 0.03595 / 10) * 10
-    const care       = Math.floor(health * 0.1314 / 10) * 10
-    const employment = Math.floor(taxable * (0.009 + RATE_EMP_STABLE) / 10) * 10
+    const pension    = floor10(taxable * 0.0475)
+    const health     = floor10(taxable * 0.03595)
+    const care       = floor10(health * 0.1314)
+    const employment = floor10(taxable * (0.009 + RATE_EMP_STABLE))
     const accident   = Math.floor(taxable * RATE_ACCIDENT / 10) * 10
     return pension + health + care + employment + accident
   }
@@ -264,9 +264,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양 미부과 — 고용보험만
     const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
     const ib = insBaseOf(r.work_data, taxable)      // 신고된 보수월액이 있으면 그 금액으로
-    const pension    = free ? 0 : Math.floor(ib.pension * 0.0475 / 10) * 10
-    const health     = free ? 0 : Math.floor(ib.health * 0.03595 / 10) * 10
-    const care       = free ? 0 : Math.floor(health * 0.1314 / 10) * 10
+    const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475)
+    const health     = free ? 0 : floor10(ib.health * 0.03595)
+    const care       = free ? 0 : floor10(health * 0.1314)
     const employment = Math.floor(taxable * 0.009 / 10) * 10
     return pension + health + care + employment
   }
@@ -276,29 +276,42 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const taxable = fixGrand(r)
     if (recDedType(r) === '4대') {
       const incomeTax = r.income_tax || 0
-      const localTax  = Math.floor((incomeTax * 0.1) / 10) * 10
+      const localTax  = floor10(incomeTax * 0.1)
       return incomeTax + localTax + retro
     }
     return Math.round(taxable * 0.03) + Math.round(taxable * 0.003) + retro  // 3.3% + 소급
   }
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
+  // ── 공단 정산·기타공제 ── 세무사 대장 2번째 줄에 들어가는 값 (우리가 계산할 수 없는 값)
+  //   work_data._adjPension / _adjHealth / _adjCare / _adjEmp / _adjEtc 에 적어두면
+  //   대장에 그대로 찍히고 공제합계에도 더해진다. 환급이면 음수로 적는다.
+  function recAdj(r) {
+    const wd = (r && r.work_data) || {}
+    const n = k => Math.round(Number(wd[k]) || 0)
+    const a = { pension: n('_adjPension'), health: n('_adjHealth'), care: n('_adjCare'),
+                employment: n('_adjEmp'), etc: n('_adjEtc') }
+    a.total = a.pension + a.health + a.care + a.employment + a.etc
+    return a
+  }
+
   // ── 공제 항목별 내역 ── 세무사 제출용 '공제 포함' 대장에서 칸마다 적는다 (합계는 위 함수들과 동일)
   function recDedDetail(r) {
-    const zero = { pension: 0, health: 0, care: 0, employment: 0, incomeTax: 0, localTax: 0, bizTax: 0, bizLocal: 0, retro: 0, total: 0 }
+    const zero = { pension: 0, health: 0, care: 0, employment: 0, incomeTax: 0, localTax: 0, bizTax: 0, bizLocal: 0, retro: 0, adj: { pension: 0, health: 0, care: 0, employment: 0, etc: 0, total: 0 }, total: 0 }
     if (isFixed(r)) return zero
     const g = fixGrand(r)
     const retro = Number(r.retro_income_tax) || 0
     if (recDedType(r) === '4대') {
       const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
       const ib = insBaseOf(r.work_data, g)
-      const pension    = free ? 0 : Math.floor(ib.pension * 0.0475 / 10) * 10
-      const health     = free ? 0 : Math.floor(ib.health * 0.03595 / 10) * 10
-      const care       = free ? 0 : Math.floor(health * 0.1314 / 10) * 10
-      const employment = Math.floor(g * 0.009 / 10) * 10
+      const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475)
+      const health     = free ? 0 : floor10(ib.health * 0.03595)
+      const care       = free ? 0 : floor10(health * 0.1314)
+      const employment = floor10(g * 0.009)
       const incomeTax  = r.income_tax || 0
-      const localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
-      return { ...zero, pension, health, care, employment, incomeTax, localTax, retro,
-        total: pension + health + care + employment + incomeTax + localTax + retro }
+      const localTax   = floor10(incomeTax * 0.1)
+      const adj = recAdj(r)
+      return { ...zero, pension, health, care, employment, incomeTax, localTax, retro, adj,
+        total: pension + health + care + employment + incomeTax + localTax + retro + adj.total }
     }
     const bizTax = Math.round(g * 0.03), bizLocal = Math.round(g * 0.003)
     return { ...zero, bizTax, bizLocal, retro, total: bizTax + bizLocal + retro }
@@ -1003,7 +1016,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     const pageTot = Math.max(1, Math.ceil(ordered.length / PAGE_N))
     const pT = { basic: 0, meal: 0, ot: 0, night: 0, etc: 0, hol: 0, cut: 0, pay: 0,
-                 pension: 0, health: 0, employment: 0, care: 0, incomeTax: 0, localTax: 0, ded: 0, net: 0 }
+                 pension: 0, health: 0, employment: 0, care: 0, incomeTax: 0, localTax: 0, ded: 0, net: 0,
+                 adjP: 0, adjH: 0, adjC: 0, adjE: 0, adjX: 0 }
     const notes = []
     let pr = 0
     ordered.forEach((r, i) => {
@@ -1046,7 +1060,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       put(a + 2, C_CUT, pay, sNumB)
       ;[dt.pension, dt.health, dt.employment, dt.care, dt.incomeTax + dt.retro, dt.localTax]
         .forEach((v, j) => put(a, C_D0 + j, V(v), sNum))
-      for (let j = 0; j < 5; j++) put(a + 1, C_D0 + j, '', sNum)      // 정산·기타공제 칸 (우리는 모르는 값)
+      // 2줄: 국민정산·건강정산·장기정산·고용정산·기타공제 (work_data._adj* 에 적어두면 찍힌다)
+      ;[dt.adj.pension, dt.adj.health, dt.adj.care, dt.adj.employment, dt.adj.etc]
+        .forEach((v, j) => put(a + 1, C_D0 + j, V(v), sNum))
       put(a + 1, C_DT, V(dt.total), sNumB)
       for (let j = 0; j < 5; j++) put(a + 2, C_D0 + j, '', sNum)
       put(a + 2, C_DT, V(net), sNumB)
@@ -1061,6 +1077,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         pT.pension += dt.pension; pT.health += dt.health; pT.employment += dt.employment
         pT.care += dt.care; pT.incomeTax += dt.incomeTax + dt.retro; pT.localTax += dt.localTax
         pT.ded += dt.total; pT.net += net
+        pT.adjP += dt.adj.pension; pT.adjH += dt.adj.health; pT.adjC += dt.adj.care
+        pT.adjE += dt.adj.employment; pT.adjX += dt.adj.etc
       }
       pr += 3
     })
@@ -1080,7 +1098,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       put(pr + 2, C_CUT, pT.pay, sNumB)
       ;[pT.pension, pT.health, pT.employment, pT.care, pT.incomeTax, pT.localTax]
         .forEach((v, j) => put(pr, C_D0 + j, V(v), sNumB))
-      for (let j = 0; j < 5; j++) { put(pr + 1, C_D0 + j, '', sNum); put(pr + 2, C_D0 + j, '', sNum) }
+      ;[pT.adjP, pT.adjH, pT.adjC, pT.adjE, pT.adjX].forEach((v, j) => put(pr + 1, C_D0 + j, V(v), sNumB))
+      for (let j = 0; j < 5; j++) put(pr + 2, C_D0 + j, '', sNum)
       put(pr + 1, C_DT, V(pT.ded), sNumB)
       put(pr + 2, C_DT, V(pT.net), sNumB)
       for (let k = 0; k < 3; k++) put(pr + k, C_RCP, '', sTxt)

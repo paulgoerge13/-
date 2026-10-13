@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 import { BRANCHES, CORPS, corpOf } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
-import { isFirstMonthInsuranceFree, insBaseOf } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10 } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
@@ -426,10 +426,11 @@ function calcDeductions(gross, emp) {
     const freeMonth = isFirstMonthInsuranceFree(emp.year, emp.month, emp.hireDate)
     // 국민연금·건강보험은 신고된 보수월액이 있으면 그 금액으로 (없으면 그 달 과세급여)
     const ib = insBaseOf(emp.workData, gross)
-    pension    = freeMonth ? 0 : Math.floor(ib.pension * RATE_PENSION / 10) * 10   // 10원 미만 절사 (4대보험 관행)
-    health     = freeMonth ? 0 : Math.floor(ib.health * RATE_HEALTH / 10) * 10
-    care       = freeMonth ? 0 : Math.floor(health * RATE_CARE / 10) * 10
-    employment = Math.floor(gross * RATE_EMPLOYMENT / 10) * 10
+    // 국민연금은 기준소득월액(천원 미만 절사·상하한 적용) 기준 — 건강보험은 절사하지 않는다
+    pension    = freeMonth ? 0 : floor10(pensionBase(ib.pension, emp.year, emp.month) * RATE_PENSION)   // 10원 미만 절사
+    health     = freeMonth ? 0 : floor10(ib.health * RATE_HEALTH)
+    care       = freeMonth ? 0 : floor10(health * RATE_CARE)
+    employment = floor10(gross * RATE_EMPLOYMENT)
     // 소득세: 간이세액표 자동조회(기본) / 비율(%) 자동 / 금액 직접입력
     const taxMode = emp.incomeTaxMode || 'table'   // 미지정이면 간이세액표 기본
     if (taxMode === 'table') {
@@ -440,7 +441,7 @@ function calcDeductions(gross, emp) {
     } else {
       incomeTax = (emp.manualIncomeTax || 0)
     }
-    localTax   = Math.floor((incomeTax * 0.1) / 10) * 10
+    localTax   = floor10(incomeTax * 0.1)
   } else if (dt === '3.3') {
     bizTax     = Math.round(gross * 0.03)    // 사업소득세 3%
     localTax   = Math.round(gross * 0.003)   // 지방소득세 0.3%
@@ -1928,7 +1929,7 @@ export default function Home() {
             gross = Number(r.data.grand_total) || 0
             const t = gross > 0 ? lookupSimpleTax(gross, 1) : 0   // 부양가족 1명 고정
             incomeTax = (t === null || t === undefined) ? 0 : t
-            localTax = Math.floor((incomeTax * 0.1) / 10) * 10     // 지방소득세 = 소득세 10%
+            localTax = floor10(incomeTax * 0.1)     // 지방소득세 = 소득세 10%
             retro = incomeTax + localTax
             break
           }
