@@ -936,16 +936,19 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const C_RCP = 15                     // 영수인
     const NCOL = 16
 
-    const FN = { name: 'Arial', sz: 9 }
+    // 글씨체도 원본에서 그대로 뽑았다 (BIFF FONT 레코드):
+    //   제목 바탕체 18pt 굵게 / 머리글 돋움체 9pt 굵게 / 데이터 바탕체 9pt / 주석 바탕체 8pt
+    const FN = { name: '바탕체', sz: 9 }
+    const FH = { name: '돋움체', sz: 9, bold: true }
     const thinB = { style: 'thin', color: { rgb: '000000' } }
     const medB = { style: 'medium', color: { rgb: '000000' } }
     const boxB = { top: thinB, bottom: thinB, left: thinB, right: thinB }
     const GRAY = { patternType: 'solid', fgColor: { rgb: 'C0C0C0' } }
     const WHITE = { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } }
-    const sHead = { font: { ...FN, bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, fill: GRAY, border: boxB }
+    const sHead = { font: { ...FH }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, fill: GRAY, border: boxB }
     const sTxt = { font: FN, alignment: { horizontal: 'center', vertical: 'center' }, fill: WHITE, border: boxB }
     const sNum = { font: FN, alignment: { horizontal: 'right', vertical: 'center' }, fill: WHITE, border: boxB, numFmt: '##,###' }
-    const sNumB = { ...sNum, font: { ...FN, bold: true } }
+    const sNumB = { ...sNum, font: { ...FN, bold: true } }   // 합계·지급합계는 굵게
 
     // 0 과 빈값은 칸을 비운다 (원본 서식 ##,### 과 같은 모양)
     const put = (r, c, v, s) => {
@@ -974,7 +977,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       setH(r0, 23.95); setH(r0 + 1, 15.9); setH(r0 + 2, 14.95); setH(r0 + 3, 2.1)
       for (let k = 4; k <= 7; k++) setH(r0 + k, 12.75)
       // 제목은 원본처럼 H열에 넣는다 (병합 없이 가운데로 흘러넘치게)
-      put(r0, 7, `${year}년 ${mm}월분  급여대장`, { font: { name: 'Arial', sz: 16, bold: true }, alignment: { horizontal: 'center', vertical: 'center' } })
+      put(r0, 7, `${year}년 ${mm}월분  급여대장`, { font: { name: '바탕체', sz: 18, bold: true }, alignment: { horizontal: 'center', vertical: 'center' } })
       put(r0 + 2, 0, corpName, { font: FN })
       put(r0 + 2, 3, '정렬 :코드순', { font: FN })
       put(r0 + 2, 7, `[귀속:${year}년 ${mm}월] [지급:${year}년 ${mm}월 ${lastDay}일]`, { font: FN, alignment: { horizontal: 'center' } })
@@ -1087,9 +1090,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
     // 주석(합산·추가지급 내역)은 표 아래에 작게
     let pEnd = pr
-    notes.forEach(t => { put(pEnd, 0, t, { font: { name: 'Arial', sz: 8, color: { rgb: '555555' } } }); pEnd++ })
+    notes.forEach(t => { put(pEnd, 0, t, { font: { name: '바탕체', sz: 8, color: { rgb: '555555' } } }); pEnd++ })
     if (!withDeduct) {
-      put(pEnd + 1, 0, '※ 공제·차인지급액 칸은 비워 두었습니다. 지급 항목까지만 채웠습니다.', { font: { name: 'Arial', sz: 8, color: { rgb: '777777' } } })
+      put(pEnd + 1, 0, '※ 공제·차인지급액 칸은 비워 두었습니다. 지급 항목까지만 채웠습니다.', { font: { name: '바탕체', sz: 8, color: { rgb: '777777' } } })
       pEnd += 1
     }
 
