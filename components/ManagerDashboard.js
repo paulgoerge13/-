@@ -1100,7 +1100,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     P['!cols'] = [{ wch: 6.17 }, { wch: 6.17 },
       ...Array.from({ length: 13 }, () => ({ wch: 8.17 })), { wch: 3.17 }]
     P['!rows'] = pRows
-    P['!margins'] = { left: 0, right: 0, top: 0.198, bottom: 0, header: 0.5, footer: 0.5 }
+    P['!margins'] = { left: 0, right: 0, top: 0.1979166716337204, bottom: 0, header: 0.5, footer: 0.5 }
     P['!merges'] = pMerges
     P['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: pEnd + 1, c: NCOL - 1 } })
 
