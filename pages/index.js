@@ -443,8 +443,9 @@ function calcDeductions(gross, emp) {
     }
     localTax   = floor10(incomeTax * 0.1)
   } else if (dt === '3.3') {
-    bizTax     = Math.round(gross * 0.03)    // 사업소득세 3%
-    localTax   = Math.round(gross * 0.003)   // 지방소득세 0.3%
+    // 사업소득세 3% · 지방소득세 = 사업소득세의 10% — 둘 다 10원 미만 절사 (세무사 대장 기준)
+    bizTax     = floor10(gross * 0.03)
+    localTax   = floor10(bizTax * 0.1)
   }
   const total = pension + health + care + employment + incomeTax + localTax + bizTax + retroTax
   return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, retroTax, total, net: gross - total }
