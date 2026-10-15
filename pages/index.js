@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
-import { BRANCHES, CORPS, corpOf } from '../lib/branches'
+import { BRANCHES, CORPS, CORP_ORDER, corpOf } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
 import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10 } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
@@ -2971,7 +2971,7 @@ export default function Home() {
               <h2 className="page-title">💰 급여 계산 · 지점 선택</h2>
               <p className="page-sub">급여 계산할 지점을 선택해주세요 · 사업자(법인)별로 묶여 있습니다</p>
               {/* 사업자(법인)별로 묶어 보여준다 — 더콤마 6개 지점이 (주)데이원컴퍼니 소속임이 드러나게 */}
-              {['dayone', 'woodand', 'etc'].map(cid => {
+              {CORP_ORDER.map(cid => {
                 const list = BRANCHES.filter(b => (b.corp || 'etc') === cid)
                 if (list.length === 0) return null
                 const corp = CORPS[cid]
