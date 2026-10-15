@@ -2314,8 +2314,13 @@ export default function Home() {
     // 계산방법 표
     const methodRows = payItems.map(([l, v, f]) => `<tr><td class="c-item">${l}</td><td class="c-formula">${f}</td><td class="c-amt">${w(v)}</td></tr>`).join('')
 
-    const today = new Date()
-    const pay = `${today.getFullYear()}.${String(today.getMonth()+1).padStart(2,'0')}.${String(today.getDate()).padStart(2,'0')}`
+    // 지급일 = 그 달 급여를 실제로 주는 날 (관리자 이체 화면과 같은 규칙)
+    //   다음 달 10일(4대보험 직원) / 15일(3.3% 사업소득 · 구복만두는 전원)
+    //   예전엔 '오늘 날짜'가 찍혀 지난 달 명세서를 뽑으면 지급일이 틀렸다.
+    const payDay = (selectedBranch?.brand === 'gubok' || t.deductions.dt === '3.3') ? 15 : 10
+    const py_ = activeEmp.month === 12 ? activeEmp.year + 1 : activeEmp.year
+    const pm_ = activeEmp.month === 12 ? 1 : activeEmp.month + 1
+    const pay = `${py_}.${String(pm_).padStart(2,'0')}.${String(payDay).padStart(2,'0')}`
 
     const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>급여명세서_${activeEmp.name}_${activeEmp.year}년${activeEmp.month}월</title>
 <style>
@@ -2341,7 +2346,7 @@ export default function Home() {
 
   <table class="bordered">
     <colgroup><col style="width:13%"><col style="width:12%"><col style="width:13%"><col style="width:17%"><col style="width:13%"><col style="width:32%"></colgroup>
-    <tr><td class="lbl-cell">사원코드</td><td class="ctr">${esc(activeEmp.empCode || '')}</td>
+    <tr><td class="lbl-cell">사원코드</td><td class="ctr">${esc(activeEmp.empCode || activeEmp.workData?._empCode || '')}</td>
         <td class="lbl-cell">사원명</td><td class="ctr">${esc(activeEmp.name || '')}</td>
         <td class="lbl-cell">생년월일</td><td class="ctr">${birth}</td></tr>
     <tr><td class="lbl-cell">부 서</td><td class="ctr">${esc(selectedBranch?.name || '')}</td>
