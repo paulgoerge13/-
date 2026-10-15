@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 import { BRANCHES, CORPS, CORP_ORDER, corpOf } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
-import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10 } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
@@ -427,25 +427,26 @@ function calcDeductions(gross, emp) {
     // 국민연금·건강보험은 신고된 보수월액이 있으면 그 금액으로 (없으면 그 달 과세급여)
     const ib = insBaseOf(emp.workData, gross)
     // 국민연금은 기준소득월액(천원 미만 절사·상하한 적용) 기준 — 건강보험은 절사하지 않는다
-    pension    = freeMonth ? 0 : floor10(pensionBase(ib.pension, emp.year, emp.month) * RATE_PENSION)   // 10원 미만 절사
-    health     = freeMonth ? 0 : floor10(ib.health * RATE_HEALTH)
-    care       = freeMonth ? 0 : floor10(health * RATE_CARE)
-    employment = floor10(gross * RATE_EMPLOYMENT)
+    pension    = freeMonth ? 0 : floor10(pensionBase(ib.pension, emp.year, emp.month) * RATE_PENSION, emp.year, emp.month)   // 10원 미만 절사
+    health     = freeMonth ? 0 : floor10(ib.health * RATE_HEALTH, emp.year, emp.month)
+    care       = freeMonth ? 0 : floor10(health * RATE_CARE, emp.year, emp.month)
+    employment = floor10(gross * RATE_EMPLOYMENT, emp.year, emp.month)
     // 소득세: 간이세액표 자동조회(기본) / 비율(%) 자동 / 금액 직접입력
     const taxMode = emp.incomeTaxMode || 'table'   // 미지정이면 간이세액표 기본
     if (taxMode === 'table') {
       const t = lookupSimpleTax(gross, emp.dependents || 1)   // 과세급여 + 부양가족수 → 간이세액표
       incomeTax = (t === null) ? (emp.manualIncomeTax || 0) : t // 표 범위 초과(월 1,000만원↑)면 직접입력값 사용
     } else if (taxMode === 'rate') {
-      incomeTax = floor10(gross * (Number(emp.incomeTaxRate) || 0) / 100)
+      incomeTax = floor10(gross * (Number(emp.incomeTaxRate) || 0) / 100, emp.year, emp.month)
     } else {
       incomeTax = (emp.manualIncomeTax || 0)
     }
-    localTax   = floor10(incomeTax * 0.1)
+    localTax   = floor10(incomeTax * 0.1, emp.year, emp.month)
   } else if (dt === '3.3') {
-    // 사업소득세 3% · 지방소득세 = 사업소득세의 10% — 둘 다 10원 미만 절사 (세무사 대장 기준)
-    bizTax     = floor10(gross * 0.03)
-    localTax   = floor10(bizTax * 0.1)
+    // 사업소득세 3% · 지방소득세 — 9월분부터 세무사 방식(10원 미만 절사), 그 전 달은 예전 방식 그대로
+    const w33  = bizWithholding(gross, emp.year, emp.month)
+    bizTax     = w33.tax
+    localTax   = w33.local
   }
   const total = pension + health + care + employment + incomeTax + localTax + bizTax + retroTax
   return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, retroTax, total, net: gross - total }
@@ -1930,7 +1931,7 @@ export default function Home() {
             gross = Number(r.data.grand_total) || 0
             const t = gross > 0 ? lookupSimpleTax(gross, 1) : 0   // 부양가족 1명 고정
             incomeTax = (t === null || t === undefined) ? 0 : t
-            localTax = floor10(incomeTax * 0.1)     // 지방소득세 = 소득세 10%
+            localTax = floor10(incomeTax * 0.1, py, pm)     // 지방소득세 = 소득세 10% (그 달 기준 절사)
             retro = incomeTax + localTax
             break
           }

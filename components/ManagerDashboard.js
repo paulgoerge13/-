@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_ORDER, CORP_OF_BRANCH, corpIdOfRecord } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
-import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10 } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
@@ -243,10 +243,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (isFixed(r)) return 0
     if (r.emp_type !== '직원') return 0
     const taxable = fixGrand(r)
-    const pension    = floor10(taxable * 0.0475)
-    const health     = floor10(taxable * 0.03595)
-    const care       = floor10(health * 0.1314)
-    const employment = floor10(taxable * (0.009 + RATE_EMP_STABLE))
+    const pension    = floor10(taxable * 0.0475, r.year, r.month)
+    const health     = floor10(taxable * 0.03595, r.year, r.month)
+    const care       = floor10(health * 0.1314, r.year, r.month)
+    const employment = floor10(taxable * (0.009 + RATE_EMP_STABLE), r.year, r.month)
     const accident   = Math.floor(taxable * RATE_ACCIDENT / 10) * 10
     return pension + health + care + employment + accident
   }
@@ -264,10 +264,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양 미부과 — 고용보험만
     const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
     const ib = insBaseOf(r.work_data, taxable)      // 신고된 보수월액이 있으면 그 금액으로
-    const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475)
-    const health     = free ? 0 : floor10(ib.health * 0.03595)
-    const care       = free ? 0 : floor10(health * 0.1314)
-    const employment = floor10(taxable * 0.009)
+    const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month)
+    const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month)
+    const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month)
+    const employment = floor10(taxable * 0.009, r.year, r.month)
     return pension + health + care + employment
   }
   function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%) + 소급 소득세
@@ -276,12 +276,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const taxable = fixGrand(r)
     if (recDedType(r) === '4대') {
       const incomeTax = r.income_tax || 0
-      const localTax  = floor10(incomeTax * 0.1)
+      const localTax  = floor10(incomeTax * 0.1, r.year, r.month)
       return incomeTax + localTax + retro
     }
-    // 사업소득 원천징수: 소득세 3% · 지방소득세 = 소득세의 10% — 둘 다 10원 미만 절사 (세무사 대장 기준)
-    const biz = floor10(taxable * 0.03)
-    return biz + floor10(biz * 0.1) + retro  // 3.3% + 소급
+    // 사업소득 원천징수 3.3% — 9월분부터 세무사 방식(10원 미만 절사), 그 전 달은 예전 방식 그대로
+    const w = bizWithholding(taxable, r.year, r.month)
+    return w.tax + w.local + retro  // 3.3% + 소급
   }
   function recDeduction(r) { return recMajorIns(r) + recWithholding(r) }
   // ── 공단 정산·기타공제 ── 세무사 대장 2번째 줄에 들어가는 값 (우리가 계산할 수 없는 값)
@@ -305,17 +305,18 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (recDedType(r) === '4대') {
       const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
       const ib = insBaseOf(r.work_data, g)
-      const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475)
-      const health     = free ? 0 : floor10(ib.health * 0.03595)
-      const care       = free ? 0 : floor10(health * 0.1314)
-      const employment = floor10(g * 0.009)
+      const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month)
+      const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month)
+      const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month)
+      const employment = floor10(g * 0.009, r.year, r.month)
       const incomeTax  = r.income_tax || 0
-      const localTax   = floor10(incomeTax * 0.1)
+      const localTax   = floor10(incomeTax * 0.1, r.year, r.month)
       const adj = recAdj(r)
       return { ...zero, pension, health, care, employment, incomeTax, localTax, retro, adj,
         total: pension + health + care + employment + incomeTax + localTax + retro + adj.total }
     }
-    const bizTax = floor10(g * 0.03), bizLocal = floor10(bizTax * 0.1)   // 10원 미만 절사 (세무사 대장 기준)
+    const w33 = bizWithholding(g, r.year, r.month)   // 9월분부터 10원 미만 절사, 그 전 달은 예전 방식
+    const bizTax = w33.tax, bizLocal = w33.local
     return { ...zero, bizTax, bizLocal, retro, total: bizTax + bizLocal + retro }
   }
   // 식대 일할: 직원 중도 입·퇴사면 근무일 비례로 식대도 줄임 (개인 화면과 동일) — 만근/알바는 그대로
