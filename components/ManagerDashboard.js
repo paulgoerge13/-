@@ -1010,9 +1010,15 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         }
       }
 
-      const ordered = [...staffRows].sort((a, b) =>
-        String(a.hire_date || '9999').localeCompare(String(b.hire_date || '9999')) ||
-        a.emp_name.localeCompare(b.emp_name, 'ko'))
+      // '코드순' — 세무사 사원코드(work_data._empCode)가 있으면 코드 숫자 순, 없으면 입사일순
+      const codeOf = r => String(((r.work_data || {})._empCode) || '').trim()
+      const ordered = [...staffRows].sort((a, b) => {
+        const ca = codeOf(a), cb = codeOf(b)
+        if (ca && cb) return Number(ca) - Number(cb) || ca.localeCompare(cb)
+        if (ca || cb) return ca ? -1 : 1
+        return String(a.hire_date || '9999').localeCompare(String(b.hire_date || '9999')) ||
+          a.emp_name.localeCompare(b.emp_name, 'ko')
+      })
       const pageTot = Math.max(1, Math.ceil(ordered.length / PAGE_N))
       const T = { basic: 0, meal: 0, ot: 0, night: 0, etc: 0, hol: 0, cut: 0, pay: 0,
                   pension: 0, health: 0, employment: 0, care: 0, incomeTax: 0, localTax: 0, ded: 0, net: 0,
@@ -1038,7 +1044,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         const dt = recDedDetail(r)
         const net = pay - dt.total
         block(pr, [
-          { 0: String(i + 1).padStart(3, '0'), 1: r.emp_name, 2: basic, 3: meal, 4: ot, 5: night, 6: etc, 7: hol, 8: cut ? -cut : 0,
+          { 0: codeOf(r) || String(i + 1).padStart(3, '0'), 1: r.emp_name, 2: basic, 3: meal, 4: ot, 5: night, 6: etc, 7: hol, 8: cut ? -cut : 0,
             9: V(dt.pension), 10: V(dt.health), 11: V(dt.employment), 12: V(dt.care), 13: V(dt.incomeTax + dt.retro), 14: V(dt.localTax) },
           { 0: r.hire_date || '', 9: V(dt.adj.pension), 10: V(dt.adj.health), 11: V(dt.adj.care), 12: V(dt.adj.employment), 13: V(dt.adj.etc), 14: V(dt.total) },
           { 0: r.resign_date || '', 1: r.branch, 8: pay, 14: V(net) },
@@ -1120,7 +1126,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
           let v = '', font = F(BT, 9), h = c <= 3 ? 'center' : 'right', fmt = c >= 4 && c <= 8 ? '###,###,###' : undefined
           if (k === 0) {
             if (c === 0) v = String(i + 1)
-            else if (c === 1) v = String(i + 1).padStart(6, '0')
+            else if (c === 1) v = String(((r.work_data || {})._empCode) || '').trim() || String(i + 1).padStart(6, '0')   // 세무사 사원코드
             else if (c === 2) v = r.emp_name
             else if (c === 3) v = ymTxt
             else if (c === 4) v = amt
