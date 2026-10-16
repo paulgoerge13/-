@@ -243,10 +243,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (isFixed(r)) return 0
     if (r.emp_type !== '직원') return 0
     const taxable = fixGrand(r)
-    const pension    = floor10(taxable * 0.0475, r.year, r.month)
-    const health     = floor10(taxable * 0.03595, r.year, r.month)
-    const care       = floor10(health * 0.1314, r.year, r.month)
-    const employment = floor10(taxable * (0.009 + RATE_EMP_STABLE), r.year, r.month)
+    const pension    = floor10(taxable * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const health     = floor10(taxable * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const care       = floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const employment = floor10(taxable * (0.009 + RATE_EMP_STABLE), r.year, r.month, !!(r.work_data || {})._legacyRound)
     const accident   = Math.floor(taxable * RATE_ACCIDENT / 10) * 10
     return pension + health + care + employment + accident
   }
@@ -264,10 +264,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양 미부과 — 고용보험만
     const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
     const ib = insBaseOf(r.work_data, taxable)      // 신고된 보수월액이 있으면 그 금액으로
-    const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month)
-    const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month)
-    const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month)
-    const employment = floor10(taxable * 0.009, r.year, r.month)
+    const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const employment = floor10(taxable * 0.009, r.year, r.month, !!(r.work_data || {})._legacyRound)
     return pension + health + care + employment
   }
   function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%) + 소급 소득세
@@ -276,7 +276,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const taxable = fixGrand(r)
     if (recDedType(r) === '4대') {
       const incomeTax = r.income_tax || 0
-      const localTax  = floor10(incomeTax * 0.1, r.year, r.month)
+      const localTax  = floor10(incomeTax * 0.1, r.year, r.month, !!(r.work_data || {})._legacyRound)
       return incomeTax + localTax + retro
     }
     // 사업소득 원천징수 3.3% — 9월분부터 세무사 방식(10원 미만 절사), 그 전 달은 예전 방식 그대로
@@ -305,12 +305,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (recDedType(r) === '4대') {
       const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
       const ib = insBaseOf(r.work_data, g)
-      const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month)
-      const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month)
-      const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month)
-      const employment = floor10(g * 0.009, r.year, r.month)
+      const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
+      const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
+      const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
+      const employment = floor10(g * 0.009, r.year, r.month, !!(r.work_data || {})._legacyRound)
       const incomeTax  = r.income_tax || 0
-      const localTax   = floor10(incomeTax * 0.1, r.year, r.month)
+      const localTax   = floor10(incomeTax * 0.1, r.year, r.month, !!(r.work_data || {})._legacyRound)
       const adj = recAdj(r)
       return { ...zero, pension, health, care, employment, incomeTax, localTax, retro, adj,
         total: pension + health + care + employment + incomeTax + localTax + retro + adj.total }

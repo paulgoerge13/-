@@ -427,21 +427,21 @@ function calcDeductions(gross, emp) {
     // 국민연금·건강보험은 신고된 보수월액이 있으면 그 금액으로 (없으면 그 달 과세급여)
     const ib = insBaseOf(emp.workData, gross)
     // 국민연금은 기준소득월액(천원 미만 절사·상하한 적용) 기준 — 건강보험은 절사하지 않는다
-    pension    = freeMonth ? 0 : floor10(pensionBase(ib.pension, emp.year, emp.month) * RATE_PENSION, emp.year, emp.month)   // 10원 미만 절사
-    health     = freeMonth ? 0 : floor10(ib.health * RATE_HEALTH, emp.year, emp.month)
-    care       = freeMonth ? 0 : floor10(health * RATE_CARE, emp.year, emp.month)
-    employment = floor10(gross * RATE_EMPLOYMENT, emp.year, emp.month)
+    pension    = freeMonth ? 0 : floor10(pensionBase(ib.pension, emp.year, emp.month) * RATE_PENSION, emp.year, emp.month, !!(emp.workData || {})._legacyRound)   // 10원 미만 절사
+    health     = freeMonth ? 0 : floor10(ib.health * RATE_HEALTH, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
+    care       = freeMonth ? 0 : floor10(health * RATE_CARE, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
+    employment = floor10(gross * RATE_EMPLOYMENT, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
     // 소득세: 간이세액표 자동조회(기본) / 비율(%) 자동 / 금액 직접입력
     const taxMode = emp.incomeTaxMode || 'table'   // 미지정이면 간이세액표 기본
     if (taxMode === 'table') {
       const t = lookupSimpleTax(gross, emp.dependents || 1)   // 과세급여 + 부양가족수 → 간이세액표
       incomeTax = (t === null) ? (emp.manualIncomeTax || 0) : t // 표 범위 초과(월 1,000만원↑)면 직접입력값 사용
     } else if (taxMode === 'rate') {
-      incomeTax = floor10(gross * (Number(emp.incomeTaxRate) || 0) / 100, emp.year, emp.month)
+      incomeTax = floor10(gross * (Number(emp.incomeTaxRate) || 0) / 100, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
     } else {
       incomeTax = (emp.manualIncomeTax || 0)
     }
-    localTax   = floor10(incomeTax * 0.1, emp.year, emp.month)
+    localTax   = floor10(incomeTax * 0.1, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
   } else if (dt === '3.3') {
     // 사업소득세 3% · 지방소득세 — 9월분부터 세무사 방식(10원 미만 절사), 그 전 달은 예전 방식 그대로
     const w33  = bizWithholding(gross, emp.year, emp.month)
