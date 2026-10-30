@@ -239,13 +239,16 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   //   ※ 산재 요율은 업종·사업장마다 다름 → 고지서 요율이 다르면 아래 숫자만 고치면 된다.
   const RATE_ACCIDENT = 0.010      // 산재보험 1.0% (음식점업 기준 · 전액 회사 부담)
   const RATE_EMP_STABLE = 0.0025   // 고용안정·직업능력개발 0.25% (150인 미만 · 회사만)
+  //   공제 기준은 근로자 부담분(recMajorIns)과 같다 — 3.3%로 뗀 달은 없음, 입사 첫 달 미부과, 보수월액 우선.
   function recMajorInsCompany(r) {
     if (isFixed(r)) return 0
-    if (r.emp_type !== '직원') return 0
+    if (recDedType(r) !== '4대') return 0
     const taxable = fixGrand(r)
-    const pension    = floor10(taxable * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
-    const health     = floor10(taxable * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
-    const care       = floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
+    const ib = insBaseOf(r.work_data, taxable)
+    const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
     const employment = floor10(taxable * (0.009 + RATE_EMP_STABLE), r.year, r.month, !!(r.work_data || {})._legacyRound)
     const accident   = Math.floor(taxable * RATE_ACCIDENT / 10) * 10
     return pension + health + care + employment + accident
@@ -774,6 +777,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
         ledgerStaff: rr.filter(r => recDedType(r) === '4대').length,
         ledgerAlba: albaLedgerCount(rr),
         total: sum(fixGrand), major: sum(recMajorIns), withhold: sum(recWithholding),
+        company: sum(recMajorInsCompany),
+        insAdj: sum(r => { const a = recAdj(r); return a.total - a.etc }),   // 공단 정산 (기타공제는 공단에 내는 돈이 아니라 제외)
         staffNet: rr.filter(r => r.emp_type === '직원').reduce((t, r) => t + transferAmt(r), 0),
         albaNet: rr.filter(r => r.emp_type !== '직원').reduce((t, r) => t + transferAmt(r), 0) }
     }).filter(x => x.count > 0)
@@ -784,9 +789,64 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       total: sum('total'), major: sum('major'), withhold: sum('withhold'),
       ledgerStaff: sum('ledgerStaff'), ledgerAlba: sum('ledgerAlba'),
       net: sum('staffNet') + sum('albaNet'),
-      company: bs.reduce((t, x) => t + x.major, 0),   // 회사부담분은 아래에서 다시 계산
+      company: sum('company'), insAdj: sum('insAdj'),
     }
   }).filter(x => x.branches.length > 0)
+
+  // ── 사업자별 회사 납부액 ── 공단·세무서에 실제로 내는 돈 (4대보험 직원분+회사분 / 원천세)
+  function renderCorpPayTable() {
+    const rows = byCorpSummary.map(c => {
+      const staff = c.major + c.insAdj
+      return { key: c.cid, name: c.corp.payName, staff, company: c.company, ins: staff + c.company, withhold: c.withhold }
+    })
+    const total = k => rows.reduce((s, x) => s + x[k], 0)
+    const cS = { padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #ececec', whiteSpace: 'nowrap' }
+    const hS = { ...cS, textAlign: 'center', color: '#8a8170', fontWeight: 700, background: '#f3efe6', borderBottom: '1px solid #d8d3c8' }
+    const nS = { ...cS, textAlign: 'left', fontWeight: 700, color: '#1a1a1a' }
+    const sumS = { ...cS, fontWeight: 800, background: '#f3efe6' }
+    return (
+      <div style={{ overflowX: 'auto', border: '1px solid #e2ded5', borderRadius: 12, background: '#fff', marginBottom: 16 }}>
+        <div style={{ padding: '10px 12px 8px', fontSize: 13.5, fontWeight: 800, color: '#3f3a33' }}>사업자별 회사 납부액 <span style={{ fontWeight: 400, color: '#a89878', fontSize: 11.5 }}>{year}년 {month}월분</span></div>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 620 }}>
+          <thead>
+            <tr>
+              <th style={{ ...hS, textAlign: 'left' }}>구분</th>
+              <th style={hS}>직원분</th>
+              <th style={hS}>회사분</th>
+              <th style={{ ...hS, color: '#a8763a' }}>4대보험 납부</th>
+              <th style={{ ...hS, color: '#a8763a' }}>원천세 납부</th>
+              <th style={{ ...hS, background: '#ece7da' }}>납부 합계</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(x => (
+              <tr key={x.key}>
+                <td style={nS}>{x.name}</td>
+                <td style={cS}>{x.staff ? fmt(x.staff) : '·'}</td>
+                <td style={cS}>{x.company ? fmt(x.company) : '·'}</td>
+                <td style={{ ...cS, fontWeight: 700 }}>{x.ins ? fmt(x.ins) : '·'}</td>
+                <td style={{ ...cS, fontWeight: 700 }}>{x.withhold ? fmt(x.withhold) : '·'}</td>
+                <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(x.ins + x.withhold)}</td>
+              </tr>
+            ))}
+            {rows.length > 1 && (
+              <tr>
+                <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }}>합계</td>
+                <td style={sumS}>{fmt(total('staff'))}</td>
+                <td style={sumS}>{fmt(total('company'))}</td>
+                <td style={sumS}>{fmt(total('ins'))}</td>
+                <td style={sumS}>{fmt(total('withhold'))}</td>
+                <td style={{ ...sumS, background: '#ece7da' }}>{fmt(total('ins') + total('withhold'))}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <div style={{ fontSize: 11, color: '#a89878', padding: '8px 12px', lineHeight: 1.5 }}>
+          사이트 계산값입니다. 4대보험은 공단 고지서와 다를 수 있어요 (회사분에 산재 1.0% 포함) · 원천세 = 소득세+지방세+알바 3.3%+소급
+        </div>
+      </div>
+    )
+  }
 
   const grandAll = byBranch.reduce((s, x) => s + x.total, 0)
   const staffAll = byBranch.reduce((s, x) => s + x.staffTotal, 0)
@@ -2193,6 +2253,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                   </div>
                 </div>
 
+                {renderCorpPayTable()}
+
                 {/* 색상 안내 + (이체 진행) + 엑셀 다운로드 */}
                 <div className="tx-board-bar">
                   <span className="tx-legend">
@@ -2579,6 +2641,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                 </div>
               </>
             )}
+
+            {renderCorpPayTable()}
 
             <div className="md-sec-head">
               <div className="md-sec-title">지점별 현황 (지점을 누르면 상세)</div>
