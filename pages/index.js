@@ -838,6 +838,7 @@ export default function Home() {
       } else {
         updateWorkDay(dateStr, 'daytimeH', split.day)
         updateWorkDay(dateStr, 'nightH', split.night)
+        autoFixedOt(dateStr, split)
       }
     }
     // 임시 입력 상태 초기화
@@ -848,6 +849,18 @@ export default function Home() {
       }
       return next
     })
+  }
+
+  // ── 고정 연장 계약 직원: 퇴근 시간을 늦게 적으면 하루 소정시간(기본 8h)을 넘긴 만큼을 '연장'에 자동 기록 ──
+  //   달력에서 연장한 날이 바로 보이게 하고, 한 달 합계가 고정 연장시간을 넘으면 넘친 만큼만 추가 지급된다.
+  //   (고정 연장 계약이 아닌 직원은 지금처럼 '연장' 칸을 직접 적는다)
+  function autoFixedOt(dateStr, split) {
+    const wd = activeEmp.workData || {}
+    if (activeEmp.empType !== '직원') return
+    if (!(Number(wd._fixedOtH) > 0 || Number(wd._fixedOtPay) > 0)) return
+    const dayH = Math.max(0, Number(wd._dayHours) || 0) || 8
+    const ot = Math.max(0, Math.round(((split.day || 0) + (split.night || 0) - dayH) * 2) / 2)
+    updateWorkDay(dateStr, 'overtimeH', ot)
   }
 
   function handleTimeChange(dateStr, field, val) {
@@ -876,6 +889,7 @@ export default function Home() {
       if (split) {
         updateWorkDay(dateStr, 'daytimeH', split.day)
         updateWorkDay(dateStr, 'nightH', split.night)
+        autoFixedOt(dateStr, split)
       }
     }
   }
@@ -1477,8 +1491,17 @@ export default function Home() {
     // ── 계약서 고정 기본급(_fixedBasic): 기본급을 시급×시간이 아니라 계약서 금액 그대로 (식대 제외 금액) ──
     //   통상시급에 식대가 들어가 있어 시급×209 로는 계약 금액이 안 나오는 경우 (예: 안양 도주완 2,248,500)
     const fixedBasic = (isStaff && !isMonthlySalary) ? Math.max(0, Math.round(Number(emp.workData?._fixedBasic) || 0)) : 0
+    // ── 고정급 계약의 수습 비율 ──
+    //   계약서: "수습 중 월 임금은 월 지급 총액(기본급+고정연장+식대)의 90%, 식대는 전액 지급하고
+    //   기본급과 고정 연장수당을 조정" → 기본급·고정연장에 각각 90%를 곱하면 총액이 90%보다 커진다.
+    //   (기본급+고정연장) × r + 식대 = 총액 × 90%  →  r = (총액 × 90% − 식대) ÷ (기본급+고정연장)
+    const fixedOtPayRaw = (isStaff && !isMonthlySalary) ? Math.max(0, Math.round(Number(emp.workData?._fixedOtPay) || 0)) : 0
+    const fixedMeal = Math.max(0, Number(emp.mealAllowance) || 0)
+    const fixedProbMult = (fixedBasic > 0 && probMult < 1)
+      ? Math.max(0, (probMult * (fixedBasic + fixedOtPayRaw + fixedMeal) - fixedMeal) / (fixedBasic + fixedOtPayRaw))
+      : probMult
     const staffMonthlyBasic = isMonthlySalary ? Math.round(monthlyTaxableBasic)
-      : fixedBasic > 0 ? Math.round(fixedBasic * probMult)
+      : fixedBasic > 0 ? Math.round(fixedBasic * fixedProbMult)
       : Math.round(baseWage * basicHours)
     // ── 결근 공제 (직원만): 결근 1일당 시급×하루치 + 결근이 든 주마다 시급×하루치(주휴) ──
     //   연차 없는 직원이 무단결근하면 기본급에서 하루치 + 그 주 주휴를 차감.
@@ -1521,9 +1544,9 @@ export default function Home() {
     //   금액(_fixedOtPay)을 적으면 그 금액 그대로(계약서가 100원 단위로 끊은 경우), 비우면 시간 × 1.5 × 통상시급.
     //   기본급과 같이 재직 비율·수습 비율로 일할한다.
     const fixedOtH       = (isStaff && !isMonthlySalary) ? Math.max(0, Number(emp.workData?._fixedOtH) || 0) : 0
-    const fixedOtPayIn   = (isStaff && !isMonthlySalary) ? Math.max(0, Math.round(Number(emp.workData?._fixedOtPay) || 0)) : 0
+    const fixedOtPayIn   = fixedOtPayRaw
     const hasFixedOt     = fixedOtH > 0 || fixedOtPayIn > 0
-    const fixedOtPay     = !hasFixedOt ? 0 : Math.round((fixedOtPayIn > 0 ? Math.round(fixedOtPayIn * probMult) : calcOvertime(fixedOtH, baseWage)) * proration.ratio)
+    const fixedOtPay     = !hasFixedOt ? 0 : Math.round((fixedOtPayIn > 0 ? Math.round(fixedOtPayIn * fixedProbMult) : calcOvertime(fixedOtH, baseWage)) * proration.ratio)
     const fixedOtLimit   = fixedOtH * proration.ratio
     const excessOtH      = hasFixedOt ? Math.max(0, mOtPost - fixedOtLimit) : 0
     const excessOtPay    = hasFixedOt ? calcOvertime(excessOtH, baseWage) : 0
@@ -1571,7 +1594,7 @@ export default function Home() {
       hoursHolidayWork, proration, staffMonthlyBasic, isMonthlySalary, baseWage,
       absentDays, absentWeeks: absentWeekSet.size, absentDeduction, dayHours,
       fixedNightH, fixedNightPay, fixedNightLimit, excessNightH, excessNightPay, nightPoolH,
-      fixedBasic, hasFixedOt, fixedOtH, fixedOtPay, fixedOtLimit, excessOtH, excessOtPay, mOtPost,
+      fixedBasic, hasFixedOt, fixedOtH, fixedOtPay, fixedOtLimit, excessOtH, excessOtPay, mOtPost, fixedProbMult, fixedMeal, fixedOtPayRaw,
       hasPre, preFrom, preWage, preHours, preDayH, preNightH, preBasic, preNight,
       manualDeductHours, manualDeduction, earlyHours, earlyDeduction, earlyDays,
       weeklyHolidayList, whCut, mealCutFromBasic,
@@ -2880,6 +2903,20 @@ export default function Home() {
       color: #b45309; background: #fef3c7; border: 1px solid #fcd34d;
       border-radius: 6px; padding: 1px 0; letter-spacing: 0;
     }
+    /* 연장한 날: 칸 위쪽에 파란 줄 + 배지 */
+    .day-cell.has-ot { box-shadow: inset 0 3px 0 #2f6bbf; }
+    .ot-badge {
+      display: block; margin-top: 4px; font-size: 10.5px; font-weight: 700;
+      color: #1e4f99; background: #e3edfb; border: 1px solid #a9c4ee;
+      border-radius: 6px; padding: 1px 0; letter-spacing: 0;
+    }
+    .fixed-ot-strip {
+      margin-bottom: 12px; padding: 10px 14px; border-radius: 10px;
+      background: #f2f6fd; border: 1px solid #cfdcf3; font-size: 13px; color: #34495e; line-height: 1.7;
+    }
+    .fixed-ot-days { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .fixed-ot-days span { background: #e3edfb; color: #1e4f99; border-radius: 6px; padding: 0 8px; font-size: 12px; font-weight: 600; }
+    .fixed-ot-hint { font-size: 11.5px; color: #8a94a3; margin-top: 2px; }
 
     .hour-label { font-size: 11px; color: #8a8378; font-weight: 500; text-align: center; margin-bottom: 2px; letter-spacing: 0.04em; }
     .hour-input {
@@ -3538,6 +3575,29 @@ export default function Home() {
                 </div>
               )}
 
+              {/* 고정 연장 계약: 이 달 연장한 날·시간 요약 (달력의 파란 '연장' 표시와 같은 값) */}
+              {totals?.hasFixedOt && (() => {
+                const otDays = Object.entries(activeEmp.workData || {})
+                  .filter(([k, v]) => !k.startsWith('_') && v && typeof v === 'object' && v.type !== '공' && v.type !== '연' && v.type !== '결' && v.type !== '휴' && (v.overtimeH || 0) > 0)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                const left = Math.max(0, totals.fixedOtLimit - totals.mOtPost)
+                return (
+                  <div className="fixed-ot-strip">
+                    <b>고정 연장 {totals.fixedOtLimit % 1 ? totals.fixedOtLimit.toFixed(1) : totals.fixedOtLimit}시간</b>
+                    <span> · 이번 달 연장 {totals.mOtPost}시간 ({otDays.length}일)</span>
+                    <span> · {totals.excessOtH > 0
+                      ? <b style={{ color: '#c0392b' }}>{totals.excessOtH.toFixed(1)}시간 초과 → 추가 {Number(totals.excessOtPay).toLocaleString()}원</b>
+                      : `남은 ${left % 1 ? left.toFixed(1) : left}시간 (추가 지급 없음)`}</span>
+                    {otDays.length > 0 && (
+                      <div className="fixed-ot-days">
+                        {otDays.map(([k, v]) => <span key={k}>{Number(k.slice(8))}일 {v.overtimeH}h</span>)}
+                      </div>
+                    )}
+                    <div className="fixed-ot-hint">연장한 날은 달력에서 퇴근 시간을 늦게 적으면 8시간 넘는 만큼이 '연장'에 자동으로 들어가요. 직접 고쳐도 됩니다.</div>
+                  </div>
+                )
+              })()}
+
               {/* 달력 */}
               <div className="cal-wrap">
                 {weeks.map((week, wi) => {
@@ -3607,7 +3667,7 @@ export default function Home() {
                           }
 
                           return (
-                            <div key={di} className={`day-cell ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''} ${outOfEmp ? 'out-of-emp' : ''} ${inputWarn ? 'has-warn' : ''}`}>
+                            <div key={di} className={`day-cell ${!isHolidayWork && !noInput && activeEmp.empType === '직원' && d.overtimeH > 0 ? 'has-ot' : ''} ${isHolidayWork ? 'is-holiday' : ''} ${noInput ? 'is-off' : ''} ${isEmptyWork ? 'empty-work' : ''} ${outOfEmp ? 'out-of-emp' : ''} ${inputWarn ? 'has-warn' : ''}`}>
                               {inputWarn && <div className="day-warn" title={inputWarn} onClick={(e) => { e.stopPropagation(); setTooltipInfo({ date: ds, text: inputWarn }) }}>⚠️</div>}
                               <div className="day-head">
                                 <div
@@ -3684,6 +3744,7 @@ export default function Home() {
                                   {/* 하루 총 근무시간 (휴게 제외) */}
                                   <div className={`day-total ${isEmptyWork ? 'is-zero' : ''}`}>
                                     {isEmptyWork ? '미입력' : `일 ${dayTotal}시간`}
+                                    {!isHolidayWork && activeEmp.empType === '직원' && (d.overtimeH > 0) && <span className="ot-badge">연장 {d.overtimeH}h</span>}
                                     {(d.earlyH > 0) && <span className="early-badge">조퇴 {d.earlyH}h</span>}
                                   </div>
                                 </>
@@ -4055,6 +4116,13 @@ export default function Home() {
                         <b style={{ color: '#2f6bbf', width: '100%', lineHeight: 1.7 }}>
                           → 고정 연장수당 {Number(totals.fixedOtPay).toLocaleString()}원
                           {totals.proration?.partial ? ` (재직 ${totals.proration.activeDays}일 일할)` : ''}
+                          {totals.fixedBasic > 0 && totals.fixedProbMult < 1 && (
+                            <>
+                              <br />
+                              → 수습 {activeEmp.workData?._probationPct}%: 월 총액 {(totals.fixedBasic + totals.fixedOtPayRaw + totals.fixedMeal).toLocaleString()}원의 {activeEmp.workData?._probationPct}% = {Math.round((totals.fixedBasic + totals.fixedOtPayRaw + totals.fixedMeal) * activeEmp.workData._probationPct / 100).toLocaleString()}원.
+                              식대 {totals.fixedMeal.toLocaleString()}원은 전액, 기본급·고정연장은 {(totals.fixedProbMult * 100).toFixed(2)}%로 조정
+                            </>
+                          )}
                           <br />
                           → 이 달 실제 연장 {totals.mOtPost}시간 {totals.excessOtH > 0
                             ? `— 고정 ${totals.fixedOtLimit.toFixed(1)}시간을 ${totals.excessOtH.toFixed(1)}시간 초과 → 추가 ${Number(totals.excessOtPay).toLocaleString()}원`
@@ -4224,7 +4292,7 @@ export default function Home() {
                         ? { label: '기본급',  total: totals.totalBasic, hours: totals.basicHours,
                             desc: totals.proration.partial
                               ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
-                              : `${totals.fixedBasic > 0 ? `계약서 고정 기본급 ${totals.fixedBasic.toLocaleString()}원` : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간`} (직원 고정·주휴 포함)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
+                              : `${totals.fixedBasic > 0 ? `계약서 고정 기본급 ${totals.fixedBasic.toLocaleString()}원${totals.fixedProbMult < 1 ? ` × 수습 조정 ${(totals.fixedProbMult * 100).toFixed(2)}%` : ''}` : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간`} (직원 고정·주휴 포함)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
