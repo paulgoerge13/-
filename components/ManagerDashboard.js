@@ -396,12 +396,16 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   function recRetroPay(r) { return Number((r.work_data || {})._retroPay) || 0 }
   // 퇴직금: 4대보험·근로소득세 공제 대상이 아니며(퇴직소득세 별도), 입력된 금액 그대로 이체액에 더한다.
   function recSeverance(r) { return Number(r.severance_pay) || 0 }
+  // 지난달 미이체분: 이미 그 달 대장으로 신고는 끝났는데 돈만 덜 보낸 경우(세후 금액).
+  //   이번 달 이체에만 더하고 세전·공제·대장에는 넣지 않는다 — 넣으면 같은 돈이 두 번 신고된다.
+  //   예) 익산 박준형 9/9 근무: 9월 대장엔 포함, 이체는 수정 전 금액으로 나감 → 10월 이체에 차액
+  function recPayOnly(r) { return Math.round(Number((r.work_data || {})._payOnly) || 0) }
 
-  // ── 실제 이체(입금)할 금액 = 명세서 '실지급액' (+ 퇴직금) ──
+  // ── 실제 이체(입금)할 금액 = 명세서 '실지급액' (+ 퇴직금 + 지난달 미이체분) ──
   //   실지급 = 세전지급액(grand_total) + 식대(비과세) − 공제총액 + 퇴직금
   //   공제는 직원 = 4대보험(+소득세·지방세) / 알바 = 3.3% 기준 (요약 화면과 동일하게 통일).
   //   → recDeduction(r) 이 직원/알바 구분으로 공제를 계산하므로 그대로 사용한다.
-  function transferAmt(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) + recSeverance(r) }
+  function transferAmt(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) + recSeverance(r) + recPayOnly(r) }
 
   // ── 이체 상태 (확정 → 이체완료 두 가지만 순환) ──
   const STATUS_ORDER = ['확정', '이체완료']
