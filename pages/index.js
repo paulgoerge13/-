@@ -1491,15 +1491,11 @@ export default function Home() {
     // ── 계약서 고정 기본급(_fixedBasic): 기본급을 시급×시간이 아니라 계약서 금액 그대로 (식대 제외 금액) ──
     //   통상시급에 식대가 들어가 있어 시급×209 로는 계약 금액이 안 나오는 경우 (예: 안양 도주완 2,248,500)
     const fixedBasic = (isStaff && !isMonthlySalary) ? Math.max(0, Math.round(Number(emp.workData?._fixedBasic) || 0)) : 0
-    // ── 고정급 계약의 수습 비율 ──
-    //   계약서: "수습 중 월 임금은 월 지급 총액(기본급+고정연장+식대)의 90%, 식대는 전액 지급하고
-    //   기본급과 고정 연장수당을 조정" → 기본급·고정연장에 각각 90%를 곱하면 총액이 90%보다 커진다.
-    //   (기본급+고정연장) × r + 식대 = 총액 × 90%  →  r = (총액 × 90% − 식대) ÷ (기본급+고정연장)
+    // ── 고정급 계약의 수습: 기본급·고정 연장수당·휴일수당을 각각 수습%(예: 90%)로 지급, 식대는 전액 ──
+    //   (사장님 확인 2026-11-05: 총액 기준 조정이 아니라 항목별 90%)
     const fixedOtPayRaw = (isStaff && !isMonthlySalary) ? Math.max(0, Math.round(Number(emp.workData?._fixedOtPay) || 0)) : 0
     const fixedMeal = Math.max(0, Number(emp.mealAllowance) || 0)
-    const fixedProbMult = (fixedBasic > 0 && probMult < 1)
-      ? Math.max(0, (probMult * (fixedBasic + fixedOtPayRaw + fixedMeal) - fixedMeal) / (fixedBasic + fixedOtPayRaw))
-      : probMult
+    const fixedProbMult = probMult
     const staffMonthlyBasic = isMonthlySalary ? Math.round(monthlyTaxableBasic)
       : fixedBasic > 0 ? Math.round(fixedBasic * fixedProbMult)
       : Math.round(baseWage * basicHours)
@@ -4119,8 +4115,7 @@ export default function Home() {
                           {totals.fixedBasic > 0 && totals.fixedProbMult < 1 && (
                             <>
                               <br />
-                              → 수습 {activeEmp.workData?._probationPct}%: 월 총액 {(totals.fixedBasic + totals.fixedOtPayRaw + totals.fixedMeal).toLocaleString()}원의 {activeEmp.workData?._probationPct}% = {Math.round((totals.fixedBasic + totals.fixedOtPayRaw + totals.fixedMeal) * activeEmp.workData._probationPct / 100).toLocaleString()}원.
-                              식대 {totals.fixedMeal.toLocaleString()}원은 전액, 기본급·고정연장은 {(totals.fixedProbMult * 100).toFixed(2)}%로 조정
+                              → 수습 {activeEmp.workData?._probationPct}%: 기본급·고정 연장수당·휴일수당을 각각 {activeEmp.workData?._probationPct}%로 지급 (식대 {totals.fixedMeal.toLocaleString()}원은 전액)
                             </>
                           )}
                           <br />
@@ -4292,7 +4287,7 @@ export default function Home() {
                         ? { label: '기본급',  total: totals.totalBasic, hours: totals.basicHours,
                             desc: totals.proration.partial
                               ? `${totals.staffMonthlyBasic.toLocaleString()}원 ÷ ${totals.proration.monthDays}일 × ${totals.proration.activeDays}일 (중도 입·퇴사 일할계산)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}`
-                              : `${totals.fixedBasic > 0 ? `계약서 고정 기본급 ${totals.fixedBasic.toLocaleString()}원${totals.fixedProbMult < 1 ? ` × 수습 조정 ${(totals.fixedProbMult * 100).toFixed(2)}%` : ''}` : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간`} (직원 고정·주휴 포함)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
+                              : `${totals.fixedBasic > 0 ? `계약서 고정 기본급 ${totals.fixedBasic.toLocaleString()}원${totals.fixedProbMult < 1 ? ` × 수습 ${Math.round(totals.fixedProbMult * 100)}%` : ''}` : `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.basicHours}시간`} (직원 고정·주휴 포함)${totals.mealCutFromBasic > 0 ? ` − 식대 분리 ${totals.mealCutFromBasic.toLocaleString()}원` : ''}${totals.absentDeduction > 0 ? ` − 결근 공제 ${totals.absentDeduction.toLocaleString()}원` : ''}${totals.earlyDeduction > 0 ? ` − 조퇴 공제 ${totals.earlyDeduction.toLocaleString()}원` : ''}${totals.manualDeduction > 0 ? ` − 기본급 차감 ${totals.manualDeduction.toLocaleString()}원` : ''}` }
                         : { label: '기본급',  total: totals.totalBasic, hours: totals.hoursBaseAlba,     desc: `시급 ${activeEmp.hourlyWage.toLocaleString()}원 × ${totals.hoursBaseAlba}시간 (주간)` },
                       ...(totals.isStaff && totals.absentDeduction > 0
                         ? [{ label: '└ 결근 공제', total: 0, hours: null, neg: -totals.absentDeduction,
