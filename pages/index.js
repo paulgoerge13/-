@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import ManagerDashboard from '../components/ManagerDashboard'
 import { BRANCHES, CORPS, CORP_ORDER, corpOf } from '../lib/branches'
+
+// 직원 한 명의 소속 법인: 같은 지점이어도 work_data._corp 로 다른 법인(예: 마흐트)일 수 있다
+function empCorpId(emp) {
+  const v = emp && emp.workData && emp.workData._corp
+  return (v && CORPS[v]) ? v : null
+}
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
 import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
@@ -515,6 +521,8 @@ export default function Home() {
   }, [])
   const [authed, setAuthed] = useState(false)       // 이 지점 급여 비밀번호 통과 여부
   const [selectedBranch, setSelectedBranch] = useState(null)
+  // 명세서·근무표에 찍는 회사명: 그 사람의 소속 법인(_corp) 우선, 없으면 지점 법인
+  const empCorp = (emp) => CORPS[empCorpId(emp)] || corpOf(selectedBranch?.name)
   const [pw, setPw] = useState('')
   const [pwError, setPwError] = useState(false)
   const [employees, setEmployees] = useState([{ ...EMPTY_EMP, id: Date.now() }])
@@ -1181,6 +1189,20 @@ export default function Home() {
     saveTimer.current = setTimeout(() => autoSave(), 1500)
   }
 
+  // ── 소속 법인: workData._corp (같은 지점이어도 다른 법인 소속인 사람. 비우면 지점 법인) ──
+  //   지점 화면에서는 그대로 같은 지점에 보이고, 관리자 대장·회사 납부액·원천세는 이 법인으로 따로 묶인다.
+  function setEmpCorp(val) {
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (val && CORPS[val]) wd._corp = val
+      else delete wd._corp
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
   // ── 식대 출근일 기준 일할: workData._mealAttend ──
   //   계약서 "식대 정액·출근일 기준 일할" → 월 식대 × (재직일 − 결근일) ÷ 그 달 일수. 결근 없는 만근 달은 전액.
   function toggleMealAttend() {
@@ -1806,7 +1828,7 @@ export default function Home() {
     //   버림  : 날짜별 근무기록 · 조퇴차감(_deduct) · 주휴차감(_whCut) · 추가지급(_retroPay) · 기록용(_recordOnly)
     //   ※ 수습 감액(_probationPct)은 일부러 안 들고 간다 — 3개월이 지나도 계속 깎이면 임금체불이 되므로
     //     매달 다시 확인해서 넣도록 한다.
-    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_fixedBasic', '_fixedOtH', '_fixedOtPay', '_dayHours', '_mealFlat', '_mealAttend','_insBasePension', '_insBaseHealth', '_adminOnly', '_empCode']
+    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_fixedBasic', '_fixedOtH', '_fixedOtPay', '_dayHours', '_mealFlat', '_mealAttend','_insBasePension', '_insBaseHealth', '_adminOnly', '_empCode', '_corp']
     const carrySettings = (wd) => {
       const out = {}
       for (const k of KEEP_SETTINGS) if (wd && wd[k] !== undefined && wd[k] !== null) out[k] = wd[k]
@@ -2413,7 +2435,7 @@ export default function Home() {
   @media print { body { padding:0; } @page { size:A4; margin:14mm; } }
 </style></head><body><div class="sheet">
   <h1>${activeEmp.year}년 ${activeEmp.month}월분 급여명세서</h1>
-  <div class="hdr"><span>회사명: ${corpOf(selectedBranch?.name).name || corpOf(selectedBranch?.name).short || '더콤마라운지'}</span><span>지급일: ${pay}</span></div>
+  <div class="hdr"><span>회사명: ${empCorp(activeEmp).name || empCorp(activeEmp).short || '더콤마라운지'}</span><span>지급일: ${pay}</span></div>
 
   <table class="bordered">
     <colgroup><col style="width:13%"><col style="width:12%"><col style="width:13%"><col style="width:17%"><col style="width:13%"><col style="width:32%"></colgroup>
@@ -2483,7 +2505,7 @@ export default function Home() {
     const html = buildWorkCalendarHtml([{
       year: activeEmp.year, month: activeEmp.month,
       name: activeEmp.name, empType: activeEmp.empType,
-      corpName: corpOf(selectedBranch?.name).short, branch: selectedBranch?.name,
+      corpName: empCorp(activeEmp).short, branch: selectedBranch?.name,
       workData: activeEmp.workData,
       weekly: { total: t.totalWeeklyHoliday, list: t.weeklyHolidayList || [] },
     }], title)
@@ -4060,6 +4082,18 @@ export default function Home() {
                     {activeEmp.workData?._probationPct > 0 && activeEmp.workData._probationPct < 100 && (
                       <b style={{ color: '#b07a1e', width: '100%' }}>→ 수습 {activeEmp.workData._probationPct}%: 기본급·수당이 {activeEmp.workData._probationPct}%로 계산돼요 (식대·퇴직금은 그대로)</b>
                     )}
+                  </label>
+                )}
+                {/* 소속 법인 — 지점 법인과 다른 사람만 (관리자 대장에서 따로 묶임) */}
+                {showContractOpts && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 6, marginLeft: 2, fontSize: 12, color: '#666', flexWrap: 'wrap' }}>
+                    소속 법인
+                    <select value={activeEmp.workData?._corp || ''} onChange={e => setEmpCorp(e.target.value)}
+                      style={{ border: '1px solid #d0ccc5', borderRadius: 6, padding: '3px 6px', fontSize: 12 }}>
+                      <option value="">지점과 같음 ({corpOf(selectedBranch?.name).short || corpOf(selectedBranch?.name).label})</option>
+                      {CORP_ORDER.filter(c => c !== 'etc').map(c => <option key={c} value={c}>{CORPS[c].short || CORPS[c].label}</option>)}
+                    </select>
+                    <span style={{ color: '#bbb' }}>(지점 화면은 그대로, 관리자 대장·납부액만 이 법인으로)</span>
                   </label>
                 )}
                 {/* 식대 일할 안 함 — 중도 입·퇴사여도 정액 전액 */}
