@@ -359,6 +359,13 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   function recMeal(r) {
     const perDay = Math.max(0, Number(r && r.work_data && r.work_data._mealPerDay) || 0)
     if (perDay > 0) return Math.min(200000, Math.round(perDay * recWorkDays(r)))
+    // _mealAttend: 출근일 기준 일할 = 월 식대 × (재직일 − 결근일) ÷ 그 달 일수 (지점 화면과 동일)
+    if (r && r.emp_type === '직원' && r.work_data && r.work_data._mealAttend) {
+      const md = new Date(Number(r.year), Number(r.month), 0).getDate() || 30
+      const active = Math.round(recProrationRatio(r) * md)
+      const absent = Object.entries(r.work_data).filter(([k, d]) => !k.startsWith('_') && d && d.type === '결').length
+      return Math.round((Number(r.meal_allowance) || 0) * Math.max(0, active - absent) / md)
+    }
     // _mealFlat: 중도 입·퇴사여도 식대는 일할하지 않고 정액 전액 (지점 화면과 동일)
     if (r && r.work_data && r.work_data._mealFlat) return Math.round(Number(r.meal_allowance) || 0)
     return Math.round((Number(r.meal_allowance) || 0) * recProrationRatio(r))

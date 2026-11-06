@@ -1174,7 +1174,21 @@ export default function Home() {
       if (e.id !== activeEmpId) return e
       const wd = { ...e.workData }
       if (wd._mealFlat) delete wd._mealFlat
-      else wd._mealFlat = true
+      else { wd._mealFlat = true; delete wd._mealAttend }
+      return { ...e, workData: wd, _dirty: true }
+    }))
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => autoSave(), 1500)
+  }
+
+  // ── 식대 출근일 기준 일할: workData._mealAttend ──
+  //   계약서 "식대 정액·출근일 기준 일할" → 월 식대 × (재직일 − 결근일) ÷ 그 달 일수. 결근 없는 만근 달은 전액.
+  function toggleMealAttend() {
+    setEmployees(prev => prev.map(e => {
+      if (e.id !== activeEmpId) return e
+      const wd = { ...e.workData }
+      if (wd._mealAttend) delete wd._mealAttend
+      else { wd._mealAttend = true; delete wd._mealFlat }
       return { ...e, workData: wd, _dirty: true }
     }))
     if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -1574,8 +1588,12 @@ export default function Home() {
     // 식대: 기본은 '월 고정액'(중도 입·퇴사면 일할). _mealPerDay 가 있으면 '근무일 × 하루 금액'으로 준다.
     //   (예: 하루 1만원씩 실제 나온 날만 지급 — 비과세 한도 월 20만원은 넘지 않게 자른다)
     const mealPerDay = Math.max(0, Number(emp.workData?._mealPerDay) || 0)
+    const mealAttend = isStaff && !!emp.workData?._mealAttend
+    const mealAttendDays = mealAttend ? Math.max(0, (proration.activeDays || 0) - absentDays) : 0
     const meal = mealPerDay > 0
       ? Math.min(200000, Math.round(mealPerDay * workDays))
+      : mealAttend
+      ? Math.round((emp.mealAllowance || 0) * mealAttendDays / (proration.monthDays || 30))
       : Math.round((emp.mealAllowance || 0) * ((isStaff && !emp.workData?._mealFlat) ? proration.ratio : 1))
     const severance = emp.severancePay || 0                   // 퇴직금 (4대보험·소득세 제외)
     const grossPay = grandTotal + meal + severance            // 지급액계 (과세 + 비과세 + 퇴직금)
@@ -1584,7 +1602,7 @@ export default function Home() {
 
     return { totalBasic, totalWeeklyHoliday: totalWeeklyFinal, totalOvertime, totalNight, totalHoliday, totalHolidayOtPay, totalHolidayNightPay, grandTotal,
       retroPay, basicHours,
-      meal, mealPerDay, severance, grossPay,
+      meal, mealPerDay, mealAttendDays, severance, grossPay,
       hoursDay, hoursNight, hoursRest, hoursOvertime, hoursWork, hoursWeekly, hoursBaseAlba, isStaff, isActualHours,
       hoursOvertimePay: mOtH, hoursNightPay: mNightH, hoursHolidayDay: mHolidayDayH, hoursHolidayOt: mHolidayOtH, hoursHolidayNight: mHolidayNightH,
       hoursHolidayWork, proration, staffMonthlyBasic, isMonthlySalary, baseWage,
@@ -1788,7 +1806,7 @@ export default function Home() {
     //   버림  : 날짜별 근무기록 · 조퇴차감(_deduct) · 주휴차감(_whCut) · 추가지급(_retroPay) · 기록용(_recordOnly)
     //   ※ 수습 감액(_probationPct)은 일부러 안 들고 간다 — 3개월이 지나도 계속 깎이면 임금체불이 되므로
     //     매달 다시 확인해서 넣도록 한다.
-    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_fixedBasic', '_fixedOtH', '_fixedOtPay', '_dayHours', '_mealFlat', '_insBasePension', '_insBaseHealth', '_adminOnly', '_empCode']
+    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_fixedBasic', '_fixedOtH', '_fixedOtPay', '_dayHours', '_mealFlat', '_mealAttend','_insBasePension', '_insBaseHealth', '_adminOnly', '_empCode']
     const carrySettings = (wd) => {
       const out = {}
       for (const k of KEEP_SETTINGS) if (wd && wd[k] !== undefined && wd[k] !== null) out[k] = wd[k]
@@ -4049,6 +4067,17 @@ export default function Home() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 6, marginLeft: 2, fontSize: 12, color: '#666' }}>
                     <input type="checkbox" checked={!!activeEmp.workData?._mealFlat} onChange={toggleMealFlat} />
                     식대는 일할하지 않고 <b>매월 정액</b>으로 지급 <span style={{ color: '#bbb' }}>(중도 입·퇴사해도 전액)</span>
+                  </label>
+                )}
+                {showContractOpts && (activeEmp.empType || '알바') === '직원' && (activeEmp.mealAllowance || 0) > 0 && !activeEmp.workData?._mealPerDay && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, marginLeft: 2, fontSize: 12, color: '#666', flexWrap: 'wrap' }}>
+                    <input type="checkbox" checked={!!activeEmp.workData?._mealAttend} onChange={toggleMealAttend} />
+                    식대 <b>출근일 기준 일할</b> <span style={{ color: '#bbb' }}>(결근한 날·입사 전·퇴사 후만큼 빠짐 — 계약서에 그렇게 적힌 경우)</span>
+                    {activeEmp.workData?._mealAttend && totals && (
+                      <b style={{ color: '#b07a1e', width: '100%', marginLeft: 22 }}>
+                        → {fmt(activeEmp.mealAllowance)}원 × {totals.mealAttendDays}일 ÷ {totals.proration?.monthDays}일 = {fmt(totals.meal)}원{totals.absentDays > 0 ? ` (결근 ${totals.absentDays}일 차감)` : ''}
+                      </b>
+                    )}
                   </label>
                 )}
 
