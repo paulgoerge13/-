@@ -2295,6 +2295,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                   </div>
                 </div>
 
+                {/* 지점별 합계를 맨 위에 — 들어오자마자 지점 총액이 보이게 */}
+                {renderBranchTotalTable()}
+
                 {/* 세금·보험 요약 — 지금 보고 있는 범위(지점 필터)의 세전 인건비·4대보험·원천세 */}
                 <div className="tx-stats tx-stats-3">
                   <div className="tx-stat">
@@ -2324,7 +2327,6 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                 </div>
 
                 {renderCorpPayTable()}
-                {renderBranchTotalTable()}
 
                 {/* 색상 안내 + (이체 진행) + 엑셀 다운로드 */}
                 <div className="tx-board-bar">
