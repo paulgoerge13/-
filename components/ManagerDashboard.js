@@ -2439,6 +2439,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                                 >{g.branch} <span className="bd-bname-arrow">›</span></span>
                               )}
                               <span className="bd-bcount">{gDone}/{g.units.length}건</span>
+                              {(() => {
+                                // 같은 지점에 다른 법인 사람이 있으면 지점 전체 금액도 같이 보여준다
+                                const all = boardGroups.find(x => x.branch === g.branch)
+                                if (!all || all.units.length === g.units.length) return null
+                                return <span className="bd-bcount" title="법인 상관없이 이 지점 전체 이체액">지점 전체 {fmt(all.units.reduce((s, u) => s + unitAmt(u), 0))}원</span>
+                              })()}
                               {gDone < g.units.length ? (
                                 <button
                                   className="bd-allbtn"
@@ -2710,6 +2716,35 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                           )}
                         </Fragment>
                       ))}
+                      {/* 법인과 상관없이 지점 전체 금액 — 한 지점에 두 법인 사람이 섞여 있어도 지점 총액을 본다 */}
+                      {byCorpSummary.length > 1 && (() => {
+                        const corpsOf = b => byCorpSummary.filter(c => c.branches.some(x => x.branch === b)).map(c => c.corp.short || '기타')
+                        return (
+                          <>
+                            <tr>
+                              <td colSpan={5} style={{ padding: '7px 12px', background: '#e8eef5', borderBottom: '1px solid #c9d5e3',
+                                borderLeft: '4px solid #4a6a8f', fontWeight: 800, color: '#2f4560', fontSize: 12.5 }}>
+                                지점별 합계 <span style={{ fontWeight: 500, fontSize: 11.5 }}>(법인 합침)</span>
+                              </td>
+                            </tr>
+                            {byBranch.filter(x => x.count > 0).map(x => {
+                              const cs = corpsOf(x.branch)
+                              return (
+                                <tr key={`all-${x.branch}`} style={{ cursor: 'pointer' }} onClick={() => setBranch(x.branch)}>
+                                  <td style={nS}>{x.branch} <span style={{ fontWeight: 400, color: '#aaa', fontSize: 11 }}>({x.count})</span>
+                                    {cs.length > 1 && <span style={{ marginLeft: 6, fontWeight: 600, fontSize: 10.5, color: '#4a6a8f', background: '#eef3f9',
+                                      border: '1px solid #c9d5e3', borderRadius: 999, padding: '1px 7px' }}>{cs.join('+')}</span>}
+                                  </td>
+                                  <td style={cS}>{fmt(x.total)}</td>
+                                  <td style={{ ...cS, color: '#c0504a' }}>{x.major ? fmt(x.major) : '·'}</td>
+                                  <td style={{ ...cS, color: '#c0504a' }}>{x.withhold ? fmt(x.withhold) : '·'}</td>
+                                  <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(x.staffNet + x.albaNet)}</td>
+                                </tr>
+                              )
+                            })}
+                          </>
+                        )
+                      })()}
                       <tr>
                         <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }}>합계</td>
                         <td style={{ ...cS, fontWeight: 800, background: '#f3efe6' }}>{fmt(grandAll)}</td>
