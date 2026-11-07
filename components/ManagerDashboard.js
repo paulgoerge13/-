@@ -859,6 +859,65 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     )
   }
 
+  // ── 지점별 합계 ── 법인과 상관없이 지점 전체 (광명·인계처럼 마흐트 사람이 섞인 지점도 지점 총액으로)
+  function renderBranchTotalTable() {
+    const rows = branchesFor(branch).map(b => {
+      const rs = payRecords.filter(r => r.branch === b)
+      const sum = f => rs.reduce((t, r) => t + f(r), 0)
+      const staffIns = sum(recMajorIns) + sum(r => { const a = recAdj(r); return a.total - a.etc })
+      const company = sum(recMajorInsCompany)
+      const corps = CORP_ORDER.filter(cid => rs.some(r => corpIdOfRecord(r) === cid)).map(cid => CORPS[cid].short || '기타')
+      return { branch: b, count: rs.length, gross: sum(fixGrand), net: sum(transferAmt),
+        ins: staffIns + company, company, withhold: sum(recWithholding), corps }
+    }).filter(x => x.count > 0)
+    if (rows.length < 2) return null
+    const total = k => rows.reduce((s, x) => s + x[k], 0)
+    const cS = { padding: '8px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '1px solid #ececec', whiteSpace: 'nowrap' }
+    const hS = { ...cS, textAlign: 'center', color: '#8a8170', fontWeight: 700, background: '#f3efe6', borderBottom: '1px solid #d8d3c8' }
+    const nS = { ...cS, textAlign: 'left', fontWeight: 700, color: '#1a1a1a' }
+    const sumS = { ...cS, fontWeight: 800, background: '#f3efe6' }
+    return (
+      <div style={{ overflowX: 'auto', border: '1px solid #e2ded5', borderRadius: 12, background: '#fff', marginBottom: 16 }}>
+        <div style={{ padding: '10px 12px 8px', fontSize: 13.5, fontWeight: 800, color: '#3f3a33' }}>지점별 합계 <span style={{ fontWeight: 400, color: '#a89878', fontSize: 11.5 }}>{year}년 {month}월분 · 법인 합침</span></div>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, minWidth: 620 }}>
+          <thead>
+            <tr>
+              <th style={{ ...hS, textAlign: 'left' }}>지점</th>
+              <th style={hS}>세전 인건비</th>
+              <th style={{ ...hS, background: '#ece7da' }}>실지급(이체)</th>
+              <th style={{ ...hS, color: '#a8763a' }}>4대보험 <span style={{ fontWeight: 400, fontSize: 11 }}>직원+회사</span></th>
+              <th style={{ ...hS, color: '#a8763a' }}>원천세</th>
+              <th style={hS}>총 인건비 <span style={{ fontWeight: 400, fontSize: 11 }}>세전+회사분</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(x => (
+              <tr key={x.branch} style={{ cursor: 'pointer' }} onClick={() => setBranch(x.branch)}>
+                <td style={nS}>{x.branch} <span style={{ fontWeight: 400, color: '#aaa', fontSize: 11 }}>({x.count})</span>
+                  {x.corps.length > 1 && <span style={{ marginLeft: 6, fontWeight: 600, fontSize: 10.5, color: '#4a6a8f', background: '#eef3f9',
+                    border: '1px solid #c9d5e3', borderRadius: 999, padding: '1px 7px' }}>{x.corps.join('+')}</span>}
+                </td>
+                <td style={cS}>{fmt(x.gross)}</td>
+                <td style={{ ...cS, fontWeight: 800, background: '#faf8f3' }}>{fmt(x.net)}</td>
+                <td style={cS}>{x.ins ? fmt(x.ins) : '·'}</td>
+                <td style={cS}>{x.withhold ? fmt(x.withhold) : '·'}</td>
+                <td style={{ ...cS, fontWeight: 700 }}>{fmt(x.gross + x.company)}</td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ ...nS, fontWeight: 800, background: '#f3efe6' }}>합계</td>
+              <td style={sumS}>{fmt(total('gross'))}</td>
+              <td style={{ ...sumS, background: '#ece7da' }}>{fmt(total('net'))}</td>
+              <td style={sumS}>{fmt(total('ins'))}</td>
+              <td style={sumS}>{fmt(total('withhold'))}</td>
+              <td style={sumS}>{fmt(total('gross') + total('company'))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
   const grandAll = byBranch.reduce((s, x) => s + x.total, 0)
   const staffAll = byBranch.reduce((s, x) => s + x.staffTotal, 0)
   const albaAll = byBranch.reduce((s, x) => s + x.albaTotal, 0)
@@ -2265,6 +2324,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                 </div>
 
                 {renderCorpPayTable()}
+                {renderBranchTotalTable()}
 
                 {/* 색상 안내 + (이체 진행) + 엑셀 다운로드 */}
                 <div className="tx-board-bar">
