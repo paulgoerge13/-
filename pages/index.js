@@ -1372,7 +1372,10 @@ export default function Home() {
     return {
       weekDayH, weekNightH, weekRestH, weekOtH, weekWorkH, weekHolidayH,
       weekHolidayDayH, weekHolidayNightH, weekHolidayOtH,
-      weeklyHolidayPay: (isStaffNoCalc || hasAbsent) ? 0 : calcWeeklyHoliday(weekRegH, emp.hourlyWage)
+      // 수습(_probationPct) 직원은 주휴도 수습 시급으로 (실근무 시급제 직원)
+      weeklyHolidayPay: (isStaffNoCalc || hasAbsent) ? 0 : calcWeeklyHoliday(weekRegH,
+        (emp.empType === '직원' && Number(emp.workData?._probationPct) > 0)
+          ? Math.round((emp.hourlyWage || 0) * Number(emp.workData._probationPct) / 100) : emp.hourlyWage)
     }
   }
 
@@ -1591,7 +1594,8 @@ export default function Home() {
     const preNight  = hasPre ? Math.round((preNightH + preHolNightH) * preWage * 0.5) : 0
 
     const totalBasic           = (isActualHours || !(isStaff || isMonthlySalary))
-      ? Math.max(0, Math.round(hoursBaseAlba * emp.hourlyWage) + (emp.manualBasic || 0) - manualDeduction)
+      // 실근무 시급제 직원도 수습이면 수습 시급(baseWage)으로 — 알바는 probMult=1 이라 baseWage=시급 그대로
+      ? Math.max(0, Math.round(hoursBaseAlba * (isMonthlySalary ? emp.hourlyWage : baseWage)) + (emp.manualBasic || 0) - manualDeduction)
       : Math.max(0, Math.round(staffMonthlyBasic * proration.ratio) - absentDeduction - manualDeduction - earlyDeduction - mealCutFromBasic) + preBasic
     const totalOvertime        = emp.empType === '직원' ? ((emp.manualOvertime || 0) + (hasFixedOt ? fixedOtPay + excessOtPay : autoOvertime)) : 0
     const totalNight           = (emp.manualNight || 0) + autoNight + fixedNightPay + excessNightPay + preNight
