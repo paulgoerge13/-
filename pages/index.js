@@ -1849,7 +1849,7 @@ export default function Home() {
     //   버림  : 날짜별 근무기록 · 조퇴차감(_deduct) · 주휴차감(_whCut) · 추가지급(_retroPay) · 기록용(_recordOnly)
     //   ※ 수습 감액(_probationPct)은 일부러 안 들고 간다 — 3개월이 지나도 계속 깎이면 임금체불이 되므로
     //     매달 다시 확인해서 넣도록 한다.
-    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_fixedBasic', '_fixedOtH', '_fixedOtPay', '_dayHours', '_mealFlat', '_mealAttend','_insBasePension', '_insBaseHealth', '_adminOnly', '_empCode', '_corp']
+    const KEEP_SETTINGS = ['_restFrom', '_mealPerDay', '_mealFromBasic', '_basicHours', '_fixedNightH', '_fixedBasic', '_fixedOtH', '_fixedOtPay', '_dayHours', '_mealFlat', '_mealAttend','_insBasePension', '_insBaseHealth', '_adminOnly', '_empCode', '_corp', '_noTransfer']
     const carrySettings = (wd) => {
       const out = {}
       for (const k of KEEP_SETTINGS) if (wd && wd[k] !== undefined && wd[k] !== null) out[k] = wd[k]

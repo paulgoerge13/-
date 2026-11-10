@@ -530,7 +530,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       // 합산 결과(6+7월)는 기준월(6월)에만 표시, 다른 합산월(7월)에는 아무것도 표시하지 않음
       return month === mergeAnchorMonth(b) ? combinedUnitsForMergeBranch(b) : []
     }
-    return buildUnits(records.filter(r => r.branch === b && !isRecordOnly(r)))
+    // _noTransfer: 급여대장·신고에는 넣되 이체(보드·이체용 엑셀·이체 합계)에서는 뺀다 (예: 익산 이태서 — 따로 지급)
+    return buildUnits(records.filter(r => r.branch === b && !isRecordOnly(r) && !((r.work_data || {})._noTransfer)))
   }
   function unitAmt(u) { return u.recs.reduce((s, r) => s + transferAmt(r), 0) }
   function unitSeverance(u) { return u.recs.reduce((s, r) => s + recSeverance(r), 0) }          // 퇴직금 합계
