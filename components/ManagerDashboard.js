@@ -1389,6 +1389,14 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       if (c > maxC) maxC = c
     }
     const row5 = (r, vals, base) => vals.forEach((v, c) => put(r, c, v, typeof base === 'function' ? base(c) : base))
+    // 수식 칸 — 엑셀에서 금액을 고치면 합계가 따라 바뀌게 (v 는 열었을 때 바로 보이는 값)
+    const putF = (r, c, f, v, s) => {
+      ws[XLSX.utils.encode_cell({ r, c })] = { t: typeof v === 'number' ? 'n' : 's', f, v, s: s || {} }
+      if (r > maxR) maxR = r
+      if (c > maxC) maxC = c
+    }
+    const A1 = (r, c) => XLSX.utils.encode_cell({ r, c })
+    const sumCells = []             // 지점 합계 칸 주소들 → 전체 금액 = 이 칸들의 합
 
     // 제목 — 전체 금액을 맨 위에도 띄운다 (지점이 많으면 맨 아래 총액까지 내려가야 해서)
     const kindLabel = kind === 'staff' ? ' · 10일 지급' : kind === 'alba' ? ' · 15일 지급' : ''
@@ -1406,10 +1414,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       fill: sumFill, font: { sz: 12, bold: true, color: { rgb: '5A5348' } },
       alignment: { horizontal: 'left', vertical: 'center' },
     })
-    put(1, 2, grandTotal, {
+    const topTotalStyle = {
       fill: sumFill, numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'center' },
       font: { sz: 15, bold: true, color: { rgb: '3F3A33' } },
-    })
+    }   // 값은 아래에서 지점 합계 칸 주소가 다 정해진 뒤 수식으로 넣는다
     put(1, 3, '', { fill: sumFill })
     put(1, 4, '', { fill: sumFill })
 
@@ -1418,7 +1426,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     let r = 3
     groups.forEach((g, gi) => {
       if (gi > 0) { rowH[r] = 12; r++ }   // 지점 사이 간격
-      // 지점 제목 줄 (5칸 가로 병합)
+      // 지점 제목 줄 (5칸 가로 병합) — 금액은 이 지점 합계 칸을 따라가게 수식
+      const titleR = r
       put(r, 0, `${g.branch}   (${g.count}명 · ${g.total.toLocaleString()}원)`, {
         font: { sz: 13, bold: true, color: { rgb: 'FFFFFF' } },
         alignment: { horizontal: 'left', vertical: 'center' },
@@ -1435,6 +1444,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       }))
       rowH[r] = 22; r++
       // 사람 줄
+      const firstR = r
       g.sorted.forEach(u => {
         const st = unitStatus(u)
         const a = splitAcct(u.account)
@@ -1451,7 +1461,10 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       const tf = { fgColor: { rgb: 'F0EAD9' } }
       put(r, 0, '', { fill: tf, border: allBd })
       put(r, 1, '합계', { fill: tf, font: { sz: 13, bold: true }, alignment: { vertical: 'center' }, border: allBd })
-      put(r, 2, g.total, { fill: tf, numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'center' }, font: { sz: 14, bold: true }, border: allBd })
+      putF(r, 2, `SUM(${A1(firstR, 2)}:${A1(r - 1, 2)})`, g.total, { fill: tf, numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'center' }, font: { sz: 14, bold: true }, border: allBd })
+      sumCells.push(A1(r, 2))
+      const tCell = ws[A1(titleR, 0)]
+      tCell.f = `"${g.branch}   (${g.count}명 · "&TEXT(${A1(r, 2)},"#,##0")&"원)"`
       put(r, 3, '', { fill: tf, border: allBd })
       put(r, 4, '', { fill: tf, border: allBd })
       rowH[r] = 26; r++
@@ -1465,10 +1478,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     put(r, 1, `전체 총 금액 (${grandCount}건)`, {
       fill: gf, font: gFont, alignment: { horizontal: 'left', vertical: 'center' }, border: allBd,
     })
-    put(r, 2, grandTotal, {
+    const grandF = sumCells.join('+')
+    putF(r, 2, grandF, grandTotal, {
       fill: gf, numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'center' },
       font: { sz: 16, bold: true, color: { rgb: 'FFFFFF' } }, border: allBd,
     })
+    putF(1, 2, grandF, grandTotal, topTotalStyle)   // 맨 위 전체 금액도 같은 수식
     put(r, 3, '', { fill: gf, border: allBd })
     put(r, 4, '', { fill: gf, border: allBd })
     rowH[r] = 34; r++
