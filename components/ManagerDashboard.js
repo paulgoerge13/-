@@ -412,7 +412,13 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   //   실지급 = 세전지급액(grand_total) + 식대(비과세) − 공제총액 + 퇴직금
   //   공제는 직원 = 4대보험(+소득세·지방세) / 알바 = 3.3% 기준 (요약 화면과 동일하게 통일).
   //   → recDeduction(r) 이 직원/알바 구분으로 공제를 계산하므로 그대로 사용한다.
-  function transferAmt(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) + recSeverance(r) + recPayOnly(r) }
+  //   공단 정산·기타공제(recAdj)도 실제로 떼는 돈이라 2026-10분부터 이체액에서 뺀다 (세무사 대장 차인지급액과 일치).
+  //   그 전 달은 이미 이체가 끝나 금액이 바뀌면 안 되므로 예전 그대로 둔다 (예: 김현준 9월 기타공제).
+  function recAdjForTransfer(r) {
+    if (isFixed(r) || recDedType(r) !== '4대') return 0
+    return (Number(r.year) * 12 + Number(r.month)) >= 2026 * 12 + 10 ? recAdj(r).total : 0
+  }
+  function transferAmt(r) { return fixGrand(r) + recMeal(r) - recDeduction(r) - recAdjForTransfer(r) + recSeverance(r) + recPayOnly(r) }
 
   // ── 이체 상태 (확정 → 이체완료 두 가지만 순환) ──
   const STATUS_ORDER = ['확정', '이체완료']
