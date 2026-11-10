@@ -9,7 +9,7 @@ function empCorpId(emp) {
 }
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
 import { rowFingerprint } from '../lib/rowFingerprint'
-import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insuranceSkipped, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
 // ── 전 지점 통합 관리(관리자) 마스터 비밀번호 — /manager 페이지와 동일 ──
@@ -430,7 +430,7 @@ function calcDeductions(gross, emp) {
   const retroTax = (dt !== 'none') ? (Number(emp.retroIncomeTax) || 0) : 0
   if (dt === '4대') {
     // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양을 떼지 않는다
-    const freeMonth = isFirstMonthInsuranceFree(emp.year, emp.month, emp.hireDate)
+    const freeMonth = isFirstMonthInsuranceFree(emp.year, emp.month, emp.hireDate) || insuranceSkipped(emp.workData)
     // 국민연금·건강보험은 신고된 보수월액이 있으면 그 금액으로 (없으면 그 달 과세급여)
     const ib = insBaseOf(emp.workData, gross)
     // 국민연금은 기준소득월액(천원 미만 절사·상하한 적용) 기준 — 건강보험은 절사하지 않는다
@@ -455,8 +455,12 @@ function calcDeductions(gross, emp) {
     bizTax     = w33.tax
     localTax   = w33.local
   }
-  const total = pension + health + care + employment + incomeTax + localTax + bizTax + retroTax
-  return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, retroTax, total, net: gross - total }
+  // 공단 정산·기타공제(_adjPension/_adjHealth/_adjCare/_adjEmp/_adjEtc) — 관리자 화면·이체와 같은 금액이 되도록 직원만 더한다
+  const wdA = emp.workData || {}
+  const adjTotal = dt === '4대'
+    ? ['_adjPension', '_adjHealth', '_adjCare', '_adjEmp', '_adjEtc'].reduce((s, k) => s + Math.round(Number(wdA[k]) || 0), 0) : 0
+  const total = pension + health + care + employment + incomeTax + localTax + bizTax + retroTax + adjTotal
+  return { dt, pension, health, care, employment, incomeTax, localTax, bizTax, retroTax, adjTotal, total, net: gross - total }
 }
 
 // ── 개인정보 마스킹: 평소엔 가리고, 입력칸을 클릭하면 전체가 보이게 ──

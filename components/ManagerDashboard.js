@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx-js-style'
 import { supabase } from '../lib/supabase'
 import { BRANCHES as BRANCH_LIST, BRANCH_NAMES, THECOMMA_BRANCH_NAMES, CORPS, CORP_ORDER, CORP_OF_BRANCH, corpIdOfRecord } from '../lib/branches'
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
-import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
+import { isFirstMonthInsuranceFree, insuranceSkipped, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
 
 const BRANCHES = BRANCH_NAMES   // 집계용 지점 이름 목록
 const ALL = '전체 지점'
@@ -244,7 +244,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (isFixed(r)) return 0
     if (recDedType(r) !== '4대') return 0
     const taxable = fixGrand(r)
-    const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
+    const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date) || insuranceSkipped(r.work_data)
     const ib = insBaseOf(r.work_data, taxable)
     const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
     const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
@@ -265,7 +265,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     if (recDedType(r) !== '4대') return 0
     const taxable = fixGrand(r)
     // 입사 첫 달(1일 입사 제외)은 국민연금·건강보험·장기요양 미부과 — 고용보험만
-    const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
+    const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date) || insuranceSkipped(r.work_data)
     const ib = insBaseOf(r.work_data, taxable)      // 신고된 보수월액이 있으면 그 금액으로
     const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
     const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
@@ -306,7 +306,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const g = fixGrand(r)
     const retro = Number(r.retro_income_tax) || 0
     if (recDedType(r) === '4대') {
-      const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date)
+      const free = isFirstMonthInsuranceFree(r.year, r.month, r.hire_date) || insuranceSkipped(r.work_data)
       const ib = insBaseOf(r.work_data, g)
       const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
       const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
