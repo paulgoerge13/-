@@ -1222,9 +1222,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       }
       const rows = []; const setH = (r, h) => { rows[r] = { hpt: h } }
       const side = (c) => [c === 0 ? 'm' : 't', c === NCOL - 1 ? 'm' : 't']   // 바깥 세로선만 굵게
-      const VMERGE = [0, 1, 2, 4, 9]                                         // 두 줄을 합치는 칸
+      const VMERGE = [0, 1, 4, 9]                                            // 두 줄을 합치는 칸 (성명 칸은 2줄에 주민번호)
       const BH1 = ['NO', '코드', '성   명', '귀속년월', '지급액', '소득세', '예술/특고인 경비', '학자금상환액', '', '영수인']
-      const BH2 = ['', '', '', '지급년월', '', '지방소득세', '고용보험료', '산재보험료', '차인지급액', '']
+      const BH2 = ['', '', '주민등록번호', '지급년월', '', '지방소득세', '고용보험료', '산재보험료', '차인지급액', '']
+      // 주민번호: 숫자 13자리면 앞6-뒤7 로 맞춰 찍는다 (사이트에 하이픈 없이 적힌 사람도 있음)
+      const rrn = (v) => { const d = String(v || '').replace(/\D/g, ''); return d.length === 13 ? `${d.slice(0, 6)}-${d.slice(6)}` : String(v || '').trim() }
       const ymTxt = `${year}.${mm}`
       const pageHead = (r0) => {
         setH(r0, 27.75); setH(r0 + 1, 8.55); setH(r0 + 2, 10.15); setH(r0 + 3, 1.2); setH(r0 + 4, 18.75); setH(r0 + 5, 18.75)
@@ -1263,7 +1265,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
             else if (c === 5) v = V(tax)
             else if (c === 8) font = F(DU, 9)
           } else {
-            if (c === 3) v = ymTxt
+            if (c === 2) { v = rrn(r.resident_id); font = F(BT, 8) }
+            else if (c === 3) v = ymTxt
             else if (c === 5) v = V(local)
             else if (c === 8) v = V(net)
           }
@@ -1290,7 +1293,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       bMerges.push({ s: { r: br, c: 4 }, e: { r: br + 1, c: 4 } })
       bMerges.push({ s: { r: br, c: 9 }, e: { r: br + 1, c: 9 } })
       br += 2
-      B['!cols'] = [2.17, 4.17, 8.17, 8.17, 10.17, 11.17, 10.17, 8.17, 8.17, 6.17].map(w => ({ wch: w }))
+      B['!cols'] = [2.17, 4.17, 13.17, 8.17, 10.17, 11.17, 10.17, 8.17, 8.17, 6.17].map(w => ({ wch: w }))
       B['!rows'] = rows
       B['!margins'] = { left: 0.59375, right: 0, top: 0.7125000357627869, bottom: 0, header: 0.5, footer: 0.5 }
       B['!merges'] = bMerges
