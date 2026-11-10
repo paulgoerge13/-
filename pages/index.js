@@ -8,6 +8,7 @@ function empCorpId(emp) {
   return (v && CORPS[v]) ? v : null
 }
 import { buildWorkCalendarHtml } from '../lib/workCalendar'
+import { rowFingerprint } from '../lib/rowFingerprint'
 import { isFirstMonthInsuranceFree, insBaseOf, pensionBase, floor10, bizWithholding } from '../lib/insurance'
 import { lookupSimpleTax, SIMPLE_TAX_MAX } from '../lib/simpleTaxTable'
 
@@ -1730,6 +1731,8 @@ export default function Home() {
       retro_income_tax: Number(emp.retroIncomeTax) || 0,
       meal_allowance: emp.mealAllowance || 0,
       severance_pay:  emp.severancePay || 0,
+      // 불러온 그 달·그 이름 기록일 때만 비교 (달을 옮겨 새로 만드는 기록은 비교할 게 없다)
+      expected_fp: (emp._fp && emp._fpKey === `${emp.year}-${emp.month}-${emp.name.trim()}`) ? emp._fp : null,
     }
     try {
       const res = await fetch('/api/save', {
@@ -1737,8 +1740,15 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
+      if (res.status === 409) {
+        alert(`⚠ ${emp.name.trim()} 님 기록이 이 화면을 연 뒤에 다른 곳에서 바뀌었습니다.\n\n지금 저장하면 바뀐 내용이 지워지므로 저장하지 않았습니다.\n새로고침(F5)해서 최신 내용을 불러온 뒤, 고칠 부분을 다시 입력해 주세요.`)
+        return false
+      }
       if (res.ok) {
-        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status, _dbName: emp.name.trim(), _dirty: false } : e))
+        const saved = (await res.json().catch(() => ({}))).data
+        const fp = saved ? rowFingerprint(saved) : null
+        const fpKey = `${emp.year}-${emp.month}-${emp.name.trim()}`
+        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status, _dbName: emp.name.trim(), _dirty: false, ...(fp ? { _fp: fp, _fpKey: fpKey } : {}) } : e))
         logChange({ action: status === 'final' ? '마감' : '저장', emp_name: emp.name.trim(), year: emp.year, month: emp.month, grand_total: totals.grandTotal })
         return true
       } else {
@@ -1778,6 +1788,9 @@ export default function Home() {
         id: Date.now() + Math.random(),
         name: r.emp_name || '',
         _dbName: r.emp_name || '',   // DB에 저장된 원래 이름 (이름 변경 감지용)
+        // 불러온 순간의 기록 지문 — 저장 때 DB와 비교해 그사이 바뀌었으면 막는다 (옛 화면 덮어쓰기 방지)
+        _fp: rowFingerprint(r),
+        _fpKey: `${r.year}-${r.month}-${r.emp_name}`,
         residentId: r.resident_id || '',
         phone: r.phone || '',
         email: r.email || '',

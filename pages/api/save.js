@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { rowFingerprint } from '../../lib/rowFingerprint'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -78,6 +79,25 @@ export default async function handler(req, res) {
     severance_pay:  Number(severance_pay) || 0,
     salary_type:    salary_type || 'hourly',
     monthly_salary: Number(monthly_salary) || 0,
+  }
+
+  // ── 옛 화면 덮어쓰기 방지 ──
+  //   화면이 불러왔을 때의 지문(expected_fp)과 지금 DB 기록의 지문이 다르면
+  //   그사이 누가 바꾼 것 → 저장하지 않고 409 로 돌려보낸다(새로고침 후 다시 입력).
+  const { expected_fp } = req.body
+  if (expected_fp) {
+    const { data: cur } = await supabase
+      .from('payroll')
+      .select('work_data, grand_total, emp_type, hourly_wage, hire_date, resign_date')
+      .eq('branch', branch).eq('emp_name', emp_name)
+      .eq('year', Number(year)).eq('month', Number(month))
+      .maybeSingle()
+    // 같은 화면에서 저장을 연달아 누른 경우(DB가 이미 지금 보내는 내용과 같음)는 통과
+    const incoming = rowFingerprint({ work_data, grand_total: Number(grandTotal) || 0, emp_type: emp_type || '알바',
+      hourly_wage: Number(hourly_wage) || 0, hire_date: hire_date || '', resign_date: resign_date || '' })
+    if (cur && rowFingerprint(cur) !== expected_fp && rowFingerprint(cur) !== incoming) {
+      return res.status(409).json({ error: 'stale', message: '이 화면을 연 뒤에 다른 곳에서 이 사람 기록이 바뀌었습니다.' })
+    }
   }
 
   const opts = { onConflict: 'branch,emp_name,year,month' }
