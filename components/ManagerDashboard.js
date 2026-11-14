@@ -1327,9 +1327,11 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
 
   // ── 근무표(근무기록 확인서) 여러 명을 한 파일로 ── 한 사람이 한 페이지
   //   체크한 사람만 뽑는다. 아무도 안 골랐으면 그 법인 전원.
+  // 근무표에서 빼는 사람: 지점 근무표를 짜지 않는 관리자 전용(_adminOnly) — 예: 익산 이태서(본사, 근무 기록 없음)
+  function noWorkCal(r) { return !!((r.work_data || {})._adminOnly) }
   function printWorkCalendars(corpId) {
     const list = records
-      .filter(r => !isRecordOnly(r) && corpIdOfRecord(r) === corpId)
+      .filter(r => !isRecordOnly(r) && !noWorkCal(r) && corpIdOfRecord(r) === corpId)
       .filter(r => (wcPicked[r.id] !== undefined ? wcPicked[r.id] : !anyPicked(corpId)))
       .sort((a, b) => a.branch.localeCompare(b.branch, 'ko') || a.emp_name.localeCompare(b.emp_name, 'ko'))
     if (list.length === 0) { alert('근무표로 뽑을 사람을 골라주세요.'); return }
@@ -2406,7 +2408,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                     <div key={c.cid} className="wc-pick">
                       {c.branches.map(b => {
                         const people = records
-                          .filter(r => !isRecordOnly(r) && r.branch === b.branch)
+                          .filter(r => !isRecordOnly(r) && !noWorkCal(r) && r.branch === b.branch && corpIdOfRecord(r) === c.cid)
                           .sort((x, y) => x.emp_name.localeCompare(y.emp_name, 'ko'))
                         if (people.length === 0) return null
                         const allOn = people.every(r => wcPicked[r.id])
@@ -2435,11 +2437,12 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
                   ))}
                   {byCorpSummary.map(c => {
                     const picked = records.filter(r => !isRecordOnly(r) && corpIdOfRecord(r) === c.cid && wcPicked[r.id]).length
+                    const wcCount = records.filter(r => !isRecordOnly(r) && !noWorkCal(r) && corpIdOfRecord(r) === c.cid && branchesFor(branch).includes(r.branch)).length
                     return (
                       <div key={c.cid} className="tax-dl-row">
                         <span className="tax-dl-corp">{c.corp.short || '기타 사업장'}</span>
                         <button className="tx-xlsx wc" onClick={() => printWorkCalendars(c.cid)}>
-                          🗓 {c.corp.label || '기타'}_{month}월_근무표 ({picked > 0 ? `고른 ${picked}명` : `전원 ${c.count}명`})
+                          🗓 {c.corp.label || '기타'}_{month}월_근무표 ({picked > 0 ? `고른 ${picked}명` : `전원 ${wcCount}명`})
                         </button>
                       </div>
                     )
