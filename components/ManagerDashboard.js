@@ -240,6 +240,9 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
   const RATE_ACCIDENT = 0.010      // 산재보험 1.0% (음식점업 기준 · 전액 회사 부담)
   const RATE_EMP_STABLE = 0.0025   // 고용안정·직업능력개발 0.25% (150인 미만 · 회사만)
   //   공제 기준은 근로자 부담분(recMajorIns)과 같다 — 3.3%로 뗀 달은 없음, 입사 첫 달 미부과, 보수월액 우선.
+  // 고용보험 과세 추가액(work_data._empTaxableAdd): 다른 기록으로 나눠 입력했지만 세무사가 이 사람 급여에 합쳐
+  //   신고한 금액 (예: 김현준P3 알바분 572,400 → 김현준 고용보험은 3,628,875 기준). 그 달만.
+  function empAddOf(r) { return Math.max(0, Math.round(Number((r && r.work_data || {})._empTaxableAdd) || 0)) }
   function recMajorInsCompany(r) {
     if (isFixed(r)) return 0
     if (recDedType(r) !== '4대') return 0
@@ -249,8 +252,8 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
     const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
     const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
-    const employment = floor10(taxable * (0.009 + RATE_EMP_STABLE), r.year, r.month, !!(r.work_data || {})._legacyRound)
-    const accident   = Math.floor(taxable * RATE_ACCIDENT / 10) * 10
+    const employment = floor10((taxable + empAddOf(r)) * (0.009 + RATE_EMP_STABLE), r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const accident   = Math.floor((taxable + empAddOf(r)) * RATE_ACCIDENT / 10) * 10
     return pension + health + care + employment + accident
   }
   // 그 달만 공제 방식을 바꾼 경우(work_data._dedType) — 신분은 직원 그대로, 공제만 3.3%.
@@ -270,7 +273,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
     const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
     const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
     const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
-    const employment = floor10(taxable * 0.009, r.year, r.month, !!(r.work_data || {})._legacyRound)
+    const employment = floor10((taxable + empAddOf(r)) * 0.009, r.year, r.month, !!(r.work_data || {})._legacyRound)
     return pension + health + care + employment
   }
   function recWithholding(r) {   // 원천세 (직원: 소득세+지방세 / 알바: 3.3%) + 소급 소득세
@@ -311,7 +314,7 @@ export default function ManagerDashboard({ onBack, onOpenEmployee }) {
       const pension    = free ? 0 : floor10(pensionBase(ib.pension, r.year, r.month) * 0.0475, r.year, r.month, !!(r.work_data || {})._legacyRound)
       const health     = free ? 0 : floor10(ib.health * 0.03595, r.year, r.month, !!(r.work_data || {})._legacyRound)
       const care       = free ? 0 : floor10(health * 0.1314, r.year, r.month, !!(r.work_data || {})._legacyRound)
-      const employment = floor10(g * 0.009, r.year, r.month, !!(r.work_data || {})._legacyRound)
+      const employment = floor10((g + empAddOf(r)) * 0.009, r.year, r.month, !!(r.work_data || {})._legacyRound)
       const incomeTax  = r.income_tax || 0
       const localTax   = floor10(incomeTax * 0.1, r.year, r.month, !!(r.work_data || {})._legacyRound)
       const adj = recAdj(r)

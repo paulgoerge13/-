@@ -437,10 +437,15 @@ function calcDeductions(gross, emp) {
     pension    = freeMonth ? 0 : floor10(pensionBase(ib.pension, emp.year, emp.month) * RATE_PENSION, emp.year, emp.month, !!(emp.workData || {})._legacyRound)   // 10원 미만 절사
     health     = freeMonth ? 0 : floor10(ib.health * RATE_HEALTH, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
     care       = freeMonth ? 0 : floor10(health * RATE_CARE, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
-    employment = floor10(gross * RATE_EMPLOYMENT, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
+    employment = floor10((gross + Math.max(0, Math.round(Number((emp.workData || {})._empTaxableAdd) || 0))) * RATE_EMPLOYMENT, emp.year, emp.month, !!(emp.workData || {})._legacyRound)
     // 소득세: 간이세액표 자동조회(기본) / 비율(%) 자동 / 금액 직접입력
     const taxMode = emp.incomeTaxMode || 'table'   // 미지정이면 간이세액표 기본
-    if (taxMode === 'table') {
+    // 세무사가 정한 소득세(work_data._incomeTaxFixed)가 있으면 그 금액 그대로 — 지점 화면에서 다시 저장해도 안 바뀌게
+    //   (예: 김현준 10월 — 알바분을 합친 금액으로 낸 소득세 141,890)
+    const fixedTax = Number((emp.workData || {})._incomeTaxFixed)
+    if (fixedTax > 0) {
+      incomeTax = Math.round(fixedTax)
+    } else if (taxMode === 'table') {
       const t = lookupSimpleTax(gross, emp.dependents || 1)   // 과세급여 + 부양가족수 → 간이세액표
       incomeTax = (t === null) ? (emp.manualIncomeTax || 0) : t // 표 범위 초과(월 1,000만원↑)면 직접입력값 사용
     } else if (taxMode === 'rate') {
