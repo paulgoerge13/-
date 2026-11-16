@@ -2409,7 +2409,7 @@ export default function Home() {
       ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근무시간(주간+야간 ${t.hoursHolidayWork}h) × 1.5배`],
       ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 0.5배 가산 (휴일근로 1.5배 + 0.5배 = 2.0배)`],
       ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
-      ['추가 지급(소급)', t.retroPay, '미지급분 소급 정산 (과세)'],
+      ['추가 지급(소급)', t.retroPay, esc(activeEmp.workData?._retroNote || '미지급분 소급 정산 (과세)')],
       ['퇴직금', t.severance, '4대보험·소득세 제외 (퇴직소득세 별도)', '퇴직'],
     ].filter(([l, v]) => v > 0 || l === '기본급')
 
