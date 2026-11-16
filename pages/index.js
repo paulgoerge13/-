@@ -2382,10 +2382,30 @@ export default function Home() {
   // ── 급여명세서 인쇄/PDF (근로기준법 제48조 · 더콤마 표준 양식) ──
   function printPayslip() {
     if (!activeEmp?.name) { alert('직원 이름을 먼저 입력해주세요.'); return }
-    const t = calcTotalForDoc(activeEmp)
+    const t = { ...calcTotalForDoc(activeEmp) }
     const w = (n) => Number(n || 0).toLocaleString()
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
     const wage = activeEmp.hourlyWage || 0
+
+    // 다음 달 근무를 이 달에 합산한 경우(_extraWork: {days, day, night, label}) —
+    //   돈은 _retroPay 로 이미 들어가 있으니, 명세서에서는 근로일수·시간에 더하고
+    //   알바면 그 금액을 기본급·야간수당 줄로 옮겨 '추가 지급' 줄을 없앤다. (지급액계·실지급은 그대로)
+    const ex = activeEmp.workData?._extraWork
+    let exLabel = ''
+    if (ex && (ex.days || ex.day || ex.night)) {
+      const eDay = Number(ex.day) || 0, eNight = Number(ex.night) || 0
+      t.workDays = (t.workDays || 0) + (Number(ex.days) || 0)
+      t.hoursWork = Math.round(((t.hoursWork || 0) + eDay + eNight) * 100) / 100
+      t.hoursNightPay = (t.hoursNightPay || 0) + eNight
+      exLabel = ex.label ? ` · ${esc(ex.label)} 포함` : ''
+      if (!t.isStaff) {
+        const pDay = Math.round(eDay * wage), pNight = Math.round(eNight * wage * 1.5)
+        if (t.retroPay >= pDay + pNight) {
+          t.hoursBaseAlba = (t.hoursBaseAlba || 0) + eDay
+          t.totalBasic += pDay; t.totalNight += pNight; t.retroPay -= (pDay + pNight)
+        }
+      }
+    }
 
     // 생년월일: 입력값 우선, 없으면 주민번호 앞자리에서 추정
     const birth = (() => {
@@ -2399,13 +2419,13 @@ export default function Home() {
 
     // 지급 항목: [라벨, 금액, 산출식]
     const payItems = [
-      ['기본급', t.totalBasic, t.isActualHours ? `실근무 ${t.hoursBaseAlba}시간 × 시급 (주휴수당 별도)` : t.isStaff ? (t.isMonthlySalary ? `포괄임금제 · 월급 고정(식대 제외 과세분, 연장·야간·주휴 포함)` : t.fixedBasic > 0 ? `계약서 고정 기본급 (소정근로 ${t.basicHours}시간분 · 주휴 포함)` : `통상시급 × 월 ${t.basicHours}시간 (주휴 포함)`) : `통상시급 × ${t.hoursBaseAlba}시간 (주간)`],
+      ['기본급', t.totalBasic, t.isActualHours ? `실근무 ${t.hoursBaseAlba}시간 × 시급 (주휴수당 별도)` : t.isStaff ? (t.isMonthlySalary ? `포괄임금제 · 월급 고정(식대 제외 과세분, 연장·야간·주휴 포함)` : t.fixedBasic > 0 ? `계약서 고정 기본급 (소정근로 ${t.basicHours}시간분 · 주휴 포함)` : `통상시급 × 월 ${t.basicHours}시간 (주휴 포함)`) : `통상시급 × ${t.hoursBaseAlba}시간 (주간${exLabel})`],
       ['주휴수당', t.totalWeeklyHoliday, '주간근로시간 ÷ 40 × 8 × 통상시급'],
       ['식대', t.meal, '비과세 식대'],
       ['연장근로수당', t.totalOvertime, t.hasFixedOt
         ? `고정 연장 ${t.fixedOtH}h${t.excessOtH > 0 ? ` + 초과 ${t.excessOtH}h × 통상시급 × 1.5배` : ''} (계약서 정액)`
         : `통상시급 × 연장근로시간(${t.hoursOvertimePay}h) × 1.5배`],
-      ['야간근로수당', t.totalNight, t.isStaff ? `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 0.5배 가산` : `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 1.5배`],
+      ['야간근로수당', t.totalNight, t.isStaff ? `통상시급 × 야간근로시간(${t.hoursNightPay}h) × 0.5배 가산` : `통상시급 × 야간근로시간(${t.hoursNightPay}h${exLabel}) × 1.5배`],
       ['휴일근로수당', t.totalHoliday, `통상시급 × 휴일근무시간(주간+야간 ${t.hoursHolidayWork}h) × 1.5배`],
       ['휴일연장수당', t.totalHolidayOtPay, `통상시급 × 휴일연장시간(${t.hoursHolidayOt}h) × 0.5배 가산 (휴일근로 1.5배 + 0.5배 = 2.0배)`],
       ['휴일야간수당', t.totalHolidayNightPay, `통상시급 × 휴일야간시간(${t.hoursHolidayNight}h) × 0.5배 가산`],
