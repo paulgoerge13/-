@@ -1655,10 +1655,15 @@ export default function Home() {
   // ── 출력 문서용 합계: 급여명세서·근무표 엑셀은 개별 '공제 방식' 설정과 무관하게
   //   이체 화면·요약과 동일하게 직원=4대보험 / 알바=3.3% 를 강제 적용한다.
   //   (그래야 명세서의 '실지급액'이 실제 이체액과 정확히 일치한다.)
+  function docDedType(emp) {
+    return DED_TYPES.includes(emp?.workData?._dedType) ? emp.workData._dedType
+      : ((emp?.empType === '직원') ? '4대' : '3.3')
+  }
+  // 3.3%(사업소득)는 '지급명세서', 그 외는 '급여명세서'
+  function slipName(emp) { return docDedType(emp) === '3.3' ? '지급명세서' : '급여명세서' }
   function calcTotalForDoc(emp) {
     const t = calcTotal(emp)
-    const forcedType = DED_TYPES.includes(emp.workData?._dedType) ? emp.workData._dedType
-      : ((emp.empType === '직원') ? '4대' : '3.3')
+    const forcedType = docDedType(emp)
     const ded = calcDeductions(t.grandTotal, { ...emp, deductionType: forcedType })
     return { ...t, deductions: ded, totalDeduction: ded.total, netPay: t.grossPay - ded.total }
   }
@@ -2441,7 +2446,7 @@ export default function Home() {
     const pm_ = activeEmp.month === 12 ? 1 : activeEmp.month + 1
     const pay = `${py_}.${String(pm_).padStart(2,'0')}.${String(payDay).padStart(2,'0')}`
 
-    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>급여명세서_${activeEmp.name}_${activeEmp.year}년${activeEmp.month}월</title>
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${slipName(activeEmp)}_${activeEmp.name}_${activeEmp.year}년${activeEmp.month}월</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   body { font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#000; padding:30px 36px; background:#fff; font-size:12px; }
@@ -2460,7 +2465,7 @@ export default function Home() {
   .foot { text-align:center; margin-top:30px; font-size:13px; }
   @media print { body { padding:0; } @page { size:A4; margin:14mm; } }
 </style></head><body><div class="sheet">
-  <h1>${activeEmp.year}년 ${activeEmp.month}월분 급여명세서</h1>
+  <h1>${activeEmp.year}년 ${activeEmp.month}월분 ${slipName(activeEmp)}</h1>
   <div class="hdr"><span>회사명: ${empCorp(activeEmp).name || empCorp(activeEmp).short || '더콤마라운지'}</span><span>지급일: ${pay}</span></div>
 
   <table class="bordered">
@@ -3307,7 +3312,7 @@ export default function Home() {
                       letterSpacing: '0.05em', whiteSpace: 'nowrap',
                       fontFamily: "'Pretendard', 'DM Sans', sans-serif",
                     }}
-                  >급여명세서 🖨</button>
+                  >{activeEmp?.name ? slipName(activeEmp) : '급여명세서'} 🖨</button>
                   {/* 근무 달력 — 본인에게 보내 근무시간을 확인받는 용도 */}
                   <button
                     onClick={printWorkCalendar}
